@@ -286,16 +286,21 @@ export class VideoDownloader {
       }
       
       // 从输出中解析文件路径
+      Logger.info(`yt-dlp 完整输出: ${stdout}`);
       const lines = stdout.split('\n');
+      
+      // 寻找下载完成的标志
       const downloadLine = lines.find(line => 
         line.includes('[download] Destination:') || 
         line.includes('[ExtractAudio] Destination:') ||
         line.includes('[download] 目标文件:') ||
         line.includes('has already been downloaded') ||
-        line.includes('[ExtractAudio]')
+        line.includes('[ExtractAudio]') ||
+        line.includes('[download]') && line.includes('%')
       );
       
       if (downloadLine) {
+        Logger.info(`找到下载行: ${downloadLine}`);
         // 更新正则表达式以匹配更多情况
         const match = downloadLine.match(/(?:Destination:|目标文件:|downloaded to:)\s+(.+)/);
         if (match && match[1]) {
@@ -307,6 +312,20 @@ export class VideoDownloader {
           Logger.info(`音频下载完成: ${filePath}`);
           return filePath;
         }
+      }
+      
+      // 如果没有找到标准的下载行，尝试查找输出目录中的文件
+      try {
+        const outputDir = path.dirname(outputTemplate);
+        const files = await fs.readdir(outputDir);
+        const audioFiles = files.filter(file => file.endsWith('.mp3') || file.endsWith('.m4a'));
+        if (audioFiles.length > 0) {
+          const filePath = path.join(outputDir, audioFiles[0] || '');
+          Logger.info(`通过目录扫描找到音频文件: ${filePath}`);
+          return filePath;
+        }
+      } catch (dirError) {
+        Logger.warn(`扫描输出目录失败: ${dirError instanceof Error ? dirError.message : String(dirError)}`);
       }
       
       throw new Error('无法确定下载的音频文件路径')
