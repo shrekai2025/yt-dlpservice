@@ -64,7 +64,6 @@ export class ConfigManager {
         where: { key: input.key },
         update: {
           value: input.value,
-          description: input.description,
         },
         create: input,
       })

@@ -1,16 +1,33 @@
-import type { Task, TaskStatus, Config } from '@prisma/client'
+// 平台类型
+export type Platform = 'youtube' | 'bilibili' | 'other'
 
-// 导出Prisma生成的类型
-export type { Task, TaskStatus, Config }
+// 任务状态类型
+export type TaskStatus = 'PENDING' | 'DOWNLOADING' | 'EXTRACTING' | 'UPLOADING' | 'TRANSCRIBING' | 'COMPLETED' | 'FAILED'
 
-// 创建任务的输入类型
-export interface CreateTaskInput {
-  url: string
-  platform: string
-  title?: string
+// 下载类型
+export type DownloadType = 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
+
+// 视频信息接口
+export interface VideoInfo {
+  title: string
+  duration: number
+  uploader: string
+  formats: Array<{
+    format_id: string
+    ext: string
+    resolution?: string
+    filesize?: number
+  }>
+  originalData: any
 }
 
-// 更新任务的输入类型
+// 创建任务输入接口
+export interface CreateTaskInput {
+  url: string
+  downloadType?: DownloadType // 新增下载类型参数，默认为 AUDIO_ONLY
+}
+
+// 更新任务输入接口
 export interface UpdateTaskInput {
   id: string
   status?: TaskStatus
@@ -19,46 +36,33 @@ export interface UpdateTaskInput {
   audioPath?: string
   transcription?: string
   tingwuTaskId?: string
-  retryCount?: number
-  completedAt?: Date
   errorMessage?: string
+  retryCount?: number
+  duration?: number
+  fileSize?: number
 }
 
-// 任务查询参数
+// 任务查询选项接口
 export interface TaskQueryOptions {
   status?: TaskStatus
-  platform?: string
+  platform?: Platform
+  downloadType?: DownloadType // 新增按下载类型筛选
   limit?: number
   offset?: number
   orderBy?: 'createdAt' | 'updatedAt'
   orderDirection?: 'asc' | 'desc'
 }
 
-// 配置项类型
+// 配置输入接口
 export interface ConfigInput {
   key: string
   value: string
-  description?: string
 }
 
-// 平台类型
-export type Platform = 'youtube' | 'bilibili' | 'other'
-
-// 视频信息类型
-export interface VideoInfo {
-  title: string
-  description?: string
-  duration: number
-  uploader?: string
-  uploadDate?: string
-  viewCount?: number
-  thumbnail?: string
-  formats?: Array<{
-    formatId: string
-    ext: string
-    quality?: string | number
-    filesize?: number
-    url?: string
-  }>
-  originalData?: any
+// 下载选项接口
+export interface DownloadOptions {
+  outputDir: string
+  format?: string
+  quality?: string
+  downloadType: DownloadType // 指定下载类型
 } 

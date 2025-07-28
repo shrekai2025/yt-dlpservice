@@ -122,8 +122,7 @@ export const configRouter = createTRPCRouter({
         const testConfig = await ctx.db.config.create({
           data: {
             key: 'DB_TEST_' + Date.now(),
-            value: 'test_value',
-            description: '数据库连接测试'
+            value: 'test_value'
           }
         })
 

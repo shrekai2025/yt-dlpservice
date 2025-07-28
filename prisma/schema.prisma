@@ -12,54 +12,62 @@ datasource db {
 
 // 任务状态枚举
 enum TaskStatus {
-  PENDING // 等待处理
-  DOWNLOADING // 下载中
-  EXTRACTING // 音频提取中
-  UPLOADING // 上传到通义
+  PENDING      // 等待处理
+  DOWNLOADING  // 下载中
+  EXTRACTING   // 提取音频中
+  UPLOADING    // 上传处理中
   TRANSCRIBING // 转录中
-  COMPLETED // 完成
-  FAILED // 失败
+  COMPLETED    // 完成
+  FAILED       // 失败
+}
+
+// 下载类型枚举
+enum DownloadType {
+  AUDIO_ONLY   // 只下载音频
+  VIDEO_ONLY   // 只下载视频
+  BOTH         // 同时下载视频和音频
 }
 
 // 任务表
 model Task {
-  id       String     @id @default(cuid())
-  url      String // 原始视频URL
-  platform String // 平台类型 (youtube, bilibili等)
-  title    String? // 视频标题
-  status   TaskStatus @default(PENDING) // 任务状态
-
+  id            String     @id @default(cuid())
+  url           String     // 原始视频URL
+  platform      String     // 平台类型 (youtube, bilibili, etc.)
+  title         String?    // 视频标题
+  status        TaskStatus // 任务状态
+  downloadType  DownloadType @default(AUDIO_ONLY) // 下载类型
+  
   // 文件路径 (可能只有其中一个或两个都有)
-  videoPath String? // 下载的视频文件路径
-  audioPath String? // 提取的音频文件路径
-
-  // 转录结果
-  transcription String? // 转录文字结果
-
-  // API相关
-  tingwuTaskId String? // 通义听悟任务ID
-  retryCount   Int     @default(0) // 重试次数
-
+  videoPath     String?    // 下载的视频文件路径
+  audioPath     String?    // 提取的音频文件路径
+  
+  // 转录相关
+  transcription String?    // 转录文本
+  tingwuTaskId  String?    // 通义转录任务ID
+  
+  // 元数据
+  duration      Int?       // 视频时长（秒）
+  fileSize      Int?       // 文件大小（字节）
+  
+  // 重试和错误处理
+  retryCount    Int        @default(0)
+  errorMessage  String?    // 错误信息
+  
   // 时间戳
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  completedAt DateTime?
-
-  // 错误信息
-  errorMessage String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   @@index([status])
   @@map("tasks")
 }
 
-// 系统配置表
+// 配置表
 model Config {
-  id          String   @id @default(cuid())
-  key         String   @unique // 配置键
-  value       String // 配置值
-  description String? // 配置描述
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("configs")
 }

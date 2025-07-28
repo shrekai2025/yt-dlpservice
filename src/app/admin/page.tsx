@@ -5,6 +5,7 @@ import { api } from "~/components/providers/trpc-provider"
 
 export default function AdminPage() {
   const [url, setUrl] = useState("")
+  const [downloadType, setDownloadType] = useState<"AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH">("AUDIO_ONLY")
   const [configKey, setConfigKey] = useState("")
   const [configValue, setConfigValue] = useState("")
   const [previewUrl, setPreviewUrl] = useState("")
@@ -19,6 +20,7 @@ export default function AdminPage() {
   const createTask = api.task.create.useMutation({
     onSuccess: () => {
       setUrl("")
+      setDownloadType("AUDIO_ONLY")
       refetchTasks()
     },
   })
@@ -73,7 +75,7 @@ export default function AdminPage() {
     if (!url.trim()) return
 
     try {
-      await createTask.mutateAsync({ url: url.trim() })
+      await createTask.mutateAsync({ url: url.trim(), downloadType })
     } catch (error) {
       console.error("Failed to create task:", error)
     }
@@ -284,15 +286,21 @@ export default function AdminPage() {
             <div className="text-sm text-gray-600">总任务数</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-600">{stats?.pending || 0}</div>
+            <div className="text-2xl font-bold text-yellow-600">{stats?.byStatus?.pending || 0}</div>
             <div className="text-sm text-gray-600">等待中</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">{stats?.completed || 0}</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {(stats?.byStatus?.downloading || 0) + (stats?.byStatus?.extracting || 0) + (stats?.byStatus?.uploading || 0) + (stats?.byStatus?.transcribing || 0)}
+            </div>
+            <div className="text-sm text-gray-600">处理中</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-600">{stats?.byStatus?.completed || 0}</div>
             <div className="text-sm text-gray-600">已完成</div>
           </div>
           <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">{stats?.failed || 0}</div>
+            <div className="text-2xl font-bold text-red-600">{stats?.byStatus?.failed || 0}</div>
             <div className="text-sm text-gray-600">失败</div>
           </div>
         </div>
@@ -316,12 +324,32 @@ export default function AdminPage() {
               required
             />
           </div>
+          
+          <div>
+            <label htmlFor="downloadType" className="block text-sm font-medium text-gray-700 mb-2">
+              下载类型
+            </label>
+            <select
+              id="downloadType"
+              value={downloadType}
+              onChange={(e) => setDownloadType(e.target.value as "AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH")}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="AUDIO_ONLY">仅音频 (用于语音转录)</option>
+              <option value="VIDEO_ONLY">仅视频 (不转录文字)</option>
+              <option value="BOTH">视频+音频 (完整备份)</option>
+            </select>
+            <p className="mt-1 text-sm text-gray-500">
+              默认选择"仅音频"适合语音转录需求，节省存储空间
+            </p>
+          </div>
+          
           <button
             type="submit"
             disabled={createTask.isPending}
             className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
           >
-            {createTask.isPending ? "创建中..." : "创建任务"}
+            {createTask.isPending ? "创建中..." : `创建任务 (${downloadType === 'AUDIO_ONLY' ? '仅音频' : downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频+音频'})`}
           </button>
         </form>
       </div>
@@ -353,14 +381,13 @@ export default function AdminPage() {
             </div>
           )}
           
-          {videoInfo && (
+          {videoInfo && videoInfo.data && (
             <div className="border border-gray-200 rounded p-4 bg-gray-50">
-              <h3 className="font-semibold mb-2">{videoInfo.title}</h3>
+              <h3 className="font-semibold mb-2">{videoInfo.data.title}</h3>
               <div className="text-sm text-gray-600 space-y-1">
-                <div>时长: {Math.floor(videoInfo.duration / 60)}:{(videoInfo.duration % 60).toString().padStart(2, '0')}</div>
-                {videoInfo.uploader && <div>上传者: {videoInfo.uploader}</div>}
-                {videoInfo.viewCount && <div>观看次数: {videoInfo.viewCount.toLocaleString()}</div>}
-                {videoInfo.uploadDate && <div>上传日期: {videoInfo.uploadDate}</div>}
+                <div>时长: {Math.floor(videoInfo.data.duration / 60)}:{(videoInfo.data.duration % 60).toString().padStart(2, '0')}</div>
+                {videoInfo.data.uploader && <div>上传者: {videoInfo.data.uploader}</div>}
+                <div>平台: {videoInfo.platform || '未知'}</div>
               </div>
             </div>
           )}
@@ -452,6 +479,9 @@ export default function AdminPage() {
                   平台
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  下载类型
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   状态
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -466,7 +496,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {tasks?.tasks.map((task) => (
+              {tasks?.data?.map((task) => (
                 <tr key={task.id}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-mono">
                     {task.id.slice(0, 8)}...
@@ -478,6 +508,16 @@ export default function AdminPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     {task.platform}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                      task.downloadType === 'AUDIO_ONLY' ? 'bg-purple-100 text-purple-800' :
+                      task.downloadType === 'VIDEO_ONLY' ? 'bg-blue-100 text-blue-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      {task.downloadType === 'AUDIO_ONLY' ? '仅音频' :
+                       task.downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频+音频'}
+                    </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span

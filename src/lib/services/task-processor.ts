@@ -1,138 +1,172 @@
 import { db } from '~/server/db'
-import { TaskStatus } from '@prisma/client'
-import { VideoDownloader } from './video-downloader'
 import { Logger } from '~/lib/utils/logger'
-import { ConfigManager } from '~/lib/utils/config'
-import { promises as fs } from 'fs'
+import { VideoDownloader } from './video-downloader'
+import type { TaskStatus, DownloadType } from '~/types/task'
+import path from 'path'
+import fs from 'fs/promises'
 
 export class TaskProcessor {
-  private static instance: TaskProcessor
   private videoDownloader: VideoDownloader
 
   constructor() {
-    this.videoDownloader = VideoDownloader.getInstance()
-  }
-
-  static getInstance(): TaskProcessor {
-    if (!TaskProcessor.instance) {
-      TaskProcessor.instance = new TaskProcessor()
-    }
-    return TaskProcessor.instance
+    this.videoDownloader = new VideoDownloader()
   }
 
   /**
    * 处理单个任务
    */
   async processTask(taskId: string): Promise<void> {
-    Logger.info(`开始处理任务: ${taskId}`)
-    
     try {
-      // Ensure temp directory exists before any file operations
-      const config = await ConfigManager.getTyped();
-      await fs.mkdir(config.tempDir, { recursive: true });
+      Logger.info(`开始处理任务: ${taskId}`)
 
       // 获取任务信息
       const task = await db.task.findUnique({
-        where: { id: taskId },
+        where: { id: taskId }
       })
 
       if (!task) {
-        throw new Error(`Task ${taskId} not found`)
+        throw new Error(`任务 ${taskId} 不存在`)
       }
 
-      Logger.info(`处理任务 ${taskId}: ${task.url}`)
+      if (task.status !== 'PENDING') {
+        Logger.warn(`任务 ${taskId} 状态为 ${task.status}，跳过处理`)
+        return
+      }
 
-      // 更新任务状态为处理中
+      // 创建临时目录
+      const tempDir = `/tmp/yt-dlpservice`
+      await fs.mkdir(tempDir, { recursive: true })
+
+      const outputDir = path.join(tempDir, taskId)
+      await fs.mkdir(outputDir, { recursive: true })
+
+      // 更新状态为下载中
       await this.updateTaskStatus(taskId, 'DOWNLOADING')
 
-      // 获取视频信息
-      Logger.info(`获取视频信息: ${task.url}`)
-      const videoInfo = await this.videoDownloader.getVideoInfo(task.url)
-      
-      // 更新任务标题
+      // 根据下载类型进行相应处理
+      const downloadResult = await this.handleDownloadByType(task.url, task.downloadType, outputDir)
+
+      // 更新任务的文件路径
       await db.task.update({
         where: { id: taskId },
-        data: { 
-          title: videoInfo.title,
-          updatedAt: new Date()
+        data: {
+          videoPath: downloadResult.videoPath,
+          audioPath: downloadResult.audioPath,
+          status: this.determineNextStatus(task.downloadType)
         }
       })
 
-      // 检查是否需要认证（从视频信息中判断）
-      if (videoInfo.originalData?.error === 'Authentication required') {
-        Logger.warn(`任务 ${taskId} 的视频需要认证，但自动登录流程可能已经处理`)
-        
-        // 如果仍然需要认证，标记任务为失败
-        if (videoInfo.originalData?.authAttempted) {
-          await this.updateTaskStatus(taskId, 'FAILED', '视频需要认证且自动登录失败')
-          return
+      Logger.info(`任务 ${taskId} 下载完成，类型: ${this.getDownloadTypeDisplayName(task.downloadType)}`)
+
+      // 如果下载类型包含音频且需要转录，则继续处理
+      if (task.downloadType === 'AUDIO_ONLY' || task.downloadType === 'BOTH') {
+        if (downloadResult.audioPath) {
+          await this.processAudioTranscription(taskId, downloadResult.audioPath)
         }
+      } else {
+        // 仅视频下载，直接标记为完成
+        await this.updateTaskStatus(taskId, 'COMPLETED')
       }
 
-      // 下载视频
-      Logger.info(`开始下载视频: ${task.url}`)
-      const videoPath = await this.videoDownloader.downloadVideo(task.url, {
-        taskId: taskId,
-      })
-
-      // 更新任务状态和视频路径
-      await db.task.update({
-        where: { id: taskId },
-        data: { 
-          videoPath: videoPath,
-          status: 'EXTRACTING' 
-        },
-      })
-
-      // 提取音频
-      Logger.info(`开始提取音频: ${task.url}`)
-      await this.updateTaskStatus(taskId, 'EXTRACTING')
-      const audioPath = await this.videoDownloader.downloadAudio(task.url, {
-        taskId: taskId,
-      })
-
-      // 更新任务状态和音频路径
-      await db.task.update({
-        where: { id: taskId },
-        data: { 
-          audioPath: audioPath,
-          status: 'TRANSCRIBING',
-          updatedAt: new Date()
-        }
-      })
-
-      Logger.info(`音频提取完成: ${audioPath}`)
-
-      // TODO: 接下来集成通义听悟API进行语音转文字
-      // 目前先标记为完成
-      await this.updateTaskStatus(taskId, 'COMPLETED')
-      
-      Logger.info(`任务 ${taskId} 处理完成`)
-
     } catch (error) {
-      Logger.error(`任务 ${taskId} 处理失败: ${error}`)
+      Logger.error(`任务处理失败: ${taskId}, 错误: ${error}`)
       
-      // 检查错误类型，提供更详细的错误信息
+      // 确定错误类型并设置相应的错误信息
       let errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      
       if (errorMessage.includes('Authentication required')) {
         errorMessage = 'YouTube 视频需要登录认证，请确保已在专用浏览器中登录'
       } else if (errorMessage.includes('Private video')) {
         errorMessage = '私人视频，无法访问'
       } else if (errorMessage.includes('Video unavailable')) {
         errorMessage = '视频不可用'
+      } else if (errorMessage.includes('Members-only content')) {
+        errorMessage = '会员专享内容，需要相应权限'
       }
-      
+
       await this.updateTaskStatus(taskId, 'FAILED', errorMessage)
-      
-      // 清理可能的临时文件
+
+      // 清理临时文件
       try {
-        const config = await ConfigManager.getTyped()
-        await this.videoDownloader.cleanupFiles(config.tempDir, 0) // 立即清理
+        const tempDir = `/tmp/yt-dlpservice/${taskId}`
+        await fs.rmdir(tempDir, { recursive: true })
       } catch (cleanupError) {
-        Logger.warn(`清理临时文件时出错: ${cleanupError}`)
+        Logger.warn(`清理临时文件失败: ${cleanupError}`)
       }
     }
+  }
+
+  /**
+   * 根据下载类型处理下载
+   */
+  private async handleDownloadByType(
+    url: string, 
+    downloadType: DownloadType, 
+    outputDir: string
+  ): Promise<{ videoPath?: string; audioPath?: string }> {
+    const downloadOptions = {
+      outputDir,
+      downloadType,
+      format: 'best',
+      quality: 'best'
+    }
+
+    Logger.info(`执行${this.getDownloadTypeDisplayName(downloadType)}下载: ${url}`)
+    
+    const result = await this.videoDownloader.downloadContent(url, downloadOptions)
+    
+    Logger.info(`下载完成 - 视频: ${result.videoPath || '无'}, 音频: ${result.audioPath || '无'}`)
+    
+    return result
+  }
+
+  /**
+   * 处理音频转录（预留接口）
+   */
+  private async processAudioTranscription(taskId: string, audioPath: string): Promise<void> {
+    try {
+      Logger.info(`开始音频转录: ${taskId}, 文件: ${audioPath}`)
+      
+      // 更新状态为转录中
+      await this.updateTaskStatus(taskId, 'TRANSCRIBING')
+      
+      // TODO: 集成通义语音转文字API
+      // 目前暂时跳过转录，直接标记为完成
+      Logger.info('转录功能暂未实现，跳过转录步骤')
+      
+      await this.updateTaskStatus(taskId, 'COMPLETED')
+      
+    } catch (error) {
+      Logger.error(`音频转录失败: ${taskId}, 错误: ${error}`)
+      throw error
+    }
+  }
+
+  /**
+   * 根据下载类型确定下一个状态
+   */
+  private determineNextStatus(downloadType: DownloadType): TaskStatus {
+    switch (downloadType) {
+      case 'AUDIO_ONLY':
+        return 'TRANSCRIBING' // 音频需要转录
+      case 'VIDEO_ONLY':
+        return 'COMPLETED' // 视频下载完成即可
+      case 'BOTH':
+        return 'TRANSCRIBING' // 包含音频的需要转录
+      default:
+        return 'COMPLETED'
+    }
+  }
+
+  /**
+   * 获取下载类型的显示名称
+   */
+  private getDownloadTypeDisplayName(downloadType: DownloadType): string {
+    const displayNames: Record<DownloadType, string> = {
+      'AUDIO_ONLY': '仅音频',
+      'VIDEO_ONLY': '仅视频',
+      'BOTH': '视频+音频'
+    }
+    return displayNames[downloadType]
   }
 
   /**
@@ -144,27 +178,18 @@ export class TaskProcessor {
     errorMessage?: string
   ): Promise<void> {
     try {
-      const updateData: any = {
-        status,
-        updatedAt: new Date(),
-      }
-
-      if (status === TaskStatus.COMPLETED) {
-        updateData.completedAt = new Date()
-      }
-
-      if (errorMessage) {
-        updateData.errorMessage = errorMessage
-      }
-
       await db.task.update({
         where: { id: taskId },
-        data: updateData
+        data: {
+          status,
+          ...(errorMessage && { errorMessage }),
+          updatedAt: new Date()
+        }
       })
-
-      Logger.info(`Task ${taskId} status updated to: ${status}`)
+      
+      Logger.info(`任务 ${taskId} 状态更新为: ${status}`)
     } catch (error) {
-      Logger.error(`Failed to update task ${taskId} status: ${error}`)
+      Logger.error(`更新任务状态失败: ${taskId}, 错误: ${error}`)
       throw error
     }
   }
@@ -174,93 +199,58 @@ export class TaskProcessor {
    */
   async processPendingTasks(): Promise<void> {
     try {
-      const config = await ConfigManager.getTyped()
-      
-      // 获取等待中的任务
       const pendingTasks = await db.task.findMany({
-        where: { status: TaskStatus.PENDING },
+        where: { status: 'PENDING' },
         orderBy: { createdAt: 'asc' },
-        take: config.maxConcurrentTasks
+        take: 5 // 限制并发数量
       })
 
       if (pendingTasks.length === 0) {
-        Logger.info('No pending tasks to process')
+        Logger.info('暂无等待处理的任务')
         return
       }
 
-      Logger.info(`Processing ${pendingTasks.length} pending tasks`)
+      Logger.info(`开始批量处理 ${pendingTasks.length} 个等待任务`)
 
-      // 并发处理任务（但有限制）
+      // 并行处理任务
       const promises = pendingTasks.map(task => 
         this.processTask(task.id).catch(error => {
-          Logger.error(`Failed to process task ${task.id}: ${error}`)
+          Logger.error(`批量任务处理失败: ${task.id}, 错误: ${error}`)
         })
       )
 
       await Promise.all(promises)
-      
-      Logger.info('Batch processing completed')
+      Logger.info('批量任务处理完成')
+
     } catch (error) {
-      Logger.error(`Batch processing failed: ${error}`)
+      Logger.error(`批量处理任务失败: ${error}`)
       throw error
     }
   }
 
   /**
-   * 清理过期的已完成任务文件
+   * 清理过期文件
    */
   async cleanupExpiredFiles(): Promise<void> {
     try {
-      const config = await ConfigManager.getTyped()
-      const cutoffTime = new Date(Date.now() - config.maxFileAgeHours * 60 * 60 * 1000)
-
-      // 查找过期的已完成任务
-      const expiredTasks = await db.task.findMany({
-        where: {
-          status: TaskStatus.COMPLETED,
-          completedAt: {
-            lt: cutoffTime
-          },
-          OR: [
-            { videoPath: { not: null } },
-            { audioPath: { not: null } }
-          ]
-        }
-      })
-
-      Logger.info(`Found ${expiredTasks.length} expired tasks to cleanup`)
-
-      for (const task of expiredTasks) {
-        try {
-          // 清理文件
-          await this.videoDownloader.cleanupFiles(task.id)
-          
-          // 清除数据库中的文件路径
-          await db.task.update({
-            where: { id: task.id },
-            data: {
-              videoPath: null,
-              audioPath: null,
-              updatedAt: new Date()
-            }
-          })
-
-          Logger.info(`Cleaned up files for task ${task.id}`)
-        } catch (error) {
-          Logger.error(`Failed to cleanup task ${task.id}: ${error}`)
-        }
-      }
+      const tempDir = '/tmp/yt-dlpservice'
+      await this.videoDownloader.cleanupFiles(tempDir, 24) // 清理24小时前的文件
+      Logger.info('过期文件清理完成')
     } catch (error) {
-      Logger.error(`Cleanup process failed: ${error}`)
-      throw error
+      Logger.error(`清理过期文件失败: ${error}`)
     }
   }
 
   /**
-   * 检查视频下载器是否可用
+   * 检查视频下载器可用性
    */
   async checkVideoDownloaderAvailability(): Promise<boolean> {
-    const status = await this.videoDownloader.checkAvailability()
-    return status.available
+    try {
+      const status = await this.videoDownloader.checkAvailability()
+      return status.available
+    } catch (error) {
+      Logger.error(`检查视频下载器失败: ${error}`)
+      return false
+    }
   }
 } 
