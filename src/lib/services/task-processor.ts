@@ -104,13 +104,13 @@ export class TaskProcessor {
     outputDir: string
   ): Promise<{ videoPath?: string; audioPath?: string }> {
     // 根据下载类型和平台选择合适的格式
-    let format = 'best'
-    if (downloadType === 'AUDIO_ONLY') {
+    let format = "best";
+    if (downloadType === "AUDIO_ONLY") {
       // 对于音频下载，根据平台选择格式
-      if (url.includes('bilibili.com')) {
-        format = '[ext=m4a]/bestaudio/best'
+      if (url.includes("bilibili.com")) {
+        format = "30280/30232/30216/bestaudio";
       } else {
-        format = 'bestaudio/best'
+        format = "bestaudio/best";
       }
     }
 
