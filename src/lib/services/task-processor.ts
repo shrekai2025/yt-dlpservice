@@ -108,7 +108,7 @@ export class TaskProcessor {
     if (downloadType === 'AUDIO_ONLY') {
       // 对于音频下载，根据平台选择格式
       if (url.includes('bilibili.com')) {
-        format = 'bestaudio[ext=m4a]/bestaudio/best[ext=mp4]/best'
+        format = '[ext=m4a]/bestaudio/best'
       } else {
         format = 'bestaudio/best'
       }

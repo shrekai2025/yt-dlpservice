@@ -226,8 +226,8 @@ export class VideoDownloader {
       // 对于不同平台使用更兼容的格式选择
       let audioFormat = format
       if (url.includes('bilibili.com')) {
-        // Bilibili 需要特殊处理
-        audioFormat = 'bestaudio[ext=m4a]/bestaudio/best[ext=mp4]/best'
+        // Bilibili 需要特殊处理 - 根据实际可用格式优化
+        audioFormat = '[ext=m4a]/bestaudio/best'
       }
       
       let command = `"${this.ytDlpPath}" --no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`
@@ -254,13 +254,22 @@ export class VideoDownloader {
         const result = await execAsync(command)
         stdout = result.stdout
       } catch (error) {
-        if (url.includes('bilibili.com') && error instanceof Error && error.message.includes('NoneType')) {
+        if (url.includes('bilibili.com') && error instanceof Error) {
           Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
-          // 使用更简单的格式重试
-          const fallbackCommand = `"${this.ytDlpPath}" --no-warnings -f "worst[ext=mp4]/worst" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
+          // 使用更通用的音频格式重试
+          const fallbackCommand = `"${this.ytDlpPath}" --no-warnings -f "[ext=m4a]/[ext=mp3]/bestaudio" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
           Logger.info(`备用下载命令: ${fallbackCommand}`)
-          const fallbackResult = await execAsync(fallbackCommand)
-          stdout = fallbackResult.stdout
+          try {
+            const fallbackResult = await execAsync(fallbackCommand)
+            stdout = fallbackResult.stdout
+          } catch (fallbackError) {
+            Logger.warn('备用格式也失败，尝试最简单的方式...')
+            // 最后的尝试：不指定格式，让 yt-dlp 自动选择最佳格式
+            const simpleCommand = `"${this.ytDlpPath}" --no-warnings --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
+            Logger.info(`简单下载命令: ${simpleCommand}`)
+            const simpleResult = await execAsync(simpleCommand)
+            stdout = simpleResult.stdout
+          }
         } else {
           throw error
         }
