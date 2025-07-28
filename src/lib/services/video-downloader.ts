@@ -223,7 +223,13 @@ export class VideoDownloader {
 
       const outputTemplate = path.join(outputDir, '%(id)s_audio.%(ext)s')
       
-      let command = `"${this.ytDlpPath}" --no-warnings -f "${format}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}"`
+      // 对于 Bilibili，使用更兼容的格式选择
+      let audioFormat = format
+      if (url.includes('bilibili.com')) {
+        audioFormat = 'bestaudio/best'
+      }
+      
+      let command = `"${this.ytDlpPath}" --no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}"`
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {

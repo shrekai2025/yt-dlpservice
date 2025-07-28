@@ -103,10 +103,17 @@ export class TaskProcessor {
     downloadType: DownloadType, 
     outputDir: string
   ): Promise<{ videoPath?: string; audioPath?: string }> {
+    // 根据下载类型选择合适的格式
+    let format = 'best'
+    if (downloadType === 'AUDIO_ONLY') {
+      // 对于音频下载，优先选择音频格式
+      format = 'bestaudio/best'
+    }
+
     const downloadOptions = {
       outputDir,
       downloadType,
-      format: 'best',
+      format,
       quality: 'best'
     }
 
