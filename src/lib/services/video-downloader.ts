@@ -223,13 +223,14 @@ export class VideoDownloader {
 
       const outputTemplate = path.join(outputDir, '%(id)s_audio.%(ext)s')
       
-      // 对于 Bilibili，使用更兼容的格式选择
+      // 对于不同平台使用更兼容的格式选择
       let audioFormat = format
       if (url.includes('bilibili.com')) {
-        audioFormat = 'bestaudio/best'
+        // Bilibili 需要特殊处理
+        audioFormat = 'bestaudio[ext=m4a]/bestaudio/best[ext=mp4]/best'
       }
       
-      let command = `"${this.ytDlpPath}" --no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}"`
+      let command = `"${this.ytDlpPath}" --no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
@@ -246,7 +247,24 @@ export class VideoDownloader {
       command += ` --ffmpeg-location ffmpeg "${url}"`
 
       Logger.info(`下载音频: ${command}`)
-      const { stdout } = await execAsync(command)
+      
+      // 尝试下载，如果失败则使用备用格式
+      let stdout: string
+      try {
+        const result = await execAsync(command)
+        stdout = result.stdout
+      } catch (error) {
+        if (url.includes('bilibili.com') && error instanceof Error && error.message.includes('NoneType')) {
+          Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
+          // 使用更简单的格式重试
+          const fallbackCommand = `"${this.ytDlpPath}" --no-warnings -f "worst[ext=mp4]/worst" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
+          Logger.info(`备用下载命令: ${fallbackCommand}`)
+          const fallbackResult = await execAsync(fallbackCommand)
+          stdout = fallbackResult.stdout
+        } else {
+          throw error
+        }
+      }
       
       // 从输出中解析文件路径
       const lines = stdout.split('\n')
