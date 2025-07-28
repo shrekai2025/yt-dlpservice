@@ -23,11 +23,13 @@ export class VideoDownloader {
    */
   private async detectYtDlpPath(): Promise<void> {
     const possiblePaths = [
-      'yt-dlp',
-      '/usr/local/bin/yt-dlp',
-      '/opt/homebrew/bin/yt-dlp',
-      '/usr/bin/yt-dlp',
-      '/Users/uniteyoo/Library/Python/3.9/bin/yt-dlp'
+      'yt-dlp', // 系统 PATH 中的 yt-dlp
+      '/usr/local/bin/yt-dlp', // 全局安装
+      '/usr/bin/yt-dlp', // Ubuntu 系统包安装
+      '/home/ubuntu/.local/bin/yt-dlp', // Ubuntu 用户本地安装
+      process.env.HOME + '/.local/bin/yt-dlp', // 动态用户本地路径
+      '/opt/homebrew/bin/yt-dlp', // macOS Homebrew
+      '/usr/local/opt/yt-dlp/bin/yt-dlp' // 其他可能位置
     ]
 
     for (const testPath of possiblePaths) {
@@ -79,7 +81,7 @@ export class VideoDownloader {
         }
       }
       
-      command += ` --ffmpeg-location /opt/homebrew/bin/ffmpeg "${url}"`
+      command += ` --ffmpeg-location ffmpeg "${url}"`
 
       Logger.info(`获取视频信息: ${command}`)
       const { stdout } = await execAsync(command)
@@ -172,7 +174,7 @@ export class VideoDownloader {
         }
       }
       
-      command += ` --ffmpeg-location /opt/homebrew/bin/ffmpeg "${url}"`
+      command += ` --ffmpeg-location ffmpeg "${url}"`
 
       Logger.info(`下载视频: ${command}`)
       const { stdout } = await execAsync(command)
@@ -235,7 +237,7 @@ export class VideoDownloader {
         }
       }
       
-      command += ` --ffmpeg-location /opt/homebrew/bin/ffmpeg "${url}"`
+      command += ` --ffmpeg-location ffmpeg "${url}"`
 
       Logger.info(`下载音频: ${command}`)
       const { stdout } = await execAsync(command)

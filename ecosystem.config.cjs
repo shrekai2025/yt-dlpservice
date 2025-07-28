@@ -44,7 +44,7 @@ module.exports = {
       user: 'ubuntu',
       host: 'your-server-ip', // 替换为您的服务器IP
       ref: 'origin/main',
-      repo: 'https://github.com/shrekai2025/yt-dlpservice.git', // 替换为您的GitHub仓库
+      repo: 'https://github.com/shrekai2025/yt-dlpservice.git',
       path: '/home/ubuntu/yt-dlpservice',
       'pre-deploy-local': '',
       'post-deploy': 'npm install && npm run build && pm2 reload ecosystem.config.js --env production',

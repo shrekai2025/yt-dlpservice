@@ -25,7 +25,7 @@ log_error() {
 # 配置变量
 APP_NAME="yt-dlpservice"
 APP_DIR="$HOME/$APP_NAME"
-REPO_URL="https://github.com/your-username/yt-dlpservice.git"  # 替换为您的仓库地址
+REPO_URL="https://github.com/shrekai2025/yt-dlpservice.git"
 BRANCH="main"
 
 # 检查是否已安装依赖
@@ -76,14 +76,33 @@ setup_environment() {
     cd "$APP_DIR"
     
     if [ ! -f ".env" ]; then
-        if [ -f ".env.production" ]; then
-            log_info "复制生产环境配置模板..."
-            cp .env.production .env
+        if [ -f ".env.example" ]; then
+            log_info "复制环境配置模板..."
+            cp .env.example .env
             log_warn "⚠️  请编辑 .env 文件，配置通义 API 密钥等信息"
             log_warn "   nano .env"
         else
-            log_error "未找到环境配置模板文件"
-            exit 1
+            log_info "创建默认环境配置文件..."
+            cat > .env << 'EOF'
+NODE_ENV=production
+PORT=3000
+HOSTNAME=0.0.0.0
+DATABASE_URL="file:./data/app.db"
+TINGWU_ACCESS_KEY_ID=your_access_key_id_here
+TINGWU_ACCESS_KEY_SECRET=your_access_key_secret_here
+TINGWU_REGION=cn-beijing
+MAX_CONCURRENT_TASKS=10
+TEMP_DIR=/tmp/yt-dlpservice
+AUDIO_FORMAT=mp3
+AUDIO_BITRATE=128k
+MAX_FILE_AGE_HOURS=1
+CLEANUP_INTERVAL_HOURS=24
+PUPPETEER_HEADLESS=true
+PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu
+BROWSER_DATA_DIR=./data/browser_data
+EOF
+            log_warn "⚠️  已创建默认 .env 文件，请编辑配置通义 API 密钥"
+            log_warn "   nano .env"
         fi
     else
         log_info "环境配置文件已存在"
