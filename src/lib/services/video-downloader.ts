@@ -276,26 +276,28 @@ export class VideoDownloader {
       }
       
       // 从输出中解析文件路径
-      const lines = stdout.split('\n')
+      const lines = stdout.split('\n');
       const downloadLine = lines.find(line => 
         line.includes('[download] Destination:') || 
+        line.includes('[ExtractAudio] Destination:') ||
         line.includes('[download] 目标文件:') ||
         line.includes('has already been downloaded') ||
         line.includes('[ExtractAudio]')
-      )
+      );
       
-             if (downloadLine) {
-         const match = downloadLine.match(/(?:Destination:|目标文件:|downloaded|to)\s+(.+)/)
-         if (match && match[1]) {
-           let filePath = match[1].trim()
-           // 如果是音频提取，文件可能是 .mp3 格式
-           if (downloadLine.includes('[ExtractAudio]')) {
-             filePath = filePath.replace(/\.[^.]+$/, '.mp3')
-           }
-           Logger.info(`音频下载完成: ${filePath}`)
-           return filePath
-         }
-       }
+      if (downloadLine) {
+        // 更新正则表达式以匹配更多情况
+        const match = downloadLine.match(/(?:Destination:|目标文件:|downloaded to:)\s+(.+)/);
+        if (match && match[1]) {
+          let filePath = match[1].trim();
+          // 确保文件是 mp3 格式
+          if (filePath.endsWith('.m4a') || filePath.endsWith('.webm')) {
+            filePath = filePath.replace(/\.[^.]+$/, '.mp3');
+          }
+          Logger.info(`音频下载完成: ${filePath}`);
+          return filePath;
+        }
+      }
       
       throw new Error('无法确定下载的音频文件路径')
     } catch (error) {
