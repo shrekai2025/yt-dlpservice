@@ -253,7 +253,9 @@ export class VideoDownloader {
       try {
         const result = await execAsync(command)
         stdout = result.stdout
+        Logger.info(`主格式下载成功，输出: ${stdout.substring(0, 500)}...`)
       } catch (error) {
+        Logger.error(`主格式下载失败，错误: ${error instanceof Error ? error.message : String(error)}`)
         if (url.includes('bilibili.com') && error instanceof Error) {
           Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
           // 使用更通用的音频格式重试
@@ -262,13 +264,21 @@ export class VideoDownloader {
           try {
             const fallbackResult = await execAsync(fallbackCommand)
             stdout = fallbackResult.stdout
+            Logger.info(`备用格式下载成功，输出: ${stdout.substring(0, 500)}...`)
           } catch (fallbackError) {
+            Logger.error(`备用格式下载失败，错误: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
             Logger.warn('备用格式也失败，尝试最简单的方式...')
             // 最后的尝试：不指定格式，让 yt-dlp 自动选择最佳格式
             const simpleCommand = `"${this.ytDlpPath}" --no-warnings --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
             Logger.info(`简单下载命令: ${simpleCommand}`)
-            const simpleResult = await execAsync(simpleCommand)
-            stdout = simpleResult.stdout
+            try {
+              const simpleResult = await execAsync(simpleCommand)
+              stdout = simpleResult.stdout
+              Logger.info(`简单格式下载成功，输出: ${stdout.substring(0, 500)}...`)
+            } catch (simpleError) {
+              Logger.error(`简单格式下载失败，错误: ${simpleError instanceof Error ? simpleError.message : String(simpleError)}`)
+              throw simpleError
+            }
           }
         } else {
           throw error
