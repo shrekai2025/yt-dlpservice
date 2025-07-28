@@ -269,3 +269,82 @@ MIT License
 ---
 
 **开发状态**: 当前版本支持 YouTube 和哔哩哔哩，通义听悟 API 集成正在开发中。
+
+
+
+
+# 【远程部署】
+# 更新系统
+sudo apt update && sudo apt upgrade -y
+# 克隆项目
+git clone https://github.com/shrekai2025/yt-dlpservice.git
+cd yt-dlpservice
+
+# 运行安装脚本（安装所有依赖）
+chmod +x deploy/install.sh
+./deploy/install.sh
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑配置文件
+nano .env
+# 运行部署脚本
+chmod +x deploy/deploy.sh
+./deploy/deploy.sh
+# 检查服务状态
+pm2 status
+
+# 查看服务日志
+pm2 logs yt-dlpservice --lines 20
+
+# 测试本地访问
+curl http://localhost:3000
+
+# 配置防火墙
+sudo ufw allow 3000/tcp
+sudo ufw status
+
+标准env文件
+# 基础配置
+NODE_ENV=production
+PORT=3000
+HOSTNAME=0.0.0.0
+
+# 数据库
+DATABASE_URL="file:./data/app.db"
+
+# 通义听悟 API（如需语音转录功能）
+TINGWU_ACCESS_KEY_ID=your_access_key_id_here
+TINGWU_ACCESS_KEY_SECRET=your_access_key_secret_here
+TINGWU_REGION=cn-beijing
+
+# 任务配置
+MAX_CONCURRENT_TASKS=10
+TEMP_DIR=/tmp/yt-dlpservice
+AUDIO_FORMAT=mp3
+AUDIO_BITRATE=128k
+
+# 文件清理
+MAX_FILE_AGE_HOURS=1
+CLEANUP_INTERVAL_HOURS=24
+
+# Puppeteer 浏览器
+PUPPETEER_HEADLESS=true
+PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu
+BROWSER_DATA_DIR=./data/browser_data
+
+# 【更新服务】
+# 在服务器上执行
+cd ~/yt-dlpservice
+
+# 停止服务
+pm2 stop yt-dlpservice
+
+# 拉取最新代码
+git pull origin main
+
+# 重新构建
+npm run build
+
+# 重启服务
+pm2 restart yt-dlpservice
