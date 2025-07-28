@@ -1,0 +1,31 @@
+{
+  "youtube": {
+    "name": "YouTube",
+    "domains": [
+      "youtube.com",
+      "www.youtube.com",
+      "youtu.be",
+      "m.youtube.com"
+    ],
+    "urlPatterns": [
+      "/watch\\?v=",
+      "/embed/",
+      "/v/",
+      "youtu.be/"
+    ]
+  },
+  "bilibili": {
+    "name": "哔哩哔哩",
+    "domains": [
+      "bilibili.com",
+      "www.bilibili.com",
+      "m.bilibili.com",
+      "b23.tv"
+    ],
+    "urlPatterns": [
+      "/video/",
+      "/av",
+      "/BV"
+    ]
+  }
+} 

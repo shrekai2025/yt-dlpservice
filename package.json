@@ -1,0 +1,70 @@
+{
+  "name": "yt-dlpservice",
+  "version": "0.1.0",
+  "description": "基于 yt-dlp 和通义听悟 API 的在线视频内容提取工具",
+  "type": "module",
+  "private": true,
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/yt-dlpservice.git"
+  },
+  "keywords": [
+    "yt-dlp",
+    "video-download",
+    "speech-to-text",
+    "tingwu",
+    "nextjs",
+    "typescript"
+  ],
+  "scripts": {
+    "dev": "next dev --turbo",
+    "build": "next build",
+    "start": "next start",
+    "preview": "next build && next start",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:reset": "prisma db push --force-reset",
+    "lint": "next lint",
+    "clean": "rm -rf .next tsconfig.tsbuildinfo",
+    "postinstall": "prisma generate"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.12.0",
+    "@t3-oss/env-nextjs": "^0.12.0",
+    "@tailwindcss/postcss": "^4.1.11",
+    "@tanstack/react-query": "^5.83.0",
+    "@tanstack/react-query-devtools": "^5.83.0",
+    "@trpc/client": "^11.4.3",
+    "@trpc/next": "^11.4.3",
+    "@trpc/react-query": "^11.4.3",
+    "@trpc/server": "^11.4.3",
+    "autoprefixer": "^10.4.21",
+    "next": "^15.2.3",
+    "postcss": "^8.5.6",
+    "prisma": "^6.12.0",
+    "puppeteer": "^24.15.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "superjson": "^2.2.2",
+    "tailwindcss": "^4.1.11",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "ct3aMetadata": {
+    "initVersion": "7.39.3"
+  },
+  "packageManager": "npm@10.9.2"
+}

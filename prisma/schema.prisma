@@ -1,0 +1,65 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// 任务状态枚举
+enum TaskStatus {
+  PENDING // 等待处理
+  DOWNLOADING // 下载中
+  EXTRACTING // 音频提取中
+  UPLOADING // 上传到通义
+  TRANSCRIBING // 转录中
+  COMPLETED // 完成
+  FAILED // 失败
+}
+
+// 任务表
+model Task {
+  id       String     @id @default(cuid())
+  url      String // 原始视频URL
+  platform String // 平台类型 (youtube, bilibili等)
+  title    String? // 视频标题
+  status   TaskStatus @default(PENDING) // 任务状态
+
+  // 文件路径 (可能只有其中一个或两个都有)
+  videoPath String? // 下载的视频文件路径
+  audioPath String? // 提取的音频文件路径
+
+  // 转录结果
+  transcription String? // 转录文字结果
+
+  // API相关
+  tingwuTaskId String? // 通义听悟任务ID
+  retryCount   Int     @default(0) // 重试次数
+
+  // 时间戳
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  // 错误信息
+  errorMessage String?
+
+  @@index([status])
+  @@map("tasks")
+}
+
+// 系统配置表
+model Config {
+  id          String   @id @default(cuid())
+  key         String   @unique // 配置键
+  value       String // 配置值
+  description String? // 配置描述
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("configs")
+}
