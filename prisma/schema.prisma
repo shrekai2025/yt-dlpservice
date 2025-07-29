@@ -13,9 +13,7 @@ datasource db {
 // 任务状态枚举
 enum TaskStatus {
   PENDING      // 等待处理
-  DOWNLOADING  // 下载中
-  EXTRACTING   // 提取音频中
-  UPLOADING    // 上传处理中
+  EXTRACTING   // 下载并提取音频中
   TRANSCRIBING // 转录中
   COMPLETED    // 完成
   FAILED       // 失败

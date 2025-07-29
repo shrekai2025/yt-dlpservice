@@ -17,7 +17,7 @@ export const createTaskSchema = z.object({
 // 任务更新验证
 export const updateTaskSchema = z.object({
   id: z.string().min(1, 'ID不能为空'),
-  status: z.enum(['PENDING', 'DOWNLOADING', 'EXTRACTING', 'UPLOADING', 'TRANSCRIBING', 'COMPLETED', 'FAILED']).optional(),
+  status: z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLETED', 'FAILED']).optional(),
   title: z.string().optional(),
   videoPath: z.string().optional(),
   audioPath: z.string().optional(),
@@ -31,7 +31,7 @@ export const updateTaskSchema = z.object({
 
 // 任务查询验证
 export const taskQuerySchema = z.object({
-  status: z.enum(['PENDING', 'DOWNLOADING', 'EXTRACTING', 'UPLOADING', 'TRANSCRIBING', 'COMPLETED', 'FAILED']).optional(),
+  status: z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLETED', 'FAILED']).optional(),
   platform: z.enum(['youtube', 'bilibili', 'other']).optional(),
   downloadType: downloadTypeSchema.optional(),
   limit: z.number().int().min(1).max(100).default(20),
@@ -126,13 +126,11 @@ export function getPlatformFromUrl(url: string): Platform | null {
  */
 export function isValidStatusTransition(currentStatus: TaskStatus, newStatus: TaskStatus): boolean {
   const validTransitions: Record<TaskStatus, TaskStatus[]> = {
-    PENDING: ['DOWNLOADING', 'FAILED'],
-    DOWNLOADING: ['EXTRACTING', 'COMPLETED', 'FAILED'], // 如果只下载视频，可以直接完成
-    EXTRACTING: ['UPLOADING', 'COMPLETED', 'FAILED'], // 如果不需要转录，可以直接完成
-    UPLOADING: ['TRANSCRIBING', 'FAILED'],
+    PENDING: ['EXTRACTING', 'FAILED'],
+    EXTRACTING: ['TRANSCRIBING', 'COMPLETED', 'FAILED'], // 提取完成后转录或直接完成（视频转音频未实现时）
     TRANSCRIBING: ['COMPLETED', 'FAILED'],
     COMPLETED: [], // 完成状态不能转换到其他状态
-    FAILED: ['PENDING', 'DOWNLOADING'] // 失败状态可以重试
+    FAILED: ['PENDING', 'EXTRACTING'] // 失败状态可以重试
   }
 
   return validTransitions[currentStatus]?.includes(newStatus) ?? false

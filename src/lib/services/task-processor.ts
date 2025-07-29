@@ -2,6 +2,7 @@ import { db } from '~/server/db'
 import { Logger } from '~/lib/utils/logger'
 import { videoDownloader } from './video-downloader'
 import { doubaoVoiceService } from './doubao-voice'
+import { cleanupManager } from './cleanup-manager'
 import { env } from '~/env'
 import { ConfigManager } from '~/lib/utils/config'
 import type { TaskStatus, DownloadType } from '~/types/task'
@@ -38,8 +39,8 @@ export class TaskProcessor {
       const outputDir = path.join(tempDir, taskId)
       await fs.mkdir(outputDir, { recursive: true })
 
-      // 更新状态为下载中
-      await this.updateTaskStatus(taskId, 'DOWNLOADING')
+      // 更新状态为提取中（包括下载和音频提取过程）
+      await this.updateTaskStatus(taskId, 'EXTRACTING')
 
       // 根据下载类型进行相应处理
       const downloadResult = await this.handleDownloadByType(task.url, task.downloadType, outputDir)
@@ -49,21 +50,39 @@ export class TaskProcessor {
         where: { id: taskId },
         data: {
           videoPath: downloadResult.videoPath,
-          audioPath: downloadResult.audioPath,
-          status: this.determineNextStatus(task.downloadType)
+          audioPath: downloadResult.audioPath
         }
       })
 
-      Logger.info(`任务 ${taskId} 下载完成，类型: ${this.getDownloadTypeDisplayName(task.downloadType)}`)
+      Logger.info(`任务 ${taskId} 提取完成，类型: ${this.getDownloadTypeDisplayName(task.downloadType)}`)
 
-      // 如果下载类型包含音频且需要转录，则继续处理
-      if (task.downloadType === 'AUDIO_ONLY' || task.downloadType === 'BOTH') {
-        if (downloadResult.audioPath) {
-          await this.processAudioTranscription(taskId, downloadResult.audioPath)
-        }
-      } else {
-        // 仅视频下载，直接标记为完成
+      // 处理音频转录（所有类型都需要转录）
+      let audioPathForTranscription = downloadResult.audioPath
+
+      // 如果是视频下载，需要从视频中提取音频
+      if (task.downloadType === 'VIDEO_ONLY' && downloadResult.videoPath) {
+        // TODO: 实现视频转音频功能
+        // audioPathForTranscription = await this.extractAudioFromVideo(downloadResult.videoPath)
+        Logger.warn(`视频转音频功能尚未实现，任务 ${taskId} 暂时跳过转录`)
         await this.updateTaskStatus(taskId, 'COMPLETED')
+        return
+      }
+
+      // 如果没有音频文件，标记为失败
+      if (!audioPathForTranscription) {
+        throw new Error('未能获取到音频文件用于转录')
+      }
+
+      // 开始转录流程
+      await this.processAudioTranscription(taskId, audioPathForTranscription)
+
+      // 转录完成后，延迟清理临时文件
+      try {
+        setTimeout(async () => {
+          await this.cleanupTaskFiles(taskId, outputDir)
+        }, 5 * 60 * 1000) // 5分钟后清理
+      } catch (error) {
+        Logger.warn(`任务 ${taskId} 清理失败: ${error}`)
       }
 
     } catch (error: any) {
@@ -83,10 +102,15 @@ export class TaskProcessor {
     }
   }
 
+
+
   /**
    * 根据下载类型处理下载
    */
-  private async handleDownloadByType(url: string, downloadType: DownloadType, outputDir: string) {
+  private async handleDownloadByType(url: string, downloadType: DownloadType, outputDir: string): Promise<{
+    videoPath: string | null
+    audioPath: string | null
+  }> {
     switch (downloadType) {
       case 'AUDIO_ONLY':
         Logger.info('开始下载音频文件')
@@ -95,16 +119,16 @@ export class TaskProcessor {
           format: 'bestaudio',
           downloadType: 'AUDIO_ONLY'
         })
-        return { audioPath, videoPath: null }
+        return { videoPath: null, audioPath: audioPath }
         
       case 'VIDEO_ONLY':
-        Logger.info('开始下载视频文件')
+        Logger.info('开始下载视频文件（用于音频提取）')
         const videoPath = await videoDownloader.downloadVideo(url, {
           outputDir: outputDir,
           quality: 'best',
           downloadType: 'VIDEO_ONLY'
         })
-        return { videoPath, audioPath: null }
+        return { videoPath: videoPath, audioPath: null }
         
       case 'BOTH':
         Logger.info('开始下载视频和音频文件')
@@ -129,10 +153,8 @@ export class TaskProcessor {
    * 确定下一个状态
    */
   private determineNextStatus(downloadType: DownloadType): TaskStatus {
-    if (downloadType === 'AUDIO_ONLY' || downloadType === 'BOTH') {
-      return 'EXTRACTING' // 需要进行音频转录
-    }
-    return 'COMPLETED' // 仅视频下载，直接完成
+    // 所有类型都需要进行音频提取和转录，所以下一步都是EXTRACTING
+    return 'EXTRACTING'
   }
 
   /**
@@ -141,8 +163,8 @@ export class TaskProcessor {
   private getDownloadTypeDisplayName(downloadType: DownloadType): string {
     const typeMap: Record<DownloadType, string> = {
       'AUDIO_ONLY': '仅音频',
-      'VIDEO_ONLY': '仅视频', 
-      'BOTH': '视频和音频'
+      'VIDEO_ONLY': '仅视频（用于音频提取）',
+      'BOTH': '视频+音频'
     }
     return typeMap[downloadType] || downloadType
   }
@@ -180,7 +202,7 @@ export class TaskProcessor {
         throw new Error(`不支持的语音服务提供商: ${provider}`)
       }
       
-      // 更新任务转录结果
+      // 豆包API成功返回，更新任务转录结果并标记为完成
       await db.task.update({
         where: { id: taskId },
         data: {
@@ -193,6 +215,7 @@ export class TaskProcessor {
       
     } catch (error: any) {
       Logger.error(`音频转录失败: ${taskId}, 错误: ${error.message}`)
+      // 豆包API失败，直接标记任务为失败
       throw error
     }
   }
@@ -257,10 +280,46 @@ export class TaskProcessor {
   }
 
   /**
+   * 清理任务相关文件
+   */
+  private async cleanupTaskFiles(taskId: string, outputDir: string): Promise<void> {
+    try {
+      Logger.info(`开始清理任务 ${taskId} 的临时文件: ${outputDir}`)
+      
+      // 检查目录是否存在
+      try {
+        await fs.access(outputDir)
+      } catch {
+        Logger.debug(`任务目录已不存在: ${outputDir}`)
+        return
+      }
+
+      // 删除整个任务目录
+      try {
+        await fs.rm(outputDir, { recursive: true, force: true })
+        Logger.info(`成功清理任务目录: ${outputDir}`)
+      } catch (error) {
+        Logger.warn(`清理任务目录失败: ${outputDir}, 错误: ${error}`)
+      }
+
+    } catch (error) {
+      Logger.error(`清理任务 ${taskId} 文件失败: ${error}`)
+    }
+  }
+
+  /**
    * 启动任务处理器
    */
   async start(): Promise<void> {
     Logger.info('任务处理器启动')
+    
+    // 启动自动文件清理服务
+    try {
+      await cleanupManager.startAutoCleanup()
+      Logger.info('自动文件清理服务已启动')
+    } catch (error) {
+      Logger.error(`启动自动文件清理失败: ${error}`)
+    }
     
     // 定期检查待处理任务
     setInterval(async () => {
@@ -296,5 +355,19 @@ export class TaskProcessor {
     )
 
     await Promise.all(promises)
+  }
+
+  // TODO: 实现视频转音频功能
+  /**
+   * 从视频文件中提取音频
+   */
+  private async extractAudioFromVideo(videoPath: string): Promise<string> {
+    // TODO: 使用 FFmpeg 从视频文件中提取音频
+    // 1. 检查FFmpeg是否可用
+    // 2. 使用FFmpeg命令提取音频: ffmpeg -i input.mp4 -vn -acodec libmp3lame -ar 44100 -ac 2 -ab 192k output.mp3
+    // 3. 返回提取的音频文件路径
+    // 4. 可选：删除原视频文件以节省空间
+    
+    throw new Error('视频转音频功能尚未实现')
   }
 } 
