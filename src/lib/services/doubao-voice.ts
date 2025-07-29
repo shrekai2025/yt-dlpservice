@@ -407,21 +407,21 @@ class DoubaoVoiceService {
     };
 
     // 打印查询请求的详细信息
-    Logger.debug(`🔍 豆包API查询请求详情:`);
-    Logger.debug(`  - 请求方法: POST`);
-    Logger.debug(`  - 查询URL: ${queryUrl}`);
-    Logger.debug(`  - 请求ID: ${requestId}`);
-    Logger.debug(`  - 超时设置: 30秒`);
-    Logger.debug(`  - 请求头:`);
+    Logger.info(`🔍 豆包API查询请求详情:`);
+    Logger.info(`  - 请求方法: POST`);
+    Logger.info(`  - 查询URL: ${queryUrl}`);
+    Logger.info(`  - 请求ID: ${requestId}`);
+    Logger.info(`  - 超时设置: 30秒`);
+    Logger.info(`  - 请求头:`);
     Object.entries(headers).forEach(([key, value]) => {
       if (key.includes('Key')) {
-        Logger.debug(`    ${key}: ${typeof value === 'string' ? value.substring(0, 8) + '...' : value}`);
+        Logger.info(`    ${key}: ${typeof value === 'string' ? value.substring(0, 8) + '...' : value}`);
       } else {
-        Logger.debug(`    ${key}: ${value}`);
+        Logger.info(`    ${key}: ${value}`);
       }
     });
-    Logger.debug(`  - 请求体:`);
-    Logger.debug(`    request.model_name: ${requestBody.request.model_name}`);
+    Logger.info(`  - 请求体:`);
+    Logger.info(`    request.model_name: ${requestBody.request.model_name}`);
 
     // 查询接口也添加重试机制
     const maxRetries = 2; // 查询接口最多重试2次
@@ -429,41 +429,41 @@ class DoubaoVoiceService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        Logger.debug(`📡 查询请求尝试 ${attempt}/${maxRetries}: ${requestId}`);
+        Logger.info(`📡 查询请求尝试 ${attempt}/${maxRetries}: ${requestId}`);
         const startTime = Date.now();
         
         const response = await axios(config);
         const responseTime = Date.now() - startTime;
         
-        Logger.debug(`✅ 查询请求成功:`);
-        Logger.debug(`  - 响应时间: ${responseTime}ms`);
-        Logger.debug(`  - HTTP状态: ${response.status}`);
+        Logger.info(`✅ 查询请求成功:`);
+        Logger.info(`  - 响应时间: ${responseTime}ms`);
+        Logger.info(`  - HTTP状态: ${response.status}`);
         
         // 检查响应状态
         const statusCode = response.headers['x-api-status-code'];
         const message = response.headers['x-api-message'];
         
-        Logger.debug(`📋 豆包API查询响应头:`);
-        Logger.debug(`  - 状态码: ${statusCode || '无'}`);
-        Logger.debug(`  - 消息: ${message || '无'}`);
+        Logger.info(`📋 豆包API查询响应头:`);
+        Logger.info(`  - 状态码: ${statusCode || '无'}`);
+        Logger.info(`  - 消息: ${message || '无'}`);
         Object.entries(response.headers).forEach(([key, value]) => {
-          Logger.debug(`    ${key}: ${value}`);
+          Logger.info(`    ${key}: ${value}`);
         });
         
         // 打印查询响应体内容
-        Logger.debug(`📦 豆包API查询响应体:`);
+        Logger.info(`📦 豆包API查询响应体:`);
         try {
           const responseData = response.data;
           if (typeof responseData === 'object') {
-            Logger.debug(`    响应数据类型: object`);
-            Logger.debug(`    响应内容: ${JSON.stringify(responseData, null, 2)}`);
+            Logger.info(`    响应数据类型: object`);
+            Logger.info(`    响应内容: ${JSON.stringify(responseData, null, 2)}`);
           } else {
-            Logger.debug(`    响应数据类型: ${typeof responseData}`);
-            Logger.debug(`    响应内容: ${responseData}`);
+            Logger.info(`    响应数据类型: ${typeof responseData}`);
+            Logger.info(`    响应内容: ${responseData}`);
           }
         } catch (parseError) {
           Logger.warn(`    查询响应体解析失败: ${parseError}`);
-          Logger.debug(`    原始响应: ${response.data}`);
+          Logger.info(`    原始响应: ${response.data}`);
         }
         
         // 20000000: 成功, 20000001: 处理中, 20000002: 任务在队列中 - 都是正常状态

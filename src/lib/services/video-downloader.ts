@@ -327,8 +327,20 @@ class VideoDownloader {
         audioFormat = "30280/30232/30216/bestaudio";
       }
 
-      // 构建命令：明确指定要提取音频并转换为mp3格式
-      let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`);
+      // 构建命令：明确指定要提取音频并转换为mp3格式，降低质量确保豆包API兼容性
+      let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
+      
+      // 添加FFmpeg参数来标准化音频格式，确保豆包API兼容
+      const ffmpegArgs = [
+        '-ar 16000',      // 采样率降至16kHz（豆包API标准）
+        '-ac 1',          // 单声道（豆包API推荐）
+        '-ab 32k',        // 比特率32kbps（降低质量）
+        '-f mp3'          // 强制MP3格式
+      ].join(' ');
+      
+      command += ` --postprocessor-args "ffmpeg:${ffmpegArgs}"`;
+      
+      Logger.info(`🎵 音频质量配置: 16kHz, 单声道, 32kbps MP3 (豆包API优化)`);
       
       // 只有当FFmpeg路径不是默认的'ffmpeg'时才添加--ffmpeg-location参数
       if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
@@ -362,8 +374,18 @@ class VideoDownloader {
         Logger.error(`主格式下载失败，错误: ${error instanceof Error ? error.message : String(error)}`)
         if (url.includes('bilibili.com') && error instanceof Error) {
           Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
-          // 使用更通用的音频格式重试，仍然确保输出mp3
-          let fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "bestaudio" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`);
+          // 使用更通用的音频格式重试，仍然确保输出mp3，使用相同的质量配置
+          let fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "bestaudio" --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
+          
+          // 添加相同的FFmpeg参数来标准化音频格式
+          const fallbackFfmpegArgs = [
+            '-ar 16000',      // 采样率降至16kHz（豆包API标准）
+            '-ac 1',          // 单声道（豆包API推荐）
+            '-ab 32k',        // 比特率32kbps（降低质量）
+            '-f mp3'          // 强制MP3格式
+          ].join(' ');
+          
+          fallbackCommand += ` --postprocessor-args "ffmpeg:${fallbackFfmpegArgs}"`;
           
           // 添加FFmpeg路径（如果需要）
           if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
@@ -389,17 +411,10 @@ class VideoDownloader {
       // 直接返回预期的mp3文件路径，因为我们在输出模板中已经指定了.mp3扩展名
       Logger.info(`yt-dlp 完整输出: ${stdout}`);
       
-      // 检查文件是否实际存在
-      const expectedPath = outputTemplate.replace('%(id)s', this.extractVideoId(stdout) || 'unknown');
+      // 先尝试查找输出目录中的实际文件，而不是依赖不稳定的路径解析
+      Logger.info(`查找输出目录中的音频文件: ${outputDir}`);
       
       try {
-        await fs.access(expectedPath, fs.constants.F_OK);
-        Logger.info(`音频文件下载完成: ${expectedPath}`);
-        return expectedPath;
-      } catch (accessError) {
-        Logger.warn(`预期的mp3文件不存在: ${expectedPath}，尝试查找实际文件...`);
-        
-        // 如果预期路径不存在，查找输出目录中的实际文件
         const files = await fs.readdir(outputDir)
         Logger.info(`输出目录文件列表: ${files.join(', ')}`);
         
@@ -411,6 +426,8 @@ class VideoDownloader {
         if (mp3Files.length > 0 && mp3Files[0]) {
           const audioPath = path.join(outputDir, mp3Files[0])
           Logger.info(`找到mp3音频文件: ${audioPath}`)
+          // 验证文件确实存在
+          await fs.access(audioPath, fs.constants.F_OK);
           return audioPath
         }
         
@@ -425,10 +442,27 @@ class VideoDownloader {
           
           Logger.warn(`找到非mp3音频文件: ${originalPath}，重命名为: ${mp3Path}`)
           await fs.rename(originalPath, mp3Path)
+          // 验证重命名后的文件存在
+          await fs.access(mp3Path, fs.constants.F_OK);
           return mp3Path
         }
         
-        throw new Error('无法找到下载的音频文件')
+        // 如果还是没找到，尝试从yt-dlp输出中解析路径
+        Logger.warn(`目录中未找到音频文件，尝试从yt-dlp输出解析路径...`);
+        const expectedPath = outputTemplate.replace('%(id)s', this.extractVideoId(stdout) || 'unknown');
+        
+        try {
+          await fs.access(expectedPath, fs.constants.F_OK);
+          Logger.info(`通过输出解析找到音频文件: ${expectedPath}`);
+          return expectedPath;
+        } catch (parseError) {
+          Logger.error(`解析路径也不存在: ${expectedPath}`);
+          throw new Error('无法找到下载的音频文件');
+        }
+        
+      } catch (dirError) {
+        Logger.error(`读取输出目录失败: ${dirError}`);
+        throw new Error(`读取输出目录失败: ${dirError}`);
       }
       
     } catch (error: any) {
@@ -442,14 +476,52 @@ class VideoDownloader {
    */
   private extractVideoId(output: string): string | null {
     const lines = output.split('\n');
+    
+    // 尝试多种方式提取视频ID
     for (const line of lines) {
+      // 方式1: 从下载目标路径提取
       if (line.includes('[download] Destination:')) {
+        Logger.debug(`尝试从下载目标提取ID: ${line}`);
         const match = line.match(/\/([^\/]+)_audio\./);
         if (match && match[1]) {
+          Logger.debug(`从下载目标提取到ID: ${match[1]}`);
+          return match[1];
+        }
+      }
+      
+      // 方式2: 从已下载文件提取
+      if (line.includes('has already been downloaded')) {
+        Logger.debug(`尝试从已下载文件提取ID: ${line}`);
+        const match = line.match(/([^\/\s]+)_audio\.mp3/);
+        if (match && match[1]) {
+          Logger.debug(`从已下载文件提取到ID: ${match[1]}`);
+          return match[1];
+        }
+      }
+      
+      // 方式3: 从ExtractAudio输出提取
+      if (line.includes('[ExtractAudio]')) {
+        Logger.debug(`尝试从ExtractAudio提取ID: ${line}`);
+        const match = line.match(/([^\/\s]+)_audio\.mp3/);
+        if (match && match[1]) {
+          Logger.debug(`从ExtractAudio提取到ID: ${match[1]}`);
+          return match[1];
+        }
+      }
+      
+      // 方式4: 从视频信息行提取B站视频ID
+      if (line.includes('BV') && line.includes('bilibili')) {
+        Logger.debug(`尝试从视频信息提取B站ID: ${line}`);
+        const match = line.match(/(BV[a-zA-Z0-9]+)/);
+        if (match && match[1]) {
+          Logger.debug(`从视频信息提取到B站ID: ${match[1]}`);
           return match[1];
         }
       }
     }
+    
+    Logger.warn(`无法从yt-dlp输出中提取视频ID`);
+    Logger.debug(`完整输出用于调试: ${output}`);
     return null;
   }
 
