@@ -128,10 +128,7 @@ class DoubaoVoiceService {
       audio: {
         // 尝试使用 data 字段而不是 url 字段
         data: audioBase64,
-        format: "mp3",
-        rate: 16000,
-        bits: 16,
-        channel: 1
+        format: "mp3"
       },
       request: {
         model_name: "bigmodel",
@@ -169,9 +166,6 @@ class DoubaoVoiceService {
     Logger.info(`  - 请求体结构:`);
     Logger.info(`    user.uid: ${requestBody.user.uid}`);
     Logger.info(`    audio.format: ${requestBody.audio.format}`);
-    Logger.info(`    audio.rate: ${requestBody.audio.rate}`);
-    Logger.info(`    audio.bits: ${requestBody.audio.bits}`);
-    Logger.info(`    audio.channel: ${requestBody.audio.channel}`);
     Logger.info(`    audio.data: [Base64数据 ${audioBase64.length} 字符]`);
     Logger.info(`    request.model_name: ${requestBody.request.model_name}`);
     Logger.info(`    request.enable_itn: ${requestBody.request.enable_itn}`);
