@@ -154,6 +154,30 @@ class DoubaoVoiceService {
       'Connection': 'keep-alive'
     };
 
+    // 打印详细的请求参数
+    Logger.info(`📋 豆包API请求参数详情:`);
+    Logger.info(`  - 请求方法: POST`);
+    Logger.info(`  - 请求URL: ${submitUrl}`);
+    Logger.info(`  - 请求头:`);
+    Object.entries(headers).forEach(([key, value]) => {
+      if (key.includes('Key')) {
+        Logger.info(`    ${key}: ${typeof value === 'string' ? value.substring(0, 8) + '...' : value}`);
+      } else {
+        Logger.info(`    ${key}: ${value}`);
+      }
+    });
+    Logger.info(`  - 请求体结构:`);
+    Logger.info(`    user.uid: ${requestBody.user.uid}`);
+    Logger.info(`    audio.format: ${requestBody.audio.format}`);
+    Logger.info(`    audio.rate: ${requestBody.audio.rate}`);
+    Logger.info(`    audio.bits: ${requestBody.audio.bits}`);
+    Logger.info(`    audio.channel: ${requestBody.audio.channel}`);
+    Logger.info(`    audio.data: [Base64数据 ${audioBase64.length} 字符]`);
+    Logger.info(`    request.model_name: ${requestBody.request.model_name}`);
+    Logger.info(`    request.enable_itn: ${requestBody.request.enable_itn}`);
+    Logger.info(`    request.enable_punc: ${requestBody.request.enable_punc}`);
+    Logger.info(`    request.show_utterances: ${requestBody.request.show_utterances}`);
+
     // 根据音频大小动态调整超时时间，但对大文件更保守
     const baseTimeout = 120000; // 基础120秒（从60秒增加）
     let sizeTimeout = Math.max(audioSizeMB * 5000, 60000); // 每MB增加5秒，最小60秒（从2秒增加到5秒）
@@ -218,6 +242,7 @@ class DoubaoVoiceService {
         const response = await axios(config);
         const responseTime = Date.now() - startTime;
         
+        // 打印详细的响应信息
         Logger.info(`✅ 豆包API请求成功:`);
         Logger.info(`  - 响应时间: ${responseTime}ms`);
         Logger.info(`  - HTTP状态: ${response.status}`);
@@ -225,6 +250,28 @@ class DoubaoVoiceService {
         Logger.info(`  - 响应消息: ${response.headers['x-api-message'] || '无'}`);
         Logger.info(`  - 服务器: ${response.headers.server || '未知'}`);
         Logger.info(`  - 连接类型: ${response.headers.connection || '未知'}`);
+        
+        // 打印完整的响应头
+        Logger.info(`📋 豆包API响应头详情:`);
+        Object.entries(response.headers).forEach(([key, value]) => {
+          Logger.info(`    ${key}: ${value}`);
+        });
+        
+        // 打印响应体内容
+        Logger.info(`📦 豆包API响应体内容:`);
+        try {
+          const responseData = response.data;
+          if (typeof responseData === 'object') {
+            Logger.info(`    响应数据类型: object`);
+            Logger.info(`    响应内容: ${JSON.stringify(responseData, null, 2)}`);
+          } else {
+            Logger.info(`    响应数据类型: ${typeof responseData}`);
+            Logger.info(`    响应内容: ${responseData}`);
+          }
+        } catch (parseError) {
+          Logger.warn(`    响应体解析失败: ${parseError}`);
+          Logger.info(`    原始响应: ${response.data}`);
+        }
         
         // 检查响应状态
         const statusCode = response.headers['x-api-status-code'];
@@ -251,6 +298,37 @@ class DoubaoVoiceService {
         Logger.error(`  - HTTP状态: ${error.response?.status || '无响应'}`);
         Logger.error(`  - 响应时间: ${responseTime}ms`);
         Logger.error(`  - 当前时间: ${new Date().toISOString()}`);
+        
+        // 打印失败时的完整错误响应
+        if (error.response) {
+          Logger.error(`📋 豆包API错误响应头:`);
+          Object.entries(error.response.headers || {}).forEach(([key, value]) => {
+            Logger.error(`    ${key}: ${value}`);
+          });
+          
+          Logger.error(`📦 豆包API错误响应体:`);
+          try {
+            const errorData = error.response.data;
+            if (typeof errorData === 'object') {
+              Logger.error(`    错误数据类型: object`);
+              Logger.error(`    错误内容: ${JSON.stringify(errorData, null, 2)}`);
+            } else {
+              Logger.error(`    错误数据类型: ${typeof errorData}`);
+              Logger.error(`    错误内容: ${errorData}`);
+            }
+          } catch (parseError) {
+            Logger.error(`    错误响应体解析失败: ${parseError}`);
+            Logger.error(`    原始错误响应: ${error.response.data}`);
+          }
+        } else {
+          Logger.error(`📋 网络错误详情:`);
+          Logger.error(`    - 错误配置: ${JSON.stringify({
+            url: error.config?.url,
+            method: error.config?.method,
+            timeout: error.config?.timeout,
+            headers: error.config?.headers ? Object.keys(error.config.headers) : []
+          }, null, 2)}`);
+        }
         
         // 详细的网络错误分析
         if (error.code === 'ECONNABORTED') {
@@ -334,10 +412,22 @@ class DoubaoVoiceService {
       validateStatus: (status) => status < 500, // 5xx错误才重试
     };
 
-    Logger.debug(`🔍 豆包API查询请求:`);
+    // 打印查询请求的详细信息
+    Logger.debug(`🔍 豆包API查询请求详情:`);
+    Logger.debug(`  - 请求方法: POST`);
     Logger.debug(`  - 查询URL: ${queryUrl}`);
     Logger.debug(`  - 请求ID: ${requestId}`);
     Logger.debug(`  - 超时设置: 30秒`);
+    Logger.debug(`  - 请求头:`);
+    Object.entries(headers).forEach(([key, value]) => {
+      if (key.includes('Key')) {
+        Logger.debug(`    ${key}: ${typeof value === 'string' ? value.substring(0, 8) + '...' : value}`);
+      } else {
+        Logger.debug(`    ${key}: ${value}`);
+      }
+    });
+    Logger.debug(`  - 请求体:`);
+    Logger.debug(`    request.model_name: ${requestBody.request.model_name}`);
 
     // 查询接口也添加重试机制
     const maxRetries = 2; // 查询接口最多重试2次
@@ -359,9 +449,28 @@ class DoubaoVoiceService {
         const statusCode = response.headers['x-api-status-code'];
         const message = response.headers['x-api-message'];
         
-        Logger.debug(`📋 豆包API响应头:`);
+        Logger.debug(`📋 豆包API查询响应头:`);
         Logger.debug(`  - 状态码: ${statusCode || '无'}`);
         Logger.debug(`  - 消息: ${message || '无'}`);
+        Object.entries(response.headers).forEach(([key, value]) => {
+          Logger.debug(`    ${key}: ${value}`);
+        });
+        
+        // 打印查询响应体内容
+        Logger.debug(`📦 豆包API查询响应体:`);
+        try {
+          const responseData = response.data;
+          if (typeof responseData === 'object') {
+            Logger.debug(`    响应数据类型: object`);
+            Logger.debug(`    响应内容: ${JSON.stringify(responseData, null, 2)}`);
+          } else {
+            Logger.debug(`    响应数据类型: ${typeof responseData}`);
+            Logger.debug(`    响应内容: ${responseData}`);
+          }
+        } catch (parseError) {
+          Logger.warn(`    查询响应体解析失败: ${parseError}`);
+          Logger.debug(`    原始响应: ${response.data}`);
+        }
         
         // 20000000: 成功, 20000001: 处理中, 20000002: 任务在队列中 - 都是正常状态
         if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
