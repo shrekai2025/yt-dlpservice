@@ -70,10 +70,12 @@ class VideoDownloader {
    * 构建 yt-dlp 命令
    */
   private buildYtDlpCommand(args: string): string {
+    // 改进：统一处理，避免双重引号问题
     if (this.ytDlpPath.includes('python3 -m')) {
       return `${this.ytDlpPath} ${args}`
     } else {
-      return `"${this.ytDlpPath}" ${args}`
+      // 如果路径包含空格，shell会自动处理，不需要手动加引号
+      return `${this.ytDlpPath} ${args}`
     }
   }
 
@@ -313,27 +315,22 @@ class VideoDownloader {
       // 修改输出模板，确保音频文件始终以.mp3结尾
       const outputTemplate = path.join(outputDir, '%(id)s_audio.mp3')
       
-      // 对于不同平台使用更兼容的格式选择
-      let audioFormat = format;
-      // 移除B站特定的音频格式ID，统一使用bestaudio
-      // if (normalizedUrl.includes("bilibili.com")) {
-      //   audioFormat = "30280/30232/30216/bestaudio";
-      // }
+      // 改进的音频格式选择策略，更加灵活
+      let audioFormat = 'bestaudio/best';
+      
+      // 对于B站，使用更宽泛的格式选择，避免过于严格
+      if (normalizedUrl.includes("bilibili.com")) {
+        // 优先音频流，然后任意质量的视频（让yt-dlp自己选择最佳）
+        audioFormat = 'bestaudio/best';
+      }
 
-      // 构建命令：移除-f "bestaudio"，让yt-dlp自动选择最佳格式进行提取
-      let command = this.buildYtDlpCommand(`--no-warnings --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
+      // 构建命令：指定音频格式，然后提取并转换为mp3
+      let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality 5 -o "${outputTemplate}" --no-check-certificate`);
       
-      // 添加FFmpeg参数来标准化音频格式
-      const ffmpegArgs = [
-        '-ar 16000',      // 采样率降至16kHz
-        '-ac 1',          // 单声道
-        '-ab 32k',        // 比特率32kbps
-        '-f mp3'          // 强制MP3格式
-      ].join(' ');
+      // 改进的FFmpeg参数，使用更安全的格式
+      command += ` --postprocessor-args "ffmpeg:-ar 16000 -ac 1 -b:a 32k"`;
       
-      command += ` --postprocessor-args "ffmpeg:${ffmpegArgs}"`;
-      
-      Logger.info(`🎵 音频质量配置: 16kHz, 单声道, 32kbps MP3 (yt-dlp自动选择格式)`);
+      Logger.info(`🎵 音频下载策略: ${audioFormat} → 16kHz单声道MP3`);
       
       // 只有当FFmpeg路径不是默认的'ffmpeg'时才添加--ffmpeg-location参数
       if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
@@ -344,18 +341,24 @@ class VideoDownloader {
       // 添加平台特定的请求头和Cookie支持
       command = await this.addPlatformSpecificOptions(command, normalizedUrl, useBrowserCookies)
       
-      command += ` "${normalizedUrl}"`
+      // 对URL进行转义处理，避免特殊字符问题
+      const escapedUrl = normalizedUrl.replace(/"/g, '\\"');
+      command += ` "${escapedUrl}"`
 
       Logger.info(`下载音频: ${command}`)
       
-      // 移除不再需要的备用下载逻辑
+      // 执行下载命令
       let stdout: string
       try {
         const result = await execAsync(command)
         stdout = result.stdout
-        Logger.info(`✅ 音频提取成功`)
+        Logger.info(`✅ 音频下载和转换成功`)
       } catch (error) {
-        Logger.error(`❌ 音频提取失败: ${error instanceof Error ? error.message : String(error)}`)
+        Logger.error(`❌ 音频下载失败: ${error instanceof Error ? error.message : String(error)}`)
+        // 如果是格式不可用错误，提供更详细的错误信息
+        if (error instanceof Error && error.message.includes('Requested format is not available')) {
+          Logger.error(`💡 提示：尝试运行 yt-dlp --list-formats "${escapedUrl}" 查看可用格式`)
+        }
         throw error
       }
       
