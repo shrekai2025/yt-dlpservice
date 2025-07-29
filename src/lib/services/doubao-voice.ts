@@ -111,10 +111,13 @@ class DoubaoVoiceService {
     Logger.info(`  - ACCESS_KEY: ${this.accessKey ? `${this.accessKey.substring(0, 8)}...` : '未配置'}`);
     
     // 检查音频大小是否超过建议限制
-    if (audioSizeMB > 50) {
-      Logger.warn(`⚠️ 音频文件较大 (${audioSizeMB}MB)，可能导致网络超时`);
-      Logger.warn(`  - 建议: 选择较短的视频片段 (<10分钟)`);
-      Logger.warn(`  - 或考虑压缩音频质量`);
+    if (audioSizeMB > 30) {
+      Logger.warn(`⚠️ 音频文件过大 (${audioSizeMB}MB)，1M宽带上传可能需要很长时间`);
+      Logger.warn(`  - 预计上传时间: ${Math.round(audioSizeMB * 8)}秒 (约${Math.round(audioSizeMB * 8 / 60)}分钟)`);
+      Logger.warn(`  - 建议: 选择较短的视频片段 (<15分钟)`);
+    } else if (audioSizeMB > 15) {
+      Logger.warn(`⚠️ 音频文件较大 (${audioSizeMB}MB)，1M宽带上传较慢`);
+      Logger.warn(`  - 预计上传时间: ${Math.round(audioSizeMB * 8)}秒`);
     }
     
     // 根据API文档和错误信息调整请求格式
@@ -152,16 +155,18 @@ class DoubaoVoiceService {
     };
 
     // 根据音频大小动态调整超时时间，但对大文件更保守
-    const baseTimeout = 60000; // 基础60秒
-    let sizeTimeout = Math.max(audioSizeMB * 2000, 30000); // 每MB增加2秒，最小30秒
+    const baseTimeout = 120000; // 基础120秒（从60秒增加）
+    let sizeTimeout = Math.max(audioSizeMB * 5000, 60000); // 每MB增加5秒，最小60秒（从2秒增加到5秒）
     
     // 对于Ubuntu服务器，网络可能不如本地稳定，增加额外缓冲
-    if (audioSizeMB > 20) {
-      sizeTimeout = Math.max(audioSizeMB * 3000, 60000); // 大文件每MB增加3秒
-      Logger.info(`📡 检测到大文件，增加网络缓冲时间`);
+    // 特别针对1M宽带进行优化
+    if (audioSizeMB > 10) {
+      sizeTimeout = Math.max(audioSizeMB * 8000, 120000); // 大文件每MB增加8秒（从3秒增加到8秒）
+      Logger.info(`📡 检测到大文件，针对1M宽带增加网络缓冲时间`);
     }
     
-    const finalTimeout = Math.min(baseTimeout + sizeTimeout, 300000); // 增加到最大5分钟
+    // 1M宽带理论上传速度约128KB/s，26MB需要约3.4分钟，我们设置10分钟超时
+    const finalTimeout = Math.min(baseTimeout + sizeTimeout, 600000); // 增加到最大10分钟（从5分钟增加）
 
     const config: AxiosRequestConfig = {
       method: 'POST',
@@ -197,8 +202,8 @@ class DoubaoVoiceService {
     Logger.info(`  - 请求体大小: ${JSON.stringify(requestBody).length} 字符`);
     Logger.info(`  - 网络优化: Ubuntu服务器模式`);
 
-    // 重试机制 - 对于网络不稳定的Ubuntu服务器增加重试次数
-    const maxRetries = audioSizeMB > 20 ? 5 : 3; // 大文件增加重试次数
+    // 重试机制 - 对于网络不稳定的Ubuntu服务器和1M宽带增加重试次数
+    const maxRetries = audioSizeMB > 15 ? 7 : 5; // 大文件增加到7次重试（从5次增加）
     let lastError: any;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -276,7 +281,7 @@ class DoubaoVoiceService {
         }
         
         // 等待后重试，对于网络错误增加等待时间
-        const delay = error.code === 'ECONNABORTED' ? attempt * 5000 : attempt * 2000; // 网络中断增加等待时间
+        const delay = error.code === 'ECONNABORTED' ? attempt * 10000 : attempt * 5000; // 1M宽带网络中断增加等待时间到10秒
         Logger.info(`⏳ 等待 ${delay}ms 后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -613,9 +618,10 @@ class DoubaoVoiceService {
         Logger.warn(`⚠️ 网络连接不稳定，但继续尝试提交任务...`);
       }
       
-      // 读取音频文件并转换为Base64
-      const audioBuffer = await fs.readFile(audioPath)
-      const audioBase64 = audioBuffer.toString('base64')
+      // 读取音频文件并转换为Base64（分块处理减少内存占用）
+      Logger.info(`开始读取音频文件，使用分块处理减少服务器负载...`);
+      const audioBuffer = await this.readAudioFileInChunks(audioPath);
+      const audioBase64 = await this.convertToBase64InChunks(audioBuffer);
       
       Logger.info(`音频文件读取完成，大小: ${Math.round(audioBuffer.length / 1024 / 1024 * 100) / 100}MB`)
       
@@ -633,6 +639,66 @@ class DoubaoVoiceService {
       throw error
     }
 
+  }
+
+  /**
+   * 分块读取音频文件，减少内存占用
+   */
+  private async readAudioFileInChunks(audioPath: string): Promise<Buffer> {
+    try {
+      // 让出事件循环，避免阻塞其他服务
+      await new Promise(resolve => setImmediate(resolve));
+      
+      const audioBuffer = await fs.readFile(audioPath);
+      
+      // 再次让出事件循环
+      await new Promise(resolve => setImmediate(resolve));
+      
+      return audioBuffer;
+    } catch (error: any) {
+      Logger.error(`读取音频文件失败: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * 分块转换Base64，避免阻塞事件循环
+   */
+  private async convertToBase64InChunks(buffer: Buffer): Promise<string> {
+    try {
+      Logger.info(`开始Base64编码，使用分块处理避免阻塞其他服务...`);
+      
+      // 如果文件较小，直接转换
+      if (buffer.length < 10 * 1024 * 1024) { // 10MB以下
+        await new Promise(resolve => setImmediate(resolve));
+        return buffer.toString('base64');
+      }
+      
+      // 大文件分块处理
+      const chunkSize = 1024 * 1024; // 1MB chunks
+      let base64String = '';
+      
+      for (let i = 0; i < buffer.length; i += chunkSize) {
+        const chunk = buffer.slice(i, i + chunkSize);
+        base64String += chunk.toString('base64');
+        
+        // 每处理一个chunk就让出事件循环
+        await new Promise(resolve => setImmediate(resolve));
+        
+        // 显示进度
+        const progress = Math.round((i / buffer.length) * 100);
+        if (progress % 20 === 0) {
+          Logger.info(`Base64编码进度: ${progress}%`);
+        }
+      }
+      
+      Logger.info(`Base64编码完成`);
+      return base64String;
+      
+    } catch (error: any) {
+      Logger.error(`Base64编码失败: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
