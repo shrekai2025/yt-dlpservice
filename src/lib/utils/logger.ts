@@ -20,8 +20,7 @@ export class Logger {
   }
 
   static debug(message: string, ...args: any[]): void {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug(this.formatMessage('debug', message), ...args)
-    }
+    // 在生产环境也显示debug日志，方便调试豆包API问题
+    console.debug(this.formatMessage('debug', message), ...args)
   }
 } 
