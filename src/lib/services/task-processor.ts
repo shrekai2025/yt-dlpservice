@@ -33,11 +33,13 @@ export class TaskProcessor {
       }
 
       // 创建临时目录
-      const tempDir = `/tmp/yt-dlpservice`
+      const tempDir = await ConfigManager.get('TEMP_DIR')
       await fs.mkdir(tempDir, { recursive: true })
 
       const outputDir = path.join(tempDir, taskId)
       await fs.mkdir(outputDir, { recursive: true })
+
+      Logger.info(`任务 ${taskId} 输出目录: ${outputDir}`)
 
       // 更新状态为提取中（包括下载和音频提取过程）
       await this.updateTaskStatus(taskId, 'EXTRACTING')

@@ -119,8 +119,7 @@ export class CleanupManager {
     // 1. 清理临时文件目录
     const tempDirs = [
       config.tempDir,
-      '/tmp/yt-dlpservice',
-      '/tmp',
+      // 只清理配置的临时目录，不再硬编码特定路径
     ]
 
     for (const tempDir of tempDirs) {
