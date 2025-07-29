@@ -16,6 +16,8 @@ import {
 import { TaskProcessor } from '~/lib/services/task-processor'
 import { videoDownloader } from '~/lib/services/video-downloader'
 import { Logger } from '~/lib/utils/logger'
+// 确保应用服务已初始化
+import '~/lib/init'
 
 const taskProcessor = new TaskProcessor()
 
@@ -219,9 +221,7 @@ export const taskRouter = createTRPCRouter({
       const [
         total,
         pending,
-        downloading,
         extracting,
-        uploading,
         transcribing,
         completed,
         failed,
@@ -231,9 +231,7 @@ export const taskRouter = createTRPCRouter({
       ] = await Promise.all([
         db.task.count(),
         db.task.count({ where: { status: 'PENDING' } }),
-        db.task.count({ where: { status: 'DOWNLOADING' } }),
         db.task.count({ where: { status: 'EXTRACTING' } }),
-        db.task.count({ where: { status: 'UPLOADING' } }),
         db.task.count({ where: { status: 'TRANSCRIBING' } }),
         db.task.count({ where: { status: 'COMPLETED' } }),
         db.task.count({ where: { status: 'FAILED' } }),
@@ -246,9 +244,7 @@ export const taskRouter = createTRPCRouter({
         total,
         byStatus: {
           pending,
-          downloading,
           extracting,
-          uploading,
           transcribing,
           completed,
           failed

@@ -68,7 +68,30 @@ deploy_code() {
 install_dependencies() {
     log_info "安装 Node.js 依赖..."
     cd "$APP_DIR"
-    npm ci --production=false
+    
+    # 清理可能的残留文件
+    if [ -d "node_modules" ]; then
+        log_info "清理现有 node_modules..."
+        rm -rf node_modules
+    fi
+    
+    if [ -f "package-lock.json" ]; then
+        log_info "清理现有 package-lock.json..."
+        rm -f package-lock.json
+    fi
+    
+    # 清理npm缓存
+    npm cache clean --force
+    
+    # 重新安装依赖
+    log_info "重新安装所有依赖..."
+    npm install
+    
+    # 验证关键依赖
+    log_info "验证关键依赖安装..."
+    node -e "require('axios'); console.log('✅ axios 安装成功')" || log_error "❌ axios 安装失败"
+    node -e "require('@prisma/client'); console.log('✅ prisma 安装成功')" || log_error "❌ prisma 安装失败"
+    node -e "require('@trpc/server'); console.log('✅ tRPC 安装成功')" || log_error "❌ tRPC 安装失败"
 }
 
 # 配置环境变量
@@ -79,7 +102,7 @@ setup_environment() {
         if [ -f ".env.example" ]; then
             log_info "复制环境配置模板..."
             cp .env.example .env
-            log_warn "⚠️  请编辑 .env 文件，配置通义 API 密钥等信息"
+            log_warn "⚠️  请编辑 .env 文件，配置语音API密钥等信息"
             log_warn "   nano .env"
         else
             log_info "创建默认环境配置文件..."
@@ -88,20 +111,34 @@ NODE_ENV=production
 PORT=3000
 HOSTNAME=0.0.0.0
 DATABASE_URL="file:./data/app.db"
+
+# 语音服务配置
+VOICE_SERVICE_PROVIDER=doubao
+
+# 豆包语音API配置
+DOUBAO_APP_KEY=your_doubao_app_key_here
+DOUBAO_ACCESS_KEY=your_doubao_access_key_here
+DOUBAO_ENDPOINT=openspeech.bytedance.com
+
+# 通义听悟API配置（备用）
 TINGWU_ACCESS_KEY_ID=your_access_key_id_here
 TINGWU_ACCESS_KEY_SECRET=your_access_key_secret_here
 TINGWU_REGION=cn-beijing
+
+# 任务配置
 MAX_CONCURRENT_TASKS=10
 TEMP_DIR=/tmp/yt-dlpservice
 AUDIO_FORMAT=mp3
 AUDIO_BITRATE=128k
 MAX_FILE_AGE_HOURS=1
 CLEANUP_INTERVAL_HOURS=24
+
+# Puppeteer配置
 PUPPETEER_HEADLESS=true
 PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu
 BROWSER_DATA_DIR=./data/browser_data
 EOF
-            log_warn "⚠️  已创建默认 .env 文件，请编辑配置通义 API 密钥"
+            log_warn "⚠️  已创建默认 .env 文件，请编辑配置语音API密钥"
             log_warn "   nano .env"
         fi
     else
@@ -116,21 +153,23 @@ build_app() {
     npm run build
 }
 
-# 初始化数据库
+# 初始化/更新数据库
 setup_database() {
-    log_info "初始化数据库..."
+    log_info "更新数据库结构..."
     cd "$APP_DIR"
     
     # 确保数据目录存在
     mkdir -p data
     
     # 生成 Prisma Client
+    log_info "生成 Prisma 客户端..."
     npx prisma generate
     
-    # 推送数据库结构
+    # 推送数据库结构更新
+    log_info "同步数据库结构..."
     npx prisma db push
     
-    log_info "✅ 数据库初始化完成"
+    log_info "✅ 数据库更新完成"
 }
 
 # 更新 yt-dlp 路径配置
@@ -200,10 +239,16 @@ main() {
     echo "  停止服务: pm2 stop $APP_NAME"
     echo "  删除服务: pm2 delete $APP_NAME"
     echo ""
+    log_info "数据库管理:"
+    echo "  更新数据库结构: npx prisma db push"
+    echo "  重新生成客户端: npx prisma generate"
+    echo "  查看数据库: npx prisma studio"
+    echo ""
     log_warn "请确保:"
-    echo "  1. 编辑 .env 文件配置通义 API 密钥"
+    echo "  1. 编辑 .env 文件配置语音API密钥（豆包或通义）"
     echo "  2. 确认防火墙允许 3000 端口访问"
     echo "  3. 服务器有足够的磁盘空间用于临时文件"
+    echo "  4. 每次更新代码后都要运行数据库同步命令"
 }
 
 # 执行主函数

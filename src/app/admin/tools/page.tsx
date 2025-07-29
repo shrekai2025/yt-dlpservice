@@ -48,6 +48,24 @@ export default function ToolsPage() {
     }
   })
 
+  // 文件清理相关
+  const { data: cleanupStatus, refetch: refetchCleanupStatus } = api.cleanup.status.useQuery()
+  const manualCleanup = api.cleanup.manual.useMutation({
+    onSuccess: () => {
+      refetchCleanupStatus()
+    }
+  })
+  const startAutoCleanup = api.cleanup.startAuto.useMutation({
+    onSuccess: () => {
+      refetchCleanupStatus()
+    }
+  })
+  const stopAutoCleanup = api.cleanup.stopAuto.useMutation({
+    onSuccess: () => {
+      refetchCleanupStatus()
+    }
+  })
+
   const { data: videoInfo, refetch: getVideoInfo, isFetching: getVideoInfoLoading, error: getVideoInfoError } = api.task.getVideoInfo.useQuery(
     { url: previewUrl },
     { enabled: false }
@@ -354,6 +372,118 @@ export default function ToolsPage() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* 文件清理管理 */}
+      <div className="mb-6 bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4">文件清理管理</h2>
+        <div className="space-y-4">
+          {/* 清理状态显示 */}
+          <div className="bg-gray-50 border border-gray-200 rounded p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-gray-900">自动清理状态</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {cleanupStatus?.data?.autoCleanupEnabled 
+                    ? "✅ 自动清理服务已启动" 
+                    : "❌ 自动清理服务未启动"}
+                </p>
+                {cleanupStatus?.data?.isRunning && (
+                  <p className="text-sm text-blue-600 mt-1">🔄 清理任务正在运行中...</p>
+                )}
+              </div>
+              
+              <div className="flex gap-2">
+                {!cleanupStatus?.data?.autoCleanupEnabled ? (
+                  <button
+                    onClick={() => startAutoCleanup.mutate()}
+                    disabled={startAutoCleanup.isPending}
+                    className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+                  >
+                    {startAutoCleanup.isPending ? "启动中..." : "启动自动清理"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => stopAutoCleanup.mutate()}
+                    disabled={stopAutoCleanup.isPending}
+                    className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+                  >
+                    {stopAutoCleanup.isPending ? "停止中..." : "停止自动清理"}
+                  </button>
+                )}
+                
+                <button
+                  onClick={() => refetchCleanupStatus()}
+                  className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                >
+                  刷新状态
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 手动清理功能 */}
+          <div className="bg-blue-50 border border-blue-200 rounded p-4">
+            <div className="flex items-start space-x-2">
+              <div className="text-blue-500 mt-0.5">🧹</div>
+              <div className="flex-1">
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-2">一键清理功能</p>
+                  <p className="mb-3">
+                    手动清理所有过期的临时文件、已完成任务的文件和测试文件。
+                    清理操作会释放磁盘空间，避免服务器硬盘被填满。
+                  </p>
+                  <div className="space-y-2">
+                    <p><strong>清理范围包括：</strong></p>
+                    <ul className="list-disc list-inside text-xs space-y-1 ml-2">
+                      <li>超过保留时间的临时文件</li>
+                      <li>已完成任务的视频和音频文件</li>
+                      <li>豆包API测试产生的临时文件</li>
+                      <li>空的临时目录</li>
+                    </ul>
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  <button
+                    onClick={() => manualCleanup.mutate()}
+                    disabled={manualCleanup.isPending || cleanupStatus?.data?.isRunning}
+                    className="px-6 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 font-medium"
+                  >
+                    {manualCleanup.isPending ? "清理中..." : "🗑️ 立即清理"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 清理结果显示 */}
+          {manualCleanup.data && (
+            <div className={`border rounded p-4 ${
+              manualCleanup.data.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+            }`}>
+              <h3 className="font-semibold mb-2">
+                {manualCleanup.data.success ? '✅ 清理完成' : '❌ 清理失败'}
+              </h3>
+              <p className="text-sm mb-2">{manualCleanup.data.message}</p>
+              {manualCleanup.data.success && manualCleanup.data.data && (
+                <div className="text-sm space-y-1">
+                  <p>📁 清理临时文件: {manualCleanup.data.data.tempFiles} 个</p>
+                  <p>📋 清理完成任务: {manualCleanup.data.data.completedTasks} 个</p>
+                  <p>💾 释放空间: {manualCleanup.data.data.formattedSize}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 清理错误显示 */}
+          {manualCleanup.error && (
+            <div className="bg-red-50 border border-red-200 rounded p-4">
+              <h3 className="font-semibold mb-2 text-red-800">清理失败</h3>
+              <p className="text-sm text-red-700">{manualCleanup.error.message}</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 豆包API测试 */}

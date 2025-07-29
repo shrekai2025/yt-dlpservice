@@ -2,7 +2,7 @@
 export type Platform = 'youtube' | 'bilibili' | 'other'
 
 // 任务状态类型
-export type TaskStatus = 'PENDING' | 'DOWNLOADING' | 'EXTRACTING' | 'UPLOADING' | 'TRANSCRIBING' | 'COMPLETED' | 'FAILED'
+export type TaskStatus = 'PENDING' | 'EXTRACTING' | 'TRANSCRIBING' | 'COMPLETED' | 'FAILED'
 
 // 下载类型
 export type DownloadType = 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'

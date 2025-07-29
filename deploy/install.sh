@@ -117,6 +117,17 @@ npm_version=$(npm --version)
 log_info "Node.js 版本: $node_version"
 log_info "NPM 版本: $npm_version"
 
+# 检查Node.js版本是否满足要求 (>=18.0.0)
+node_major_version=$(node --version | cut -d'.' -f1 | cut -d'v' -f2)
+if [ "$node_major_version" -lt 18 ]; then
+    log_error "Node.js 版本过低，需要 18.0.0 或更高版本"
+    exit 1
+fi
+
+# 更新npm到最新版本
+log_info "更新 NPM 到最新版本..."
+sudo npm install -g npm@latest
+
 # 安装 Python 3 和 pip
 log_info "安装 Python 3 和 pip..."
 sudo apt install -y python3 python3-pip python3-venv

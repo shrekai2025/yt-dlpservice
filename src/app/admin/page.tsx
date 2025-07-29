@@ -85,7 +85,7 @@ export default function TaskManagementPage() {
           </div>
           <div className="text-center">
             <div className="text-2xl font-bold text-blue-600">
-              {(stats?.byStatus?.downloading || 0) + (stats?.byStatus?.extracting || 0) + (stats?.byStatus?.uploading || 0) + (stats?.byStatus?.transcribing || 0)}
+              {(stats?.byStatus?.extracting || 0) + (stats?.byStatus?.transcribing || 0)}
             </div>
             <div className="text-sm text-gray-600">处理中</div>
           </div>

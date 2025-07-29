@@ -248,6 +248,58 @@ pm2 restart yt-dlpservice
 pm2 stop yt-dlpservice
 ```
 
+
+## 🔄 服务更新
+
+### 标准更新流程
+```bash
+# 1. 停止服务
+pm2 stop yt-dlpservice
+
+# 2. 拉取最新代码
+git pull origin main
+
+# 3. 安装/更新依赖（如有新增）
+npm install
+
+# 4. 更新数据库结构（重要！）
+npx prisma db push
+npx prisma generate
+
+# 5. 重新构建应用
+npm run build
+
+# 6. 重启服务
+pm2 restart yt-dlpservice
+```
+
+### 强制重装依赖（解决依赖冲突时）
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### 使用部署脚本更新（推荐）
+```bash
+# 自动处理完整更新流程，包括数据库更新
+chmod +x deploy/deploy.sh
+./deploy/deploy.sh
+```
+
+> **⚠️ 重要提醒**: 更新后务必执行数据库更新命令，否则可能导致应用启动失败或功能异常。
+
+
+检查端口占用
+sudo lsof -i :3000
+sudo netstat -tlnp | grep :3000
+sudo ss -tlnp | grep :3000
+检查pm2
+pm2 list
+pm2 status
+pm2 logs
+停止所有PM2进程
+pm2 stop all
+
 ## 📝 API 接口
 
 ### 创建任务

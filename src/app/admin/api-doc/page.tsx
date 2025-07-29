@@ -399,42 +399,570 @@ export default function ApiDocPage() {
         {/* 外部API内容 */}
         {activeTab === 'external-api' && (
           <div className="space-y-8">
-            {/* REST API 预留 */}
+            {/* REST API 认证说明 */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">REST API (计划中)</h2>
+              <h2 className="text-xl font-semibold mb-4">REST API 认证</h2>
               <div className="mb-4">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                  开发中
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  已实现
                 </span>
               </div>
               
               <div className="space-y-4">
-                <div className="border border-dashed border-gray-300 p-4 rounded-lg">
-                  <h3 className="font-medium mb-2">计划接口:</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="bg-blue-50 p-2 rounded">
-                      <strong>POST /api/v1/tasks</strong> - 创建下载任务
+                <div>
+                  <h3 className="font-medium mb-2">认证方式</h3>
+                  <p className="text-sm text-gray-600 mb-3">外部 REST API 使用 API Key 进行认证，支持两种传递方式：</p>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700">方式 1: X-API-Key 请求头</h4>
+                      <div className="bg-gray-900 text-gray-100 p-3 rounded-md text-sm font-mono mt-2">
+                        curl -H "X-API-Key: textget-api-key-demo" \<br/>
+                        &nbsp;&nbsp;http://your-domain.com/api/external/tasks
+                      </div>
                     </div>
-                    <div className="bg-green-50 p-2 rounded">
-                      <strong>GET /api/v1/tasks</strong> - 获取任务列表
-                    </div>
-                    <div className="bg-yellow-50 p-2 rounded">
-                      <strong>GET /api/v1/tasks/:id</strong> - 获取任务详情
-                    </div>
-                    <div className="bg-purple-50 p-2 rounded">
-                      <strong>GET /api/v1/tasks/:id/transcription</strong> - 获取转录文本
+                    
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700">方式 2: Authorization Bearer</h4>
+                      <div className="bg-gray-900 text-gray-100 p-3 rounded-md text-sm font-mono mt-2">
+                        curl -H "Authorization: Bearer textget-api-key-demo" \<br/>
+                        &nbsp;&nbsp;http://your-domain.com/api/external/tasks
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="font-medium mb-2">认证方式:</h3>
-                  <p className="text-sm text-gray-600">计划支持 API Key 和 JWT Token 两种认证方式</p>
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="font-medium mb-2">环境变量配置</h3>
+                  <p className="text-sm text-gray-600 mb-2">在 .env 文件中添加：</p>
+                  <code className="text-sm bg-white p-2 rounded border block">TEXTGET_API_KEY=textget-api-key-demo</code>
+                </div>
+              </div>
+            </div>
+
+            {/* API 接口文档 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">API 接口</h2>
+              
+              <div className="space-y-6">
+                {/* 创建任务 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm font-medium">POST</span>
+                    <code className="font-mono text-sm">/api/external/tasks</code>
+                    <span className="text-gray-600 text-sm">创建下载任务</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">请求体</h4>
+                      <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
+  "url": "https://www.youtube.com/watch?v=example",
+  "downloadType": "AUDIO_ONLY"  // AUDIO_ONLY | VIDEO_ONLY | BOTH
+}`}</code></pre>
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">响应示例</h4>
+                      <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
+  "success": true,
+  "data": {
+    "id": "clxxxxx",
+    "url": "https://www.youtube.com/watch?v=example",
+    "platform": "youtube",
+    "downloadType": "AUDIO_ONLY",
+    "status": "PENDING",
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  },
+  "message": "任务创建成功，下载类型：仅音频"
+}`}</code></pre>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-medium mb-2">实现位置:</h3>
-                  <code className="text-sm">src/pages/api/v1/ (待创建)</code>
+                {/* 获取任务列表 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm font-medium">GET</span>
+                    <code className="font-mono text-sm">/api/external/tasks</code>
+                    <span className="text-gray-600 text-sm">获取任务列表</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">查询参数</h4>
+                      <div className="space-y-1 text-sm">
+                                                    <div><code>status</code> - 任务状态过滤 (PENDING, EXTRACTING, TRANSCRIBING, COMPLETED, FAILED)</div>
+                        <div><code>platform</code> - 平台过滤 (youtube, bilibili)</div>
+                        <div><code>limit</code> - 每页数量 (1-100, 默认20)</div>
+                        <div><code>offset</code> - 偏移量 (默认0)</div>
+                        <div><code>orderBy</code> - 排序字段 (createdAt, updatedAt)</div>
+                        <div><code>orderDirection</code> - 排序方向 (asc, desc)</div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">响应示例</h4>
+                      <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
+  "success": true,
+  "data": [
+    {
+      "id": "clxxxxx",
+      "url": "https://www.youtube.com/watch?v=example",
+      "platform": "youtube",
+      "title": "视频标题",
+      "status": "COMPLETED",
+      "downloadType": "AUDIO_ONLY",
+      "transcription": "转录文本内容...",
+      "duration": 300,
+      "fileSize": 5242880,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-01-01T00:01:00.000Z"
+    }
+  ],
+  "pagination": {
+    "total": 50,
+    "page": 1,
+    "limit": 20,
+    "offset": 0,
+    "hasMore": true
+  }
+}`}</code></pre>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 获取任务详情 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm font-medium">GET</span>
+                    <code className="font-mono text-sm">/api/external/tasks/:id</code>
+                    <span className="text-gray-600 text-sm">获取任务详情</span>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">响应示例</h4>
+                      <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
+  "success": true,
+  "data": {
+    "id": "clxxxxx",
+    "url": "https://www.youtube.com/watch?v=example",
+    "platform": "youtube",
+    "title": "视频标题",
+    "status": "COMPLETED",
+    "downloadType": "AUDIO_ONLY",
+    "videoPath": "/path/to/video.mp4",
+    "audioPath": "/path/to/audio.mp3",
+    "transcription": "完整的转录文本内容...",
+    "tingwuTaskId": "tingwu_task_123",
+    "duration": 300,
+    "fileSize": 5242880,
+    "retryCount": 0,
+    "errorMessage": null,
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:01:00.000Z"
+  }
+}`}</code></pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 错误响应 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">错误响应</h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-2">认证失败 (401)</h3>
+                  <pre className="bg-red-50 p-3 rounded text-sm"><code>{`{
+  "success": false,
+  "error": "Invalid API key",
+  "message": "Authentication failed"
+}`}</code></pre>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">请求参数错误 (400)</h3>
+                  <pre className="bg-yellow-50 p-3 rounded text-sm"><code>{`{
+  "success": false,
+  "error": "Invalid request data",
+  "details": [
+    {
+      "code": "invalid_url",
+      "message": "请提供有效的视频URL"
+    }
+  ]
+}`}</code></pre>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">资源不存在 (404)</h3>
+                  <pre className="bg-gray-50 p-3 rounded text-sm"><code>{`{
+  "success": false,
+  "error": "Task not found",
+  "message": "任务不存在"
+}`}</code></pre>
+                </div>
+              </div>
+            </div>
+
+            {/* 完整请求示例 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">完整请求示例</h2>
+              
+              <div className="space-y-6">
+                {/* cURL 示例 */}
+                <div>
+                  <h3 className="font-medium mb-3">cURL 命令示例</h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">创建任务</h4>
+                      <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto"><code>{`# 创建音频下载任务
+curl -X POST http://localhost:3000/api/external/tasks \\
+  -H "X-API-Key: textget-api-key-demo" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "downloadType": "AUDIO_ONLY"
+  }'
+
+# 创建视频+音频任务
+curl -X POST http://localhost:3000/api/external/tasks \\
+  -H "Authorization: Bearer textget-api-key-demo" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://www.bilibili.com/video/BV1xx411c7mu",
+    "downloadType": "BOTH"
+  }'`}</code></pre>
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">查询任务</h4>
+                      <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto"><code>{`# 获取所有任务
+curl -H "X-API-Key: textget-api-key-demo" \\
+  http://localhost:3000/api/external/tasks
+
+# 获取已完成的任务（分页）
+curl -H "X-API-Key: textget-api-key-demo" \\
+  "http://localhost:3000/api/external/tasks?status=COMPLETED&limit=10&offset=0"
+
+# 获取特定任务详情
+curl -H "X-API-Key: textget-api-key-demo" \\
+  http://localhost:3000/api/external/tasks/clxxxxx`}</code></pre>
+                    </div>
+                  </div>
+                </div>
+
+                {/* JavaScript/Node.js 示例 */}
+                <div>
+                  <h3 className="font-medium mb-3">JavaScript/Node.js 示例</h3>
+                  <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`// 使用 fetch API
+const API_BASE = 'http://localhost:3000/api/external';
+const API_KEY = 'textget-api-key-demo';
+
+// 创建任务
+async function createTask(url, downloadType = 'AUDIO_ONLY') {
+  const response = await fetch(\`\${API_BASE}/tasks\`, {
+    method: 'POST',
+    headers: {
+      'X-API-Key': API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ url, downloadType })
+  });
+  
+  return await response.json();
+}
+
+// 获取任务列表
+async function getTasks(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const response = await fetch(\`\${API_BASE}/tasks?\${query}\`, {
+    headers: { 'X-API-Key': API_KEY }
+  });
+  
+  return await response.json();
+}
+
+// 获取任务详情
+async function getTask(taskId) {
+  const response = await fetch(\`\${API_BASE}/tasks/\${taskId}\`, {
+    headers: { 'X-API-Key': API_KEY }
+  });
+  
+  return await response.json();
+}
+
+// 使用示例
+(async () => {
+  // 创建任务
+  const task = await createTask('https://www.youtube.com/watch?v=example');
+  console.log('Task created:', task);
+  
+  // 轮询任务状态
+  const taskId = task.data.id;
+  let status = 'PENDING';
+  
+  while (status !== 'COMPLETED' && status !== 'FAILED') {
+    await new Promise(resolve => setTimeout(resolve, 5000)); // 等待5秒
+    const result = await getTask(taskId);
+    status = result.data.status;
+    console.log('Task status:', status);
+  }
+  
+  if (status === 'COMPLETED') {
+    console.log('Transcription:', result.data.transcription);
+  }
+})();`}</code></pre>
+                </div>
+
+                {/* Python 示例 */}
+                <div>
+                  <h3 className="font-medium mb-3">Python 示例</h3>
+                  <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`import requests
+import time
+import json
+
+API_BASE = 'http://localhost:3000/api/external'
+API_KEY = 'textget-api-key-demo'
+
+class TextGetAPI:
+    def __init__(self, api_key, base_url=API_BASE):
+        self.api_key = api_key
+        self.base_url = base_url
+        self.headers = {
+            'X-API-Key': api_key,
+            'Content-Type': 'application/json'
+        }
+    
+    def create_task(self, url, download_type='AUDIO_ONLY'):
+        """创建下载任务"""
+        data = {
+            'url': url,
+            'downloadType': download_type
+        }
+        response = requests.post(
+            f'{self.base_url}/tasks',
+            headers=self.headers,
+            json=data
+        )
+        return response.json()
+    
+    def get_tasks(self, **params):
+        """获取任务列表"""
+        response = requests.get(
+            f'{self.base_url}/tasks',
+            headers={'X-API-Key': self.api_key},
+            params=params
+        )
+        return response.json()
+    
+    def get_task(self, task_id):
+        """获取任务详情"""
+        response = requests.get(
+            f'{self.base_url}/tasks/{task_id}',
+            headers={'X-API-Key': self.api_key}
+        )
+        return response.json()
+    
+    def wait_for_completion(self, task_id, timeout=300):
+        """等待任务完成"""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            result = self.get_task(task_id)
+            
+            if not result['success']:
+                raise Exception(f"获取任务失败: {result['error']}")
+            
+            status = result['data']['status']
+            print(f"任务状态: {status}")
+            
+            if status == 'COMPLETED':
+                return result['data']
+            elif status == 'FAILED':
+                raise Exception(f"任务失败: {result['data'].get('errorMessage')}")
+            
+            time.sleep(5)  # 等待5秒后重试
+        
+        raise TimeoutError("任务超时")
+
+# 使用示例
+if __name__ == "__main__":
+    api = TextGetAPI(API_KEY)
+    
+    # 创建任务
+    result = api.create_task('https://www.youtube.com/watch?v=example')
+    task_id = result['data']['id']
+    print(f"任务创建成功: {task_id}")
+    
+    # 等待完成
+    try:
+        task_data = api.wait_for_completion(task_id)
+        print(f"转录结果: {task_data['transcription']}")
+    except Exception as e:
+        print(f"任务处理失败: {e}")`}</code></pre>
+                </div>
+              </div>
+            </div>
+
+            {/* 状态码参考 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">HTTP 状态码参考</h2>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full border border-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">状态码</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">含义</th>
+                      <th className="px-4 py-2 text-left text-sm font-medium text-gray-900 border-b">描述</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-mono text-green-600 border-b">200</td>
+                      <td className="px-4 py-2 text-sm text-gray-900 border-b">成功</td>
+                      <td className="px-4 py-2 text-sm text-gray-600 border-b">请求成功处理</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-mono text-yellow-600 border-b">400</td>
+                      <td className="px-4 py-2 text-sm text-gray-900 border-b">请求错误</td>
+                      <td className="px-4 py-2 text-sm text-gray-600 border-b">请求参数无效或格式错误</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-mono text-red-600 border-b">401</td>
+                      <td className="px-4 py-2 text-sm text-gray-900 border-b">认证失败</td>
+                      <td className="px-4 py-2 text-sm text-gray-600 border-b">API Key 无效或缺失</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-mono text-orange-600 border-b">404</td>
+                      <td className="px-4 py-2 text-sm text-gray-900 border-b">资源不存在</td>
+                      <td className="px-4 py-2 text-sm text-gray-600 border-b">请求的任务或资源不存在</td>
+                    </tr>
+                    <tr>
+                      <td className="px-4 py-2 text-sm font-mono text-red-600 border-b">500</td>
+                      <td className="px-4 py-2 text-sm text-gray-900 border-b">服务器错误</td>
+                      <td className="px-4 py-2 text-sm text-gray-600 border-b">服务器内部错误</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 任务状态说明 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">任务状态说明</h2>
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="bg-gray-100 text-gray-800 px-2 py-1 rounded text-sm font-mono">PENDING</span>
+                  <span className="text-sm text-gray-600">等待处理 - 任务已创建，等待系统处理</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-sm font-mono">EXTRACTING</span>
+                  <span className="text-sm text-gray-600">提取中 - 正在下载并提取音频文件</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded text-sm font-mono">TRANSCRIBING</span>
+                  <span className="text-sm text-gray-600">转录中 - 语音识别服务正在处理</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-sm font-mono">COMPLETED</span>
+                  <span className="text-sm text-gray-600">已完成 - 转录完成，可获取文本结果</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="bg-red-100 text-red-800 px-2 py-1 rounded text-sm font-mono">FAILED</span>
+                  <span className="text-sm text-gray-600">失败 - 处理过程中出现错误</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 最佳实践 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">最佳实践</h2>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-2">🔄 任务状态轮询</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>创建任务后，使用轮询方式检查任务状态</li>
+                    <li>建议轮询间隔：5-10秒</li>
+                    <li>设置合理的超时时间（建议5-10分钟）</li>
+                    <li>处理 FAILED 状态，检查 errorMessage 字段</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">🛡️ 错误处理</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>始终检查响应中的 success 字段</li>
+                    <li>妥善处理网络错误和超时</li>
+                    <li>对于 401 错误，检查 API Key 配置</li>
+                    <li>对于 400 错误，检查请求参数格式</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">⚡ 性能优化</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>使用分页获取大量任务数据</li>
+                    <li>合理设置 limit 参数（建议 10-50）</li>
+                    <li>缓存不变的任务数据（已完成的任务）</li>
+                    <li>避免频繁请求同一任务详情</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">🔐 安全建议</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>妥善保管 API Key，避免在客户端暴露</li>
+                    <li>使用 HTTPS 进行生产环境通信</li>
+                    <li>定期轮换 API Key</li>
+                    <li>实施请求日志监控</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* 测试工具推荐 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">测试工具推荐</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">🌐 Postman</h3>
+                  <p className="text-sm text-gray-600 mb-2">图形化 API 测试工具</p>
+                  <a href="https://www.postman.com/" target="_blank" className="text-blue-600 text-sm hover:underline">
+                    下载 Postman →
+                  </a>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">⚡ Insomnia</h3>
+                  <p className="text-sm text-gray-600 mb-2">轻量级 REST 客户端</p>
+                  <a href="https://insomnia.rest/" target="_blank" className="text-blue-600 text-sm hover:underline">
+                    下载 Insomnia →
+                  </a>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">💻 cURL</h3>
+                  <p className="text-sm text-gray-600 mb-2">命令行 HTTP 客户端</p>
+                  <code className="text-xs bg-gray-100 px-2 py-1 rounded">curl --version</code>
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">🔧 HTTPie</h3>
+                  <p className="text-sm text-gray-600 mb-2">用户友好的命令行工具</p>
+                  <a href="https://httpie.io/" target="_blank" className="text-blue-600 text-sm hover:underline">
+                    了解 HTTPie →
+                  </a>
                 </div>
               </div>
             </div>
