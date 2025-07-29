@@ -177,20 +177,34 @@ export class CleanupManager {
 
         try {
           if (item.isDirectory()) {
-            // 递归清理子目录
-            const subResult = await this.cleanupDirectory(itemPath, cutoffTime, isManual)
-            filesCount += subResult.filesCount
-            sizeCleared += subResult.sizeCleared
+            // 跳过受保护的目录
+            if (this.isProtectedFile(itemPath)) {
+              Logger.debug(`跳过受保护目录: ${itemPath}`)
+              continue
+            }
 
-            // 检查目录是否为空，如果是则删除
+            // 递归清理子目录
             try {
-              const subItems = await fs.readdir(itemPath)
-              if (subItems.length === 0) {
-                await fs.rmdir(itemPath)
-                Logger.debug(`删除空目录: ${itemPath}`)
+              const subResult = await this.cleanupDirectory(itemPath, cutoffTime, isManual)
+              filesCount += subResult.filesCount
+              sizeCleared += subResult.sizeCleared
+
+              // 检查目录是否为空，如果是则删除
+              try {
+                const subItems = await fs.readdir(itemPath)
+                if (subItems.length === 0) {
+                  await fs.rmdir(itemPath)
+                  Logger.debug(`删除空目录: ${itemPath}`)
+                }
+              } catch (error) {
+                Logger.debug(`检查空目录失败: ${itemPath}`)
               }
-            } catch (error) {
-              Logger.debug(`检查空目录失败: ${itemPath}`)
+            } catch (error: any) {
+              if (error.code === 'EACCES' || error.code === 'EPERM') {
+                Logger.debug(`跳过无权限目录: ${itemPath}`)
+              } else {
+                Logger.warn(`读取目录失败 ${itemPath}: ${error}`)
+              }
             }
           } else if (item.isFile()) {
             const stat = await fs.stat(itemPath)
@@ -199,14 +213,23 @@ export class CleanupManager {
             if (isManual || stat.mtime.getTime() < cutoffTime) {
               // 特殊文件保护
               if (this.isProtectedFile(itemPath)) {
+                Logger.debug(`跳过受保护文件: ${itemPath}`)
                 continue
               }
 
-              const fileSize = stat.size
-              await fs.unlink(itemPath)
-              filesCount++
-              sizeCleared += fileSize
-              Logger.debug(`清理过期文件: ${itemPath} (${this.formatBytes(fileSize)})`)
+              try {
+                const fileSize = stat.size
+                await fs.unlink(itemPath)
+                filesCount++
+                sizeCleared += fileSize
+                Logger.debug(`清理过期文件: ${itemPath} (${this.formatBytes(fileSize)})`)
+              } catch (error: any) {
+                if (error.code === 'EACCES' || error.code === 'EPERM') {
+                  Logger.debug(`跳过无权限文件: ${itemPath}`)
+                } else {
+                  Logger.warn(`清理文件失败 ${itemPath}: ${error}`)
+                }
+              }
             }
           }
         } catch (error) {
@@ -320,7 +343,7 @@ export class CleanupManager {
   }
 
   /**
-   * 检查是否为受保护的文件
+   * 检查是否为受保护的文件或目录
    */
   private isProtectedFile(filePath: string): boolean {
     const protectedPatterns = [
@@ -335,6 +358,16 @@ export class CleanupManager {
       /\.next/,
       /dist/,
       /build/,
+      // 系统相关目录和文件
+      /systemd-private-/,
+      /snap-private-/,
+      /tat_agent/,
+      /\.lock$/,
+      /\.sh$/,
+      // GPU和硬件相关
+      /gpu/i,
+      /nvenc/i,
+      /stargate/,
     ]
 
     return protectedPatterns.some(pattern => pattern.test(filePath))

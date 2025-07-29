@@ -300,6 +300,33 @@ pm2 logs
 停止所有PM2进程
 pm2 stop all
 
+pm2 logs yt-dlpservice --lines 10
+
+## 🔧 常见问题排查
+
+### routesManifest.dataRoutes 错误
+如果遇到 `[TypeError: routesManifest.dataRoutes is not iterable]` 错误：
+
+```bash
+# 快速修复方案
+pm2 stop yt-dlpservice
+rm -rf .next node_modules package-lock.json
+npm install
+npx prisma generate
+npx prisma db push  
+npm run build
+pm2 restart yt-dlpservice
+```
+
+### 其他常见问题
+- **端口占用**: `sudo lsof -i :3000` 检查占用进程
+- **权限问题**: `chmod +x deploy/*.sh` 给脚本执行权限
+- **磁盘空间**: `df -h` 检查可用空间
+- **服务状态**: `pm2 status` 查看PM2状态
+
+> 💡 建议使用 `./deploy/deploy.sh` 脚本进行更新，可避免大部分手动操作错误
+
+
 ## 📝 API 接口
 
 ### 创建任务
