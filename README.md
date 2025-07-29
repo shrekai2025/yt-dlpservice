@@ -318,6 +318,30 @@ npm run build
 pm2 restart yt-dlpservice
 ```
 
+### 豆包API超时问题
+如果遇到 `timeout of 30000ms exceeded` 或类似超时错误：
+
+```bash
+# 1. 检查网络连接
+ping openspeech.bytedance.com
+
+# 2. 检查API配置
+curl -I https://openspeech.bytedance.com
+
+# 3. 清理重启服务
+pm2 restart yt-dlpservice
+
+# 4. 查看详细日志
+pm2 logs yt-dlpservice --lines 50
+```
+
+**可能原因和解决方案：**
+- **网络问题**: 检查服务器网络连接和DNS解析
+- **音频文件过大**: 确保音频文件小于100MB
+- **API密钥错误**: 在管理页面重新配置豆包API密钥
+- **服务器负载**: 等待一段时间后重试
+- **豆包服务异常**: 使用管理页面的API诊断工具检查
+
 ### 其他常见问题
 - **端口占用**: `sudo lsof -i :3000` 检查占用进程
 - **权限问题**: `chmod +x deploy/*.sh` 给脚本执行权限

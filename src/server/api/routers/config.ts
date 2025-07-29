@@ -165,5 +165,26 @@ export const configRouter = createTRPCRouter({
           message: `豆包API测试失败: ${error instanceof Error ? error.message : 'Unknown error'}`
         })
       }
+    }),
+
+  // 诊断豆包API
+  diagnoseDoubaoAPI: publicProcedure
+    .mutation(async () => {
+      try {
+        Logger.info('开始豆包API诊断')
+        const result = await doubaoVoiceService.diagnoseBaoAPI()
+        Logger.info(`豆包API诊断完成: ${result.success ? '成功' : '失败'}`)
+        
+        return {
+          success: true,
+          data: result
+        }
+      } catch (error: any) {
+        Logger.error(`豆包API诊断失败: ${error.message}`)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `豆包API诊断失败: ${error.message}`
+        })
+      }
     })
 }) 
