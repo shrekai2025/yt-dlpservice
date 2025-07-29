@@ -271,6 +271,8 @@ npm run build
 
 # 6. 重启服务
 pm2 restart yt-dlpservice
+带日志启动
+pm2 start ecosystem.config.cjs && pm2 logs yt-dlpservice --lines 50
 ```
 
 ### 强制重装依赖（解决依赖冲突时）

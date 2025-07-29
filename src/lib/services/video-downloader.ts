@@ -320,20 +320,20 @@ class VideoDownloader {
       //   audioFormat = "30280/30232/30216/bestaudio";
       // }
 
-      // 构建命令：明确指定要提取音频并转换为mp3格式，降低质量确保豆包API兼容性
-      let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
+      // 构建命令：移除-f "bestaudio"，让yt-dlp自动选择最佳格式进行提取
+      let command = this.buildYtDlpCommand(`--no-warnings --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
       
-      // 添加FFmpeg参数来标准化音频格式，确保豆包API兼容
+      // 添加FFmpeg参数来标准化音频格式
       const ffmpegArgs = [
-        '-ar 16000',      // 采样率降至16kHz（豆包API标准）
-        '-ac 1',          // 单声道（豆包API推荐）
-        '-ab 32k',        // 比特率32kbps（降低质量）
+        '-ar 16000',      // 采样率降至16kHz
+        '-ac 1',          // 单声道
+        '-ab 32k',        // 比特率32kbps
         '-f mp3'          // 强制MP3格式
       ].join(' ');
       
       command += ` --postprocessor-args "ffmpeg:${ffmpegArgs}"`;
       
-      Logger.info(`🎵 音频质量配置: 16kHz, 单声道, 32kbps MP3 (豆包API优化)`);
+      Logger.info(`🎵 音频质量配置: 16kHz, 单声道, 32kbps MP3 (yt-dlp自动选择格式)`);
       
       // 只有当FFmpeg路径不是默认的'ffmpeg'时才添加--ffmpeg-location参数
       if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
@@ -348,16 +348,14 @@ class VideoDownloader {
 
       Logger.info(`下载音频: ${command}`)
       
-      // 尝试下载，如果失败则使用备用格式
+      // 移除不再需要的备用下载逻辑
       let stdout: string
       try {
         const result = await execAsync(command)
         stdout = result.stdout
-        Logger.info(`主格式下载成功...`)
+        Logger.info(`✅ 音频提取成功`)
       } catch (error) {
-        Logger.error(`主格式下载失败...`)
-        // 备用逻辑不再需要，因为已经使用了bestaudio
-        // if (normalizedUrl.includes('bilibili.com') && error instanceof Error) { ... }
+        Logger.error(`❌ 音频提取失败: ${error instanceof Error ? error.message : String(error)}`)
         throw error
       }
       
