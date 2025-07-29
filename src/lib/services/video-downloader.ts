@@ -13,8 +13,10 @@ class VideoDownloader {
   private static instance: VideoDownloader;
   private configManager: ConfigManager
   private ytDlpPath: string = 'yt-dlp'
+  private ffmpegPath: string = 'ffmpeg' // 添加ffmpeg路径属性
   private isInitialized: boolean = false
   private initPromise: Promise<void> | null = null
+  private isInitializing: boolean = false; // 新增属性，用于控制初始化状态
 
   private constructor() {
     this.configManager = new ConfigManager()
@@ -26,15 +28,23 @@ class VideoDownloader {
    * 初始化方法
    */
   private async initialize(): Promise<void> {
-    if (this.isInitialized) return
-    
+    if (this.isInitialized) return;
+    this.isInitializing = true;
     try {
-      await this.detectYtDlpPath()
-      this.isInitialized = true
-      Logger.info('VideoDownloader 初始化完成')
-    } catch (error) {
-      Logger.error('VideoDownloader 初始化失败:', error)
-      throw error
+      Logger.info('开始初始化VideoDownloader...');
+      await this.detectYtDlpPath();
+      
+      // 检测FFmpeg路径
+      this.ffmpegPath = await this.detectFFmpegPath();
+      
+      Logger.info('✅ VideoDownloader初始化完成');
+      this.isInitialized = true;
+    } catch (error: any) {
+      Logger.error(`VideoDownloader初始化失败: ${error.message}`);
+      this.isInitialized = false;
+      throw error;
+    } finally {
+      this.isInitializing = false;
     }
   }
 
@@ -111,6 +121,35 @@ class VideoDownloader {
     }
 
     Logger.error('❌ 未找到 yt-dlp，使用默认路径。请安装 yt-dlp：pip3 install yt-dlp')
+  }
+
+  /**
+   * 检测FFmpeg路径
+   */
+  private async detectFFmpegPath(): Promise<string> {
+    const possiblePaths = [
+      'ffmpeg', // 系统PATH中的ffmpeg
+      '/usr/bin/ffmpeg',
+      '/usr/local/bin/ffmpeg',
+      '/opt/homebrew/bin/ffmpeg', // macOS Homebrew
+      '/snap/bin/ffmpeg', // Ubuntu snap
+      'C:\\ffmpeg\\bin\\ffmpeg.exe', // Windows
+    ];
+
+    for (const testPath of possiblePaths) {
+      try {
+        Logger.debug(`测试FFmpeg路径: ${testPath}`);
+        await execAsync(`"${testPath}" -version`);
+        Logger.info(`✅ 使用FFmpeg路径: ${testPath}`);
+        return testPath;
+      } catch (error) {
+        Logger.debug(`FFmpeg路径 ${testPath} 不可用`);
+        continue;
+      }
+    }
+
+    Logger.warn('⚠️ 未找到FFmpeg，使用默认路径 ffmpeg');
+    return 'ffmpeg'; // 默认使用系统PATH中的ffmpeg
   }
 
   /**
@@ -222,6 +261,12 @@ class VideoDownloader {
       
       let command = this.buildYtDlpCommand(`--no-warnings -f "${format}[height<=${quality}]" -o "${outputTemplate}"`)
       
+      // 只有当FFmpeg路径不是默认的'ffmpeg'时才添加--ffmpeg-location参数
+      if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
+        command += ` --ffmpeg-location "${this.ffmpegPath}"`;
+        Logger.debug(`使用自定义FFmpeg路径: ${this.ffmpegPath}`);
+      }
+      
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
         try {
@@ -234,7 +279,7 @@ class VideoDownloader {
         }
       }
       
-      command += ` --ffmpeg-location ffmpeg "${url}"`
+      command += ` "${url}"`
 
       Logger.info(`下载视频: ${command}`)
       const { stdout } = await execAsync(command)
@@ -257,19 +302,9 @@ class VideoDownloader {
       }
       
       throw new Error('无法确定下载的视频文件路径')
-    } catch (error) {
-      if (error instanceof Error && this.isYouTubeAuthError(error.message)) {
-        Logger.warn('检测到 YouTube 需要登录认证')
-        if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
-          const loginSuccess = await this.handleYouTubeAuthRequired()
-          if (loginSuccess) {
-            Logger.info('登录成功，重试下载视频...')
-            return await this.downloadVideo(url, options, false)
-          }
-        }
-        throw new Error('YouTube 视频需要登录认证，请确保已在专用浏览器中登录')
-      }
-      throw error
+    } catch (error: any) {
+      Logger.error(`下载视频失败: ${error.message}`)
+      throw new Error(`下载视频失败: ${error.message}`)
     }
   }
 
@@ -287,11 +322,17 @@ class VideoDownloader {
       // 对于不同平台使用更兼容的格式选择
       let audioFormat = format;
       if (url.includes("bilibili.com")) {
-        // Bilibili 需要特殊处理 - 直接使用已知可用的音频格式ID
-        audioFormat = "30280/30232/30216/bestaudio";
+        // Bilibili 需要特殊处理 - 使用更通用的格式选择
+        audioFormat = "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio";
       }
 
       let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`);
+      
+      // 只有当FFmpeg路径不是默认的'ffmpeg'时才添加--ffmpeg-location参数
+      if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
+        command += ` --ffmpeg-location "${this.ffmpegPath}"`;
+        Logger.debug(`使用自定义FFmpeg路径: ${this.ffmpegPath}`);
+      }
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
@@ -305,7 +346,7 @@ class VideoDownloader {
         }
       }
       
-      command += ` --ffmpeg-location ffmpeg "${url}"`
+      command += ` "${url}"`
 
       Logger.info(`下载音频: ${command}`)
       
@@ -319,27 +360,40 @@ class VideoDownloader {
         Logger.error(`主格式下载失败，错误: ${error instanceof Error ? error.message : String(error)}`)
         if (url.includes('bilibili.com') && error instanceof Error) {
           Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
-          // 使用更通用的音频格式重试
-          const fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "[ext=m4a]/[ext=mp3]/bestaudio" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`)
+          // 使用更通用的音频格式重试，不指定特定的格式ID
+          let fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "bestaudio" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate`);
+          
+          // 添加FFmpeg路径（如果需要）
+          if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
+            fallbackCommand += ` --ffmpeg-location "${this.ffmpegPath}"`;
+          }
+          
+          fallbackCommand += ` "${url}"`;
+          
           Logger.info(`备用下载命令: ${fallbackCommand}`)
           try {
             const fallbackResult = await execAsync(fallbackCommand)
             stdout = fallbackResult.stdout
             Logger.info(`备用格式下载成功，输出: ${stdout.substring(0, 500)}...`)
           } catch (fallbackError) {
-            Logger.error(`备用格式下载失败，错误: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
-            Logger.warn('备用格式也失败，尝试最简单的方式...')
-            // 最后的尝试：不指定格式，让 yt-dlp 自动选择最佳格式
-            const simpleCommand = this.buildYtDlpCommand(`--no-warnings --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`)
-            Logger.info(`简单下载命令: ${simpleCommand}`)
-            try {
-              const simpleResult = await execAsync(simpleCommand)
-              stdout = simpleResult.stdout
-              Logger.info(`简单格式下载成功，输出: ${stdout.substring(0, 500)}...`)
-            } catch (simpleError) {
-              Logger.error(`简单格式下载失败，错误: ${simpleError instanceof Error ? simpleError.message : String(simpleError)}`)
-              throw simpleError
+            Logger.error(`备用格式也下载失败: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
+            
+            // 最后尝试：直接下载视频然后提取音频
+            Logger.warn('尝试下载视频文件并提取音频...')
+            let videoCommand = this.buildYtDlpCommand(`--no-warnings -f "best[height<=720]" -o "${outputTemplate.replace('_audio', '_video')}" --no-check-certificate`);
+            
+            if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
+              videoCommand += ` --ffmpeg-location "${this.ffmpegPath}"`;
             }
+            
+            videoCommand += ` "${url}"`;
+            
+            Logger.info(`视频下载命令: ${videoCommand}`)
+            const videoResult = await execAsync(videoCommand)
+            
+            // TODO: 这里需要实现视频转音频的逻辑
+            Logger.info('视频下载成功，但需要实现视频转音频功能')
+            throw new Error('需要实现视频转音频功能，当前版本暂不支持')
           }
         } else {
           throw error
@@ -347,62 +401,53 @@ class VideoDownloader {
       }
       
       // 从输出中解析文件路径
-      Logger.info(`yt-dlp 完整输出: ${stdout}`);
-      const lines = stdout.split('\n');
-      
-      // 寻找下载完成的标志
+      const lines = stdout.split('\n')
       const downloadLine = lines.find(line => 
         line.includes('[download] Destination:') || 
-        line.includes('[ExtractAudio] Destination:') ||
         line.includes('[download] 目标文件:') ||
         line.includes('has already been downloaded') ||
         line.includes('[ExtractAudio]') ||
-        line.includes('[download]') && line.includes('%')
-      );
+        line.includes('Deleting original file')
+      )
       
       if (downloadLine) {
-        Logger.info(`找到下载行: ${downloadLine}`);
-        // 更新正则表达式以匹配更多情况
-        const match = downloadLine.match(/(?:Destination:|目标文件:|downloaded to:)\s+(.+)/);
-        if (match && match[1]) {
-          let filePath = match[1].trim();
-          // 确保文件是 mp3 格式
-          if (filePath.endsWith('.m4a') || filePath.endsWith('.webm')) {
-            filePath = filePath.replace(/\.[^.]+$/, '.mp3');
+        // 尝试多种匹配模式
+        const patterns = [
+          /(?:Destination:|目标文件:)\s+(.+)/,
+          /has already been downloaded.*?(\/.+)/,
+          /\[ExtractAudio\] Destination:\s+(.+)/,
+          /Deleting original file\s+(.+)/
+        ]
+        
+        for (const pattern of patterns) {
+          const match = downloadLine.match(pattern)
+          if (match && match[1]) {
+            const filePath = match[1].trim()
+            // 如果是音频提取，路径可能需要调整
+            const audioPath = filePath.replace(/\.(mp4|webm|mkv)$/, '.mp3')
+            Logger.info(`音频下载完成: ${audioPath}`)
+            return audioPath
           }
-          Logger.info(`音频下载完成: ${filePath}`);
-          return filePath;
         }
       }
       
-      // 如果没有找到标准的下载行，尝试查找输出目录中的文件
-      try {
-        const outputDir = path.dirname(outputTemplate);
-        const files = await fs.readdir(outputDir);
-        const audioFiles = files.filter(file => file.endsWith('.mp3') || file.endsWith('.m4a'));
-        if (audioFiles.length > 0) {
-          const filePath = path.join(outputDir, audioFiles[0] || '');
-          Logger.info(`通过目录扫描找到音频文件: ${filePath}`);
-          return filePath;
-        }
-      } catch (dirError) {
-        Logger.warn(`扫描输出目录失败: ${dirError instanceof Error ? dirError.message : String(dirError)}`);
+      // 如果无法从输出解析路径，尝试查找输出目录中的文件
+      Logger.warn('无法从yt-dlp输出解析文件路径，尝试查找输出目录...')
+      const files = await fs.readdir(outputDir)
+      const audioFiles = files.filter(file => 
+        file.includes('_audio') && (file.endsWith('.mp3') || file.endsWith('.m4a') || file.endsWith('.wav'))
+      )
+      
+      if (audioFiles.length > 0 && audioFiles[0]) {
+        const audioPath = path.join(outputDir, audioFiles[0])
+        Logger.info(`找到音频文件: ${audioPath}`)
+        return audioPath
       }
       
       throw new Error('无法确定下载的音频文件路径')
-    } catch (error) {
-      if (error instanceof Error && this.isYouTubeAuthError(error.message)) {
-        Logger.warn('检测到 YouTube 需要登录认证')
-        if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
-          const loginSuccess = await this.handleYouTubeAuthRequired()
-          if (loginSuccess) {
-            Logger.info('登录成功，重试下载音频...')
-            return await this.downloadAudio(url, options, false)
-          }
-        }
-        throw new Error('YouTube 视频需要登录认证，请确保已在专用浏览器中登录')
-      }
-      throw error
+    } catch (error: any) {
+      Logger.error(`下载音频失败: ${error.message}`)
+      throw new Error(`下载音频失败: ${error.message}`)
     }
   }
 
