@@ -13,10 +13,38 @@ class VideoDownloader {
   private static instance: VideoDownloader;
   private configManager: ConfigManager
   private ytDlpPath: string = 'yt-dlp'
+  private isInitialized: boolean = false
+  private initPromise: Promise<void> | null = null
 
   private constructor() {
     this.configManager = new ConfigManager()
-    this.detectYtDlpPath()
+    // 启动初始化
+    this.initPromise = this.initialize()
+  }
+
+  /**
+   * 初始化方法
+   */
+  private async initialize(): Promise<void> {
+    if (this.isInitialized) return
+    
+    try {
+      await this.detectYtDlpPath()
+      this.isInitialized = true
+      Logger.info('VideoDownloader 初始化完成')
+    } catch (error) {
+      Logger.error('VideoDownloader 初始化失败:', error)
+      throw error
+    }
+  }
+
+  /**
+   * 确保初始化完成
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.isInitialized && this.initPromise) {
+      await this.initPromise
+    }
   }
 
   public static getInstance(): VideoDownloader {
@@ -49,35 +77,48 @@ class VideoDownloader {
       process.env.HOME + '/.local/bin/yt-dlp', // 动态用户本地路径
       '/opt/homebrew/bin/yt-dlp', // macOS Homebrew
       '/usr/local/opt/yt-dlp/bin/yt-dlp', // 其他可能位置
+      // macOS 用户 Python 安装目录
+      '/Users/' + process.env.USER + '/Library/Python/3.9/bin/yt-dlp',
+      '/Users/' + process.env.USER + '/Library/Python/3.8/bin/yt-dlp',
+      '/Users/' + process.env.USER + '/Library/Python/3.10/bin/yt-dlp',
+      '/Users/' + process.env.USER + '/Library/Python/3.11/bin/yt-dlp',
+      '/Users/' + process.env.USER + '/Library/Python/3.12/bin/yt-dlp',
       'python3 -m yt_dlp' // Python 模块方式调用
     ]
 
+    Logger.info('开始检测 yt-dlp 路径...');
+
     for (const testPath of possiblePaths) {
       try {
+        Logger.debug(`测试路径: ${testPath}`);
+        
         if (testPath.includes('python3 -m')) {
           // 对于 Python 模块调用方式，需要特殊处理
           await execAsync(`${testPath} --version`)
           this.ytDlpPath = testPath
-          Logger.info(`使用 yt-dlp 路径: ${this.ytDlpPath}`)
+          Logger.info(`✅ 使用 yt-dlp 路径: ${this.ytDlpPath}`)
           return
         } else {
           await execAsync(`"${testPath}" --version`)
           this.ytDlpPath = testPath
-          Logger.info(`使用 yt-dlp 路径: ${this.ytDlpPath}`)
+          Logger.info(`✅ 使用 yt-dlp 路径: ${this.ytDlpPath}`)
           return
         }
       } catch (error) {
+        Logger.debug(`路径 ${testPath} 不可用: ${error}`);
         continue
       }
     }
 
-    Logger.warn('未找到 yt-dlp，使用默认路径')
+    Logger.error('❌ 未找到 yt-dlp，使用默认路径。请安装 yt-dlp：pip3 install yt-dlp')
   }
 
   /**
    * 检查下载器可用性
    */
   async checkAvailability(): Promise<{ available: boolean; version?: string; path: string }> {
+    await this.ensureInitialized()
+    
     try {
       const { stdout } = await execAsync(this.buildYtDlpCommand('--version'))
       const version = stdout.trim()
@@ -91,11 +132,10 @@ class VideoDownloader {
    * 获取视频信息
    */
   async getVideoInfo(url: string, useBrowserCookies: boolean = true): Promise<VideoInfo> {
+    await this.ensureInitialized()
+    
     try {
-      const tempDir = '/tmp/yt-dlpservice'
-      await fs.mkdir(tempDir, { recursive: true })
-
-      let command = this.buildYtDlpCommand('--dump-json --no-warnings')
+      let command = this.buildYtDlpCommand('--no-warnings --dump-json --no-check-certificate')
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
@@ -109,38 +149,28 @@ class VideoDownloader {
         }
       }
       
-      command += ` --ffmpeg-location ffmpeg "${url}"`
+      command += ` "${url}"`
 
       Logger.info(`获取视频信息: ${command}`)
       const { stdout } = await execAsync(command)
       
-      const videoData = JSON.parse(stdout)
+      const videoInfo = JSON.parse(stdout)
       
       return {
-        title: videoData.title || 'Unknown Title',
-        duration: videoData.duration || 0,
-        uploader: videoData.uploader || 'Unknown',
-        formats: videoData.formats?.map((format: any) => ({
-          format_id: format.format_id,
-          ext: format.ext,
-          resolution: format.resolution,
-          filesize: format.filesize
-        })) || [],
-        originalData: videoData
+        id: videoInfo.id || '',
+        title: videoInfo.title || '',
+        duration: videoInfo.duration || 0,
+        thumbnail: videoInfo.thumbnail || '',
+        uploader: videoInfo.uploader || '',
+        upload_date: videoInfo.upload_date || '',
+        view_count: videoInfo.view_count || 0,
+        like_count: videoInfo.like_count || 0,
+        description: videoInfo.description || '',
+        formats: videoInfo.formats || []
       }
-    } catch (error) {
-      if (error instanceof Error && this.isYouTubeAuthError(error.message)) {
-        Logger.warn('检测到 YouTube 需要登录认证')
-        if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
-          const loginSuccess = await this.handleYouTubeAuthRequired()
-          if (loginSuccess) {
-            Logger.info('登录成功，重试获取视频信息...')
-            return await this.getVideoInfo(url, false) // 递归调用，但禁用浏览器 cookies 避免无限循环
-          }
-        }
-        throw new Error('YouTube 视频需要登录认证，请确保已在专用浏览器中登录')
-      }
-      throw error
+    } catch (error: any) {
+      Logger.error(`获取视频信息失败: ${error.message}`)
+      throw new Error(`获取视频信息失败: ${error.message}`)
     }
   }
 
@@ -148,6 +178,7 @@ class VideoDownloader {
    * 根据下载类型下载内容
    */
   async downloadContent(url: string, options: DownloadOptions): Promise<{ videoPath?: string; audioPath?: string }> {
+    await this.ensureInitialized()
     const { outputDir, downloadType } = options
     
     // 确保输出目录存在
@@ -182,6 +213,7 @@ class VideoDownloader {
    * 下载视频文件
    */
   async downloadVideo(url: string, options: DownloadOptions, useBrowserCookies: boolean = true): Promise<string> {
+    await this.ensureInitialized()
     try {
       const { outputDir, format = 'best', quality = 'best' } = options
       await fs.mkdir(outputDir, { recursive: true })
@@ -245,6 +277,7 @@ class VideoDownloader {
    * 下载音频文件
    */
   async downloadAudio(url: string, options: DownloadOptions, useBrowserCookies: boolean = true): Promise<string> {
+    await this.ensureInitialized()
     try {
       const { outputDir, format = 'bestaudio', quality = 'best' } = options
       await fs.mkdir(outputDir, { recursive: true })
@@ -434,6 +467,7 @@ class VideoDownloader {
    * 清理文件
    */
   async cleanupFiles(directory: string, olderThanHours: number = 24): Promise<void> {
+    await this.ensureInitialized()
     try {
       const files = await fs.readdir(directory)
       const cutoffTime = Date.now() - (olderThanHours * 60 * 60 * 1000)

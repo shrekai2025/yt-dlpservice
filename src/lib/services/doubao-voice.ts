@@ -26,6 +26,8 @@ class DoubaoVoiceService {
     if (this.isInitializing) return;
     this.isInitializing = true;
     try {
+      Logger.info('开始初始化豆包语音服务...');
+      
       // 优先从数据库获取配置，失败时使用环境变量
       let dbAppKey = '';
       let dbAccessKey = '';
@@ -33,15 +35,24 @@ class DoubaoVoiceService {
       
       try {
         dbAppKey = await ConfigManager.get('doubao_app_key');
-      } catch { /* 使用环境变量 */ }
+        Logger.debug(`从数据库获取 doubao_app_key: ${dbAppKey ? '已配置' : '未配置'}`);
+      } catch { 
+        Logger.debug('数据库中未找到 doubao_app_key，使用环境变量');
+      }
       
       try {
         dbAccessKey = await ConfigManager.get('doubao_access_key');
-      } catch { /* 使用环境变量 */ }
+        Logger.debug(`从数据库获取 doubao_access_key: ${dbAccessKey ? '已配置' : '未配置'}`);
+      } catch { 
+        Logger.debug('数据库中未找到 doubao_access_key，使用环境变量');
+      }
 
       try {
         dbEndpoint = await ConfigManager.get('doubao_endpoint');
-      } catch { /* 使用环境变量 */ }
+        Logger.debug(`从数据库获取 doubao_endpoint: ${dbEndpoint || '未配置'}`);
+      } catch { 
+        Logger.debug('数据库中未找到 doubao_endpoint，使用环境变量');
+      }
       
       this.appKey = dbAppKey || env.DOUBAO_APP_KEY || '';
       this.accessKey = dbAccessKey || env.DOUBAO_ACCESS_KEY || '';
@@ -49,8 +60,21 @@ class DoubaoVoiceService {
       const endpointValue = dbEndpoint || env.DOUBAO_ENDPOINT || 'openspeech.bytedance.com';
       this.baseUrl = endpointValue.replace(/^https?:\/\//, ''); // 移除协议头
       
+      // 详细的配置状态日志
+      Logger.info(`豆包API配置状态:`);
+      Logger.info(`  - APP_KEY: ${this.appKey ? `已配置 (${this.appKey.substring(0, 8)}...)` : '❌ 未配置'}`);
+      Logger.info(`  - ACCESS_KEY: ${this.accessKey ? `已配置 (${this.accessKey.substring(0, 8)}...)` : '❌ 未配置'}`);
+      Logger.info(`  - ENDPOINT: ${this.baseUrl}`);
+      Logger.info(`  - 环境变量 DOUBAO_APP_KEY: ${env.DOUBAO_APP_KEY ? '已配置' : '未配置'}`);
+      Logger.info(`  - 环境变量 DOUBAO_ACCESS_KEY: ${env.DOUBAO_ACCESS_KEY ? '已配置' : '未配置'}`);
+      
       if (!this.appKey || !this.accessKey) {
-        Logger.warn('豆包语音API密钥未配置，服务不可用。');
+        Logger.error('❌ 豆包语音API密钥未配置，服务不可用！');
+        Logger.error('请检查以下配置：');
+        Logger.error('1. 环境变量 DOUBAO_APP_KEY 和 DOUBAO_ACCESS_KEY');
+        Logger.error('2. 或在管理页面配置 doubao_app_key 和 doubao_access_key');
+      } else {
+        Logger.info('✅ 豆包语音API配置完成');
       }
     } finally {
       this.isInitializing = false;
@@ -78,7 +102,12 @@ class DoubaoVoiceService {
     
     // 计算音频大小用于日志
     const audioSizeMB = Math.round((audioBase64.length * 3 / 4) / 1024 / 1024 * 100) / 100;
-    Logger.info(`豆包API提交任务: ${requestId}, 音频大小: ${audioSizeMB}MB`);
+    Logger.info(`🚀 豆包API提交任务开始:`);
+    Logger.info(`  - 请求ID: ${requestId}`);
+    Logger.info(`  - 音频大小: ${audioSizeMB}MB`);
+    Logger.info(`  - 提交URL: ${submitUrl}`);
+    Logger.info(`  - APP_KEY: ${this.appKey ? `${this.appKey.substring(0, 8)}...` : '未配置'}`);
+    Logger.info(`  - ACCESS_KEY: ${this.accessKey ? `${this.accessKey.substring(0, 8)}...` : '未配置'}`);
     
     // 根据API文档和错误信息调整请求格式
     const requestBody = {
@@ -125,7 +154,9 @@ class DoubaoVoiceService {
       validateStatus: (status) => status < 500, // 5xx错误才重试
     };
 
-    Logger.info(`豆包API请求超时设置: ${finalTimeout}ms`);
+    Logger.info(`⏱️ 豆包API请求配置:`);
+    Logger.info(`  - 超时时间: ${finalTimeout}ms (${Math.round(finalTimeout/1000)}秒)`);
+    Logger.info(`  - 请求体大小: ${JSON.stringify(requestBody).length} 字符`);
 
     // 重试机制
     const maxRetries = 3;
@@ -133,41 +164,63 @@ class DoubaoVoiceService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        Logger.info(`豆包API提交尝试 ${attempt}/${maxRetries}: ${requestId}`);
+        Logger.info(`📡 豆包API提交尝试 ${attempt}/${maxRetries}: ${requestId}`);
+        const startTime = Date.now();
         
         const response = await axios(config);
+        const responseTime = Date.now() - startTime;
+        
+        Logger.info(`✅ 豆包API请求成功:`);
+        Logger.info(`  - 响应时间: ${responseTime}ms`);
+        Logger.info(`  - HTTP状态: ${response.status}`);
+        Logger.info(`  - 响应头状态码: ${response.headers['x-api-status-code'] || '无'}`);
+        Logger.info(`  - 响应消息: ${response.headers['x-api-message'] || '无'}`);
         
         // 检查响应状态
         const statusCode = response.headers['x-api-status-code'];
         const message = response.headers['x-api-message'];
         
         if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
+          Logger.error(`❌ 豆包API返回错误状态:`);
+          Logger.error(`  - 状态码: ${statusCode}`);
+          Logger.error(`  - 错误消息: ${message || '未知错误'}`);
           throw new Error(`API错误 (${statusCode}): ${message || '未知错误'}`);
         }
 
-        Logger.info(`豆包任务提交成功: ${requestId}`);
+        Logger.info(`🎉 豆包任务提交成功: ${requestId}`);
         return requestId;
         
       } catch (error: any) {
         lastError = error;
+        const responseTime = Date.now() - (error.config?.metadata?.startTime || Date.now());
         const errorMessage = error.response?.data?.message || error.message;
         
-        Logger.warn(`豆包API提交失败 (尝试${attempt}/${maxRetries}): ${errorMessage}`);
+        Logger.error(`❌ 豆包API提交失败 (尝试${attempt}/${maxRetries}):`);
+        Logger.error(`  - 错误类型: ${error.code || '未知'}`);
+        Logger.error(`  - 错误消息: ${errorMessage}`);
+        Logger.error(`  - HTTP状态: ${error.response?.status || '无响应'}`);
+        Logger.error(`  - 响应时间: ${responseTime}ms`);
+        
+        if (error.response) {
+          Logger.error(`  - 响应头: ${JSON.stringify(error.response.headers)}`);
+          Logger.error(`  - 响应体: ${JSON.stringify(error.response.data)}`);
+        }
         
         // 如果是最后一次尝试，或者是非网络错误，直接抛出
         if (attempt === maxRetries || (!error.code?.includes('TIMEOUT') && !error.code?.includes('ECONNRESET'))) {
+          Logger.error(`💥 豆包API提交最终失败，停止重试`);
           break;
         }
         
         // 等待后重试
         const delay = attempt * 2000; // 递增延迟
-        Logger.info(`等待 ${delay}ms 后重试...`);
+        Logger.info(`⏳ 等待 ${delay}ms 后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
 
     const errorMessage = lastError.response?.data?.message || lastError.message;
-    Logger.error(`豆包API提交任务失败 (所有重试均失败): ${errorMessage}`);
+    Logger.error(`💀 豆包API提交任务失败 (所有重试均失败): ${errorMessage}`);
     throw new Error(`豆包API提交任务失败: ${errorMessage}`);
   }
 
@@ -202,41 +255,68 @@ class DoubaoVoiceService {
       validateStatus: (status) => status < 500, // 5xx错误才重试
     };
 
+    Logger.debug(`🔍 豆包API查询请求:`);
+    Logger.debug(`  - 查询URL: ${queryUrl}`);
+    Logger.debug(`  - 请求ID: ${requestId}`);
+    Logger.debug(`  - 超时设置: 30秒`);
+
     // 查询接口也添加重试机制
     const maxRetries = 2; // 查询接口最多重试2次
     let lastError: any;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
+        Logger.debug(`📡 查询请求尝试 ${attempt}/${maxRetries}: ${requestId}`);
+        const startTime = Date.now();
+        
         const response = await axios(config);
+        const responseTime = Date.now() - startTime;
+        
+        Logger.debug(`✅ 查询请求成功:`);
+        Logger.debug(`  - 响应时间: ${responseTime}ms`);
+        Logger.debug(`  - HTTP状态: ${response.status}`);
         
         // 检查响应状态
         const statusCode = response.headers['x-api-status-code'];
         const message = response.headers['x-api-message'];
         
+        Logger.debug(`📋 豆包API响应头:`);
+        Logger.debug(`  - 状态码: ${statusCode || '无'}`);
+        Logger.debug(`  - 消息: ${message || '无'}`);
+        
         // 20000000: 成功, 20000001: 处理中, 20000002: 任务在队列中 - 都是正常状态
         if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
           // 如果是找不到任务的错误，可能任务还没准备好，不算错误
           if (statusCode === '40000007') {
-            Logger.debug(`任务暂未准备好: ${requestId}`);
+            Logger.debug(`⏳ 任务暂未准备好: ${requestId}`);
             return { status: 'preparing', message: '任务准备中' };
           }
           
+          Logger.warn(`⚠️ 豆包API返回异常状态:`);
+          Logger.warn(`  - 状态码: ${statusCode}`);
+          Logger.warn(`  - 消息: ${message || '未知错误'}`);
           throw new Error(`API错误 (${statusCode}): ${message || '未知错误'}`);
         }
 
+        Logger.debug(`📦 查询响应数据大小: ${JSON.stringify(response.data).length} 字符`);
         return response.data;
         
       } catch (error: any) {
         lastError = error;
+        const responseTime = Date.now() - (error.config?.metadata?.startTime || Date.now());
         const errorMessage = error.response?.data?.message || error.message;
+        
+        Logger.debug(`❌ 查询请求失败 (尝试${attempt}/${maxRetries}):`);
+        Logger.debug(`  - 错误类型: ${error.code || '未知'}`);
+        Logger.debug(`  - 响应时间: ${responseTime}ms`);
         
         // 区分不同类型的错误
         if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-          Logger.warn(`豆包API查询超时 (尝试${attempt}/${maxRetries}): ${requestId}`);
+          Logger.warn(`⏰ 豆包API查询超时 (尝试${attempt}/${maxRetries}): ${requestId}`);
           
           // 如果是最后一次尝试，抛出超时错误
           if (attempt === maxRetries) {
+            Logger.error(`💀 查询最终超时: ${errorMessage}`);
             throw new Error(`豆包API查询超时: ${errorMessage}`);
           }
           
@@ -247,9 +327,10 @@ class DoubaoVoiceService {
         
         // 网络连接错误，重试
         if (error.code === 'ECONNRESET' || error.code === 'ECONNREFUSED') {
-          Logger.warn(`网络连接错误 (尝试${attempt}/${maxRetries}): ${errorMessage}`);
+          Logger.warn(`🌐 网络连接错误 (尝试${attempt}/${maxRetries}): ${errorMessage}`);
           
           if (attempt === maxRetries) {
+            Logger.error(`💀 网络连接最终失败: ${errorMessage}`);
             throw new Error(`网络连接失败: ${errorMessage}`);
           }
           
@@ -258,13 +339,20 @@ class DoubaoVoiceService {
         }
         
         // 其他错误直接抛出
-        Logger.error(`豆包API查询任务失败: ${errorMessage}`, error.response?.data);
+        Logger.error(`💥 豆包API查询任务失败:`);
+        Logger.error(`  - 错误类型: ${error.code || '未知'}`);
+        Logger.error(`  - 错误消息: ${errorMessage}`);
+        Logger.error(`  - HTTP状态: ${error.response?.status || '无响应'}`);
+        if (error.response?.data) {
+          Logger.error(`  - 响应体: ${JSON.stringify(error.response.data)}`);
+        }
         throw new Error(`豆包API查询任务失败: ${errorMessage}`);
       }
     }
 
     // 如果所有重试都失败了
     const errorMessage = lastError.response?.data?.message || lastError.message;
+    Logger.error(`💀 豆包API查询失败 (所有重试均失败): ${errorMessage}`);
     throw new Error(`豆包API查询失败 (所有重试均失败): ${errorMessage}`);
   }
 
@@ -303,6 +391,13 @@ class DoubaoVoiceService {
     
     // 检查响应体状态
     const bodyStatus = response?.status;
+    
+    // 详细日志记录响应内容
+    Logger.debug(`豆包API响应解析:`);
+    Logger.debug(`  - statusCode: ${statusCode}`);
+    Logger.debug(`  - bodyStatus: ${bodyStatus}`);
+    Logger.debug(`  - hasResult: ${hasResult}`);
+    Logger.debug(`  - result.text length: ${response?.result?.text?.length || 0}`);
     
     if (hasResult) {
       return {
@@ -361,12 +456,25 @@ class DoubaoVoiceService {
       };
     }
     
+    // 未知状态的详细分析
+    const unknownDetails = [];
+    if (statusCode) unknownDetails.push(`状态码: ${statusCode}`);
+    if (bodyStatus) unknownDetails.push(`状态: ${bodyStatus}`);
+    if (response?.message) unknownDetails.push(`消息: ${response.message}`);
+    if (response?.error) unknownDetails.push(`错误: ${response.error}`);
+    
+    const detailMessage = unknownDetails.length > 0 
+      ? `任务状态未知 (${unknownDetails.join(', ')})，继续等待`
+      : '任务状态未知，继续等待';
+    
+    Logger.warn(`未知的豆包API响应状态: ${JSON.stringify(response)}`);
+    
     // 默认继续等待
     return {
       status: 'unknown',
       hasResult: false,
       shouldContinue: true,
-      message: '任务状态未知，继续等待'
+      message: detailMessage
     };
   }
 
@@ -423,7 +531,10 @@ class DoubaoVoiceService {
     const baseInterval = 3000; // 基础间隔3秒
     const maxWaitTime = maxRetries * baseInterval;
 
-    Logger.info(`开始轮询豆包任务结果: ${requestId}, 最大等待时间: ${maxWaitTime/1000}秒`);
+    Logger.info(`🔄 开始轮询豆包任务结果:`);
+    Logger.info(`  - 任务ID: ${requestId}`);
+    Logger.info(`  - 最大轮询次数: ${maxRetries}`);
+    Logger.info(`  - 最大等待时间: ${maxWaitTime/60000}分钟`);
 
     let consecutiveTimeouts = 0; // 连续超时计数
     const maxConsecutiveTimeouts = 5; // 最多允许5次连续超时
@@ -433,49 +544,69 @@ class DoubaoVoiceService {
       const currentInterval = i < 10 ? baseInterval : Math.min(baseInterval * 2, 8000);
       await new Promise(resolve => setTimeout(resolve, currentInterval));
       
-      Logger.info(`查询豆包任务状态 (${i + 1}/${maxRetries}): ${requestId}, 间隔: ${currentInterval}ms`);
+      const progress = Math.round((i + 1) / maxRetries * 100);
+      Logger.info(`📊 查询豆包任务状态 (${i + 1}/${maxRetries}, ${progress}%): ${requestId}, 间隔: ${currentInterval}ms`);
       
       try {
+        const startTime = Date.now();
         const response = await this.queryAudioTask(requestId);
+        const queryTime = Date.now() - startTime;
         consecutiveTimeouts = 0; // 重置超时计数
+        
+        Logger.debug(`🔍 查询响应时间: ${queryTime}ms`);
         
         // 使用智能状态解析
         const taskStatus = this.parseTaskStatus(response);
         
-        Logger.info(`豆包任务状态: ${taskStatus.status} - ${taskStatus.message} (${i + 1}/${maxRetries})`);
+        Logger.info(`📈 豆包任务状态: ${taskStatus.status} - ${taskStatus.message} (${i + 1}/${maxRetries})`);
         
         // 如果有转录结果，返回
         if (taskStatus.hasResult && response.result.text) {
           const transcriptionText = response.result.text.trim();
-          Logger.info(`豆包任务成功: ${requestId}, 转录长度: ${transcriptionText.length}`);
+          Logger.info(`🎉 豆包任务成功完成:`);
+          Logger.info(`  - 任务ID: ${requestId}`);
+          Logger.info(`  - 轮询次数: ${i + 1}/${maxRetries}`);
+          Logger.info(`  - 总耗时: ${Math.round((Date.now() - (Date.now() - (i + 1) * currentInterval)) / 1000)}秒`);
+          Logger.info(`  - 转录长度: ${transcriptionText.length}字符`);
+          Logger.info(`  - 转录预览: ${transcriptionText.substring(0, 100)}...`);
           return transcriptionText;
         }
         
         // 如果任务失败，抛出异常
         if (taskStatus.status === 'failed') {
+          Logger.error(`💥 豆包任务失败:`);
+          Logger.error(`  - 任务ID: ${requestId}`);
+          Logger.error(`  - 失败原因: ${taskStatus.message}`);
           throw new Error(`豆包语音识别任务失败: ${taskStatus.message}`);
         }
         
         // 如果不应该继续，但也没有结果，可能是异常情况
         if (!taskStatus.shouldContinue) {
+          Logger.error(`⚠️ 豆包任务异常结束:`);
+          Logger.error(`  - 任务ID: ${requestId}`);
+          Logger.error(`  - 异常原因: ${taskStatus.message}`);
           throw new Error(`豆包任务异常结束: ${taskStatus.message}`);
         }
         
         // 根据任务状态调整下次查询的等待时间
         const nextInterval = this.calculateWaitTime(i, taskStatus.status);
         if (nextInterval !== currentInterval) {
-          Logger.debug(`根据任务状态调整查询间隔: ${nextInterval}ms`);
+          Logger.debug(`⚙️ 根据任务状态调整查询间隔: ${nextInterval}ms`);
         }
         
       } catch (error: any) {
         // 如果是查询超时，记录并继续重试
         if (error.message.includes('豆包API查询超时')) {
           consecutiveTimeouts++;
-          Logger.warn(`查询超时 (连续${consecutiveTimeouts}次)，继续重试: ${requestId}`);
+          Logger.warn(`⏰ 查询超时 (连续${consecutiveTimeouts}次):`);
+          Logger.warn(`  - 任务ID: ${requestId}`);
+          Logger.warn(`  - 当前轮询: ${i + 1}/${maxRetries}`);
           
           // 如果连续超时次数过多，可能是网络问题
           if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
-            Logger.error(`连续超时${consecutiveTimeouts}次，可能存在网络问题: ${requestId}`);
+            Logger.error(`🌐 连续超时${consecutiveTimeouts}次，疑似网络问题:`);
+            Logger.error(`  - 任务ID: ${requestId}`);
+            Logger.error(`  - 将延长等待时间并重置计数`);
             // 延长等待时间但继续重试
             await new Promise(resolve => setTimeout(resolve, 10000)); // 额外等待10秒
             consecutiveTimeouts = 0; // 重置计数
@@ -485,23 +616,33 @@ class DoubaoVoiceService {
         
         // 如果是其他API错误，直接抛出
         if (!error.message.includes('timeout') && !error.message.includes('ECONNRESET') && !error.message.includes('ECONNREFUSED')) {
-          Logger.error(`豆包任务处理失败: ${requestId}, 错误: ${error.message}`);
+          Logger.error(`💥 豆包任务处理失败:`);
+          Logger.error(`  - 任务ID: ${requestId}`);
+          Logger.error(`  - 错误类型: ${error.constructor.name}`);
+          Logger.error(`  - 错误消息: ${error.message}`);
+          Logger.error(`  - 当前轮询: ${i + 1}/${maxRetries}`);
           throw error;
         }
         
         // 网络错误，记录并继续重试
-        Logger.warn(`网络错误 (第${i + 1}次查询)，继续重试: ${error.message}`);
+        Logger.warn(`🌐 网络错误 (第${i + 1}次查询):`);
+        Logger.warn(`  - 错误: ${error.message}`);
+        Logger.warn(`  - 继续重试...`);
         consecutiveTimeouts++;
         
         // 网络错误时延长等待时间
         if (consecutiveTimeouts >= 3) {
-          Logger.info(`网络不稳定，延长等待时间: ${requestId}`);
+          Logger.info(`⏳ 网络不稳定，延长等待时间: ${requestId}`);
           await new Promise(resolve => setTimeout(resolve, 5000));
         }
       }
     }
     
-    Logger.error(`豆包语音识别任务超时: ${requestId}, 已轮询${maxRetries}次，总等待时间: ${maxWaitTime/1000}秒`);
+    Logger.error(`💀 豆包语音识别任务超时:`);
+    Logger.error(`  - 任务ID: ${requestId}`);
+    Logger.error(`  - 已轮询次数: ${maxRetries}`);
+    Logger.error(`  - 总等待时间: ${maxWaitTime/60000}分钟`);
+    Logger.error(`  - 最后状态: 轮询超时`);
     throw new Error(`豆包语音识别任务超时，已等待${maxWaitTime/60000}分钟`);
   }
 
@@ -541,14 +682,30 @@ class DoubaoVoiceService {
       networkStatus: string;
       apiTest: string;
       suggestions: string[];
+      debugInfo: {
+        appKeyMasked: string;
+        accessKeyMasked: string;
+        endpoint: string;
+        userAgent: string;
+        timestamp: string;
+      }
     }
   }> {
     const details = {
       configStatus: '',
       networkStatus: '',
       apiTest: '',
-      suggestions: [] as string[]
+      suggestions: [] as string[],
+      debugInfo: {
+        appKeyMasked: '',
+        accessKeyMasked: '',
+        endpoint: '',
+        userAgent: 'yt-dlp-service/1.0',
+        timestamp: new Date().toISOString()
+      }
     };
+
+    Logger.info(`🔧 开始豆包API诊断...`);
 
     try {
       // 1. 检查配置
@@ -556,6 +713,12 @@ class DoubaoVoiceService {
       if (!this.appKey || !this.accessKey) {
         details.configStatus = '❌ API密钥未配置';
         details.suggestions.push('请在管理页面配置豆包API密钥');
+        details.suggestions.push('或检查环境变量 DOUBAO_APP_KEY 和 DOUBAO_ACCESS_KEY');
+        
+        Logger.error(`💥 豆包API配置检查失败:`);
+        Logger.error(`  - APP_KEY: ${this.appKey ? '已配置' : '❌ 未配置'}`);
+        Logger.error(`  - ACCESS_KEY: ${this.accessKey ? '已配置' : '❌ 未配置'}`);
+        
         return {
           success: false,
           message: '豆包API配置不完整',
@@ -563,27 +726,56 @@ class DoubaoVoiceService {
         };
       } else {
         details.configStatus = '✅ API密钥已配置';
+        details.debugInfo.appKeyMasked = `${this.appKey.substring(0, 8)}...`;
+        details.debugInfo.accessKeyMasked = `${this.accessKey.substring(0, 8)}...`;
+        details.debugInfo.endpoint = this.baseUrl;
+        
+        Logger.info(`✅ 豆包API配置检查通过:`);
+        Logger.info(`  - APP_KEY: ${details.debugInfo.appKeyMasked}`);
+        Logger.info(`  - ACCESS_KEY: ${details.debugInfo.accessKeyMasked}`);
+        Logger.info(`  - ENDPOINT: ${details.debugInfo.endpoint}`);
       }
 
       // 2. 检查网络连接
+      Logger.info(`🌐 开始网络连接测试...`);
       try {
         const testUrl = `https://${this.baseUrl}`;
+        const startTime = Date.now();
         const response = await axios.get(testUrl, { 
           timeout: 10000,
           validateStatus: () => true // 接受所有HTTP状态码
         });
-        details.networkStatus = `✅ 网络连接正常 (${response.status})`;
+        const responseTime = Date.now() - startTime;
+        
+        details.networkStatus = `✅ 网络连接正常 (${response.status}, ${responseTime}ms)`;
+        
+        Logger.info(`✅ 网络连接测试成功:`);
+        Logger.info(`  - 响应状态: ${response.status}`);
+        Logger.info(`  - 响应时间: ${responseTime}ms`);
+        Logger.info(`  - 服务器: ${response.headers.server || '未知'}`);
+        
       } catch (error: any) {
+        const errorType = error.code || 'UNKNOWN';
         if (error.code === 'ECONNABORTED') {
-          details.networkStatus = '❌ 网络连接超时';
+          details.networkStatus = '❌ 网络连接超时 (>10秒)';
           details.suggestions.push('检查服务器网络连接和DNS解析');
+          details.suggestions.push('尝试: ping openspeech.bytedance.com');
+        } else if (error.code === 'ENOTFOUND') {
+          details.networkStatus = '❌ DNS解析失败';
+          details.suggestions.push('检查DNS配置');
+          details.suggestions.push('尝试: nslookup openspeech.bytedance.com');
         } else {
-          details.networkStatus = `❌ 网络连接失败: ${error.message}`;
+          details.networkStatus = `❌ 网络连接失败: ${errorType}`;
           details.suggestions.push('检查防火墙和网络配置');
         }
+        
+        Logger.error(`💥 网络连接测试失败:`);
+        Logger.error(`  - 错误类型: ${errorType}`);
+        Logger.error(`  - 错误消息: ${error.message}`);
       }
 
       // 3. 测试API认证
+      Logger.info(`🔐 开始API认证测试...`);
       try {
         const testRequestId = this.generateRequestId();
         const testUrl = `https://${this.baseUrl}/api/v3/auc/bigmodel/query`;
@@ -596,56 +788,106 @@ class DoubaoVoiceService {
           'X-Api-Request-Id': testRequestId
         };
 
+        const startTime = Date.now();
         const response = await axios.post(testUrl, {
           request: { model_name: "bigmodel" }
         }, {
           headers,
           timeout: 10000
         });
+        const responseTime = Date.now() - startTime;
 
         const statusCode = response.headers['x-api-status-code'];
+        const message = response.headers['x-api-message'];
+        
+        Logger.info(`📡 API认证测试响应:`);
+        Logger.info(`  - HTTP状态: ${response.status}`);
+        Logger.info(`  - API状态码: ${statusCode || '无'}`);
+        Logger.info(`  - API消息: ${message || '无'}`);
+        Logger.info(`  - 响应时间: ${responseTime}ms`);
+        
         if (statusCode && statusCode !== '40000007') { // 40000007是找不到任务的正常错误
-          details.apiTest = `❌ API认证失败 (${statusCode})`;
+          details.apiTest = `❌ API认证失败 (${statusCode}: ${message})`;
           details.suggestions.push('检查API密钥是否正确');
+          details.suggestions.push('确认API密钥权限是否足够');
+          
+          Logger.error(`💥 API认证失败:`);
+          Logger.error(`  - 状态码: ${statusCode}`);
+          Logger.error(`  - 错误消息: ${message}`);
         } else {
-          details.apiTest = '✅ API认证正常';
+          details.apiTest = `✅ API认证正常 (${responseTime}ms)`;
+          
+          Logger.info(`✅ API认证测试通过:`);
+          Logger.info(`  - 认证成功，响应时间: ${responseTime}ms`);
         }
       } catch (error: any) {
+        const errorType = error.code || 'UNKNOWN';
+        const responseTime = Date.now() - (error.config?.metadata?.startTime || Date.now());
+        
         if (error.response?.status === 403) {
           details.apiTest = '❌ API认证失败: 权限被拒绝';
           details.suggestions.push('检查API密钥是否有效');
+          details.suggestions.push('确认账户是否有语音识别服务权限');
         } else if (error.code === 'ECONNABORTED') {
           details.apiTest = '❌ API测试超时';
           details.suggestions.push('豆包API服务响应缓慢，请稍后重试');
+          details.suggestions.push('检查网络延迟和带宽');
         } else {
-          details.apiTest = `❌ API测试失败: ${error.message}`;
+          details.apiTest = `❌ API测试失败: ${errorType}`;
           details.suggestions.push('检查API端点和密钥配置');
         }
+        
+        Logger.error(`💥 API认证测试失败:`);
+        Logger.error(`  - 错误类型: ${errorType}`);
+        Logger.error(`  - HTTP状态: ${error.response?.status || '无响应'}`);
+        Logger.error(`  - 响应时间: ${responseTime}ms`);
+        Logger.error(`  - 错误消息: ${error.message}`);
       }
 
       // 4. 生成建议
       if (details.suggestions.length === 0) {
-        details.suggestions.push('配置正常，可以尝试重新提交任务');
+        details.suggestions.push('✅ 配置正常，可以尝试重新提交任务');
         details.suggestions.push('如果仍有问题，可能是音频文件过大或格式不支持');
+        details.suggestions.push('建议音频文件小于100MB，格式为MP3');
       }
+
+      // 5. 添加通用排查建议
+      details.suggestions.push('');
+      details.suggestions.push('🔧 通用排查步骤:');
+      details.suggestions.push('1. 检查服务器时间是否正确');
+      details.suggestions.push('2. 确认防火墙允许HTTPS出站连接');
+      details.suggestions.push('3. 查看详细日志: pm2 logs yt-dlpservice --lines 100');
+      details.suggestions.push('4. 重启服务: pm2 restart yt-dlpservice');
 
       const success = details.configStatus.includes('✅') && 
                      details.networkStatus.includes('✅') && 
                      details.apiTest.includes('✅');
 
+      const resultMessage = success ? '✅ 豆包API诊断全部通过' : '⚠️ 发现问题，请查看详细信息';
+      
+      Logger.info(`🎯 豆包API诊断完成: ${success ? '成功' : '失败'}`);
+      Logger.info(`📋 诊断结果:`);
+      Logger.info(`  - 配置状态: ${details.configStatus}`);
+      Logger.info(`  - 网络状态: ${details.networkStatus}`);
+      Logger.info(`  - API测试: ${details.apiTest}`);
+
       return {
         success,
-        message: success ? '豆包API诊断通过' : '发现问题，请查看详细信息',
+        message: resultMessage,
         details
       };
 
     } catch (error: any) {
+      Logger.error(`💀 诊断过程异常失败:`);
+      Logger.error(`  - 错误类型: ${error.constructor.name}`);
+      Logger.error(`  - 错误消息: ${error.message}`);
+      
       return {
         success: false,
         message: `诊断过程失败: ${error.message}`,
         details: {
           ...details,
-          suggestions: ['诊断工具异常，请检查系统日志']
+          suggestions: ['❌ 诊断工具异常，请检查系统日志', '尝试重启服务后再次诊断']
         }
       };
     }
