@@ -4,37 +4,48 @@ module.exports = {
       name: 'yt-dlpservice',
       script: 'npm',
       args: 'start',
-      cwd: '/home/ubuntu/yt-dlpservice', // 根据实际用户和路径调整
+      cwd: '/home/ubuntu/yt-dlpservice',
       instances: 1,
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '2G',
       env: {
         NODE_ENV: 'production',
         PORT: 3000,
         HOSTNAME: '0.0.0.0'
       },
+      // 添加资源限制，减少对其他服务的影响
+      node_args: '--max-old-space-size=1024', // 限制内存使用到1GB
+      max_restarts: 10,
+      min_uptime: '10s',
+      
+      // 日志配置
+      out_file: './logs/out.log',
+      error_file: './logs/error.log',
+      log_file: './logs/combined.log',
+      time: true,
+      
+      // 进程优先级设置（降低优先级，让n8n有更高优先级）
+      exec_mode: 'fork',
+      nice: 10, // 降低进程优先级
+      
+      // 监控配置
+      monitoring: true,
+      pmx: true,
+      
+      // 优雅关闭
+      kill_timeout: 5000,
+      listen_timeout: 3000,
+      
+      // 环境变量
       env_production: {
         NODE_ENV: 'production',
         PORT: 3000,
-        HOSTNAME: '0.0.0.0'
-      },
-      log_file: './logs/app.log',
-      out_file: './logs/out.log',
-      error_file: './logs/error.log',
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      min_uptime: '10s',
-      max_restarts: 10,
-      kill_timeout: 5000,
-      // 自动重启条件
-      restart_delay: 4000,
-      // 监控配置
-      monitoring: false,
-      // 实例配置
-      exec_mode: 'fork',
-      // 环境变量文件
-      env_file: '.env'
+        HOSTNAME: '0.0.0.0',
+        // 添加Node.js性能优化
+        NODE_OPTIONS: '--max-old-space-size=1024 --optimize-for-size',
+        UV_THREADPOOL_SIZE: 4 // 限制线程池大小
+      }
     }
   ],
 
