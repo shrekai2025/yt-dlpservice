@@ -1,17 +1,18 @@
 # YT-DLP Service
 
-基于 **yt-dlp** 和 **通义听悟 API** 的在线视频内容提取工具。支持从 YouTube、哔哩哔哩等平台下载视频，自动提取音频并转换为文字。
+基于 **yt-dlp** 和 **语音识别API** 的在线视频内容提取工具。支持从 YouTube、哔哩哔哩等平台下载视频，自动提取音频并转换为文字。
 
 ## ✨ 功能特点
 
 - 🎥 **多平台支持**: YouTube、哔哩哔哩 (可扩展其他平台)
 - 🎵 **音频提取**: 自动从视频中提取高质量音频
-- 📝 **语音转文字**: 集成通义听悟 API，支持自动语言识别
+- 📝 **语音转文字**: 支持豆包语音API和通义听悟API，支持自动语言识别
 - 📊 **任务管理**: Web 管理界面，实时查看任务状态
 - 🔄 **异步处理**: 后台异步任务队列，支持并发处理
 - 💾 **数据持久化**: SQLite 数据库存储任务记录和转录结果
 - 🚀 **易于部署**: 一键部署脚本，支持 PM2 进程管理
 - 🔧 **配置灵活**: 支持环境变量配置，音频质量参数可调
+- 🎛️ **多服务商**: 支持豆包语音和通义听悟两种语音识别服务
 
 ## 🏗️ 技术架构
 
@@ -31,7 +32,8 @@
 ### 核心服务
 - **yt-dlp** - 视频下载
 - **FFmpeg** - 音频处理
-- **通义听悟 API** - 语音转文字
+- **豆包语音API** - 火山引擎语音识别服务
+- **通义听悟API** - 阿里云语音转文字服务
 - **PM2** - 进程管理
 
 ## 🎯 使用场景
@@ -65,286 +67,281 @@ npx prisma db push
 npm run dev
 ```
 
-访问 http://localhost:3000
+### 环境变量配置
 
-### 服务器部署
-
-详细部署指南请参考 [DEPLOYMENT.md](./DEPLOYMENT.md)
+创建 `.env` 文件并配置以下变量：
 
 ```bash
-# 1. 安装系统依赖
-chmod +x deploy/install.sh
-./deploy/install.sh
+# 数据库配置
+DATABASE_URL="file:./dev.db"
 
-# 2. 部署应用
-chmod +x deploy/deploy.sh
-./deploy/deploy.sh
+# 语音服务提供商选择 (doubao 或 tingwu)
+VOICE_SERVICE_PROVIDER="doubao"
 
-# 3. 配置环境变量 (重要!)
-nano .env
-# 配置通义 API 密钥
+# 豆包语音API配置 (使用豆包时必填)
+DOUBAO_ACCESS_KEY_ID="your_doubao_access_key_id"
+DOUBAO_ACCESS_KEY_SECRET="your_doubao_access_key_secret"
+DOUBAO_REGION="cn-beijing"
+DOUBAO_ENDPOINT="https://openspeech.bytedance.com"
 
-# 4. 重启服务
-pm2 restart yt-dlpservice
-```
-
-## 📖 API 文档
-
-### 内部 API (tRPC)
-
-#### 任务管理
-- `task.create` - 创建新任务
-- `task.list` - 获取任务列表
-- `task.getById` - 获取任务详情
-- `task.update` - 更新任务状态
-- `task.delete` - 删除任务
-- `task.process` - 手动处理任务
-- `task.getVideoInfo` - 获取视频信息
-
-#### 配置管理
-- `config.get` - 获取配置值
-- `config.set` - 设置配置值
-- `config.testDatabase` - 测试数据库连接
-
-### 外部 API (REST)
-
-```bash
-# 创建任务
-POST /api/trpc/task.create
-{
-  "url": "https://www.youtube.com/watch?v=..."
-}
-
-# 获取任务列表
-GET /api/trpc/task.list
-
-# 获取任务详情
-GET /api/trpc/task.getById?id=task_id
-```
-
-## 🔧 配置说明
-
-### 环境变量
-
-```env
-# 数据库
-DATABASE_URL="file:./data/app.db"
-
-# 通义听悟 API (必需)
-TINGWU_ACCESS_KEY_ID=your_access_key_id
-TINGWU_ACCESS_KEY_SECRET=your_access_key_secret
-TINGWU_REGION=cn-beijing
+# 通义听悟API配置 (使用通义时必填)
+TINGWU_ACCESS_KEY_ID="your_tingwu_access_key_id"
+TINGWU_ACCESS_KEY_SECRET="your_tingwu_access_key_secret"
+TINGWU_REGION="cn-beijing"
 
 # 应用配置
-MAX_CONCURRENT_TASKS=10          # 最大并发任务数
-TEMP_DIR=/tmp/yt-dlpservice     # 临时文件目录
-AUDIO_FORMAT=mp3                # 音频格式
-AUDIO_BITRATE=128k              # 音频比特率
+MAX_CONCURRENT_TASKS="10"
+TEMP_DIR="/tmp/yt-dlpservice"
+AUDIO_FORMAT="mp3"
+AUDIO_BITRATE="128k"
 
-# 文件清理
-MAX_FILE_AGE_HOURS=1            # 文件保存时间
-CLEANUP_INTERVAL_HOURS=24       # 清理间隔
+# 文件清理配置
+MAX_FILE_AGE_HOURS="1"
+CLEANUP_INTERVAL_HOURS="24"
+
+# Puppeteer 配置
+PUPPETEER_HEADLESS="false"
+PUPPETEER_ARGS="--no-sandbox --disable-setuid-sandbox"
+BROWSER_DATA_DIR="./data/browser_data"
 ```
 
-### 支持的平台
+## 🔧 语音服务配置
 
-当前支持的视频平台 (配置文件: `src/config/platforms.json`):
+### 豆包语音API配置
 
-- **YouTube**: youtube.com, youtu.be
-- **哔哩哔哩**: bilibili.com, b23.tv
+1. **注册火山引擎账号**
+   - 访问 [火山引擎控制台](https://console.volcengine.com/)
+   - 注册并完成实名认证
 
-## 📱 界面预览
+2. **开通语音识别服务**
+   - 在控制台中搜索"语音识别"
+   - 开通语音识别服务
+   - 获取 Access Key ID 和 Access Key Secret
 
-### 主页
-- 项目介绍和功能概览
-- 快速导航到管理面板
+3. **配置环境变量**
+   ```bash
+   VOICE_SERVICE_PROVIDER="doubao"
+   DOUBAO_ACCESS_KEY_ID="your_access_key_id"
+   DOUBAO_ACCESS_KEY_SECRET="your_access_key_secret"
+   DOUBAO_REGION="cn-beijing"
+   ```
 
-### 管理面板 (/admin)
-- **任务创建**: URL 输入和任务创建
-- **任务列表**: 状态查看、进度跟踪
-- **配置管理**: 系统参数设置
-- **视频预览**: URL 预览和信息获取
-- **系统状态**: 下载器状态、数据库连接测试
+4. **在管理界面配置**
+   - 访问 `http://localhost:3000/admin`
+   - 在"配置管理"中设置豆包语音相关配置
+   - 点击"测试语音服务连接"验证配置
 
-## 🔍 任务流程
+### 通义听悟API配置
 
-1. **URL 验证**: 检查输入的视频 URL 是否支持
-2. **信息获取**: 使用 yt-dlp 获取视频基本信息
-3. **视频下载**: 下载视频文件到临时目录
-4. **音频提取**: 使用 FFmpeg 提取音频
-5. **语音转文字**: 调用通义听悟 API 进行转录
-6. **结果保存**: 将转录结果保存到数据库
-7. **文件清理**: 清理临时文件
+1. **注册阿里云账号**
+   - 访问 [阿里云控制台](https://ecs.console.aliyun.com/)
+   - 注册并完成实名认证
 
-## 🛠️ 开发
+2. **开通通义听悟服务**
+   - 在控制台中搜索"通义听悟"
+   - 开通服务并获取API密钥
 
-### 项目结构
+3. **配置环境变量**
+   ```bash
+   VOICE_SERVICE_PROVIDER="tingwu"
+   TINGWU_ACCESS_KEY_ID="your_access_key_id"
+   TINGWU_ACCESS_KEY_SECRET="your_access_key_secret"
+   TINGWU_REGION="cn-beijing"
+   ```
 
-```
-yt-dlpservice/
-├── src/
-│   ├── app/                 # Next.js App Router
-│   ├── server/              # 服务端代码
-│   ├── lib/                 # 工具库和服务
-│   ├── types/               # TypeScript 类型定义
-│   ├── config/              # 配置文件
-│   └── styles/              # 样式文件
-├── prisma/                  # 数据库模式
-├── deploy/                  # 部署脚本
-├── public/                  # 静态资源
-└── data/                    # SQLite 数据库
-```
+## 📊 管理界面功能
 
-### 开发脚本
+访问 `http://localhost:3000/admin` 使用管理界面：
+
+### 任务管理
+- ✅ 创建下载任务（支持音频、视频、混合模式）
+- ✅ 查看任务状态和进度
+- ✅ 批量处理待处理任务
+- ✅ 删除任务记录
+
+### 语音服务配置
+- ✅ 切换语音服务提供商（豆包/通义）
+- ✅ 配置API密钥和参数
+- ✅ 测试服务连接状态
+- ✅ 实时配置更新
+
+### 浏览器管理
+- ✅ 启动/关闭专用浏览器
+- ✅ 管理登录状态和Cookies
+- ✅ 查看浏览器运行状态
+
+### 系统配置
+- ✅ 动态配置系统参数
+- ✅ 查看所有配置项
+- ✅ 实时配置生效
+
+## 🐳 Docker 部署
 
 ```bash
-# 开发模式
-npm run dev
+# 构建镜像
+docker build -t yt-dlpservice .
 
-# 类型检查
-npm run typecheck
-
-# 构建生产版本
-npm run build
-
-# 启动生产服务
-npm run start
-
-# 数据库操作
-npx prisma studio          # 数据库可视化管理
-npx prisma db push          # 推送数据库结构
-npx prisma generate         # 生成 Prisma Client
+# 运行容器
+docker run -d \
+  --name yt-dlpservice \
+  -p 3000:3000 \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/temp:/tmp/yt-dlpservice \
+  -e DATABASE_URL="file:./data/production.db" \
+  -e VOICE_SERVICE_PROVIDER="doubao" \
+  -e DOUBAO_ACCESS_KEY_ID="your_key" \
+  -e DOUBAO_ACCESS_KEY_SECRET="your_secret" \
+  yt-dlpservice
 ```
 
-## 📊 监控和日志
+或使用 docker-compose：
 
-### PM2 监控
 ```bash
-pm2 status                  # 服务状态
-pm2 logs yt-dlpservice      # 实时日志
-pm2 monit                   # 资源监控
+# 启动服务
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止服务
+docker-compose down
 ```
 
-### 日志文件
-- `logs/app.log` - 应用日志
-- `logs/out.log` - 输出日志  
-- `logs/error.log` - 错误日志
+## 🔄 服务器部署
 
-## 🔒 安全注意事项
+### 使用部署脚本
 
-1. **API 密钥安全**: 请妥善保管通义 API 密钥
-2. **访问控制**: 生产环境建议配置反向代理和认证
-3. **文件权限**: 确保临时文件目录权限正确
-4. **网络安全**: 配置防火墙，只开放必要端口
-5. **定期更新**: 及时更新系统和依赖包
-
-## 📈 性能优化
-
-### 系统级优化
-- 使用 SSD 存储提高 I/O 性能
-- 配置足够的内存和 swap 空间
-- 优化网络设置提高下载速度
-
-### 应用级优化
-- 调整并发任务数 (`MAX_CONCURRENT_TASKS`)
-- 优化音频质量参数平衡质量和性能
-- 配置合适的文件清理策略
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📄 许可证
-
-MIT License
-
-## 🙋‍♂️ 支持
-
-如有问题，请通过以下方式联系:
-
-- 提交 GitHub Issue
-- 查看 [部署文档](./DEPLOYMENT.md)
-- 检查应用日志进行故障排除
-
----
-
-**开发状态**: 当前版本支持 YouTube 和哔哩哔哩，通义听悟 API 集成正在开发中。
-
-
-
-
-# 【远程部署】
-# 更新系统
-sudo apt update && sudo apt upgrade -y
-# 克隆项目
-git clone https://github.com/shrekai2025/yt-dlpservice.git
+```bash
+# 克隆项目到服务器
+git clone https://github.com/your-username/yt-dlpservice.git
 cd yt-dlpservice
 
-# 运行安装脚本（安装所有依赖）
+# 运行安装脚本
 chmod +x deploy/install.sh
 ./deploy/install.sh
-# 复制环境变量模板
-cp .env.example .env
 
-# 编辑配置文件
-nano .env
+# 配置环境变量
+cp .env.production .env
+nano .env  # 编辑配置
+
 # 运行部署脚本
 chmod +x deploy/deploy.sh
 ./deploy/deploy.sh
-# 检查服务状态
+```
+
+### PM2 进程管理
+
+```bash
+# 启动服务
+pm2 start ecosystem.config.cjs
+
+# 查看状态
 pm2 status
 
-# 查看服务日志
-pm2 logs yt-dlpservice --lines 20
-
-# 测试本地访问
-curl http://localhost:3000
-
-# 配置防火墙
-sudo ufw allow 3000/tcp
-sudo ufw status
-
-标准env文件
-# 基础配置
-NODE_ENV=production
-PORT=3000
-HOSTNAME=0.0.0.0
-
-# 数据库
-DATABASE_URL="file:./data/app.db"
-
-# 通义听悟 API（如需语音转录功能）
-TINGWU_ACCESS_KEY_ID=your_access_key_id_here
-TINGWU_ACCESS_KEY_SECRET=your_access_key_secret_here
-TINGWU_REGION=cn-beijing
-
-# 任务配置
-MAX_CONCURRENT_TASKS=10
-TEMP_DIR=/tmp/yt-dlpservice
-AUDIO_FORMAT=mp3
-AUDIO_BITRATE=128k
-
-# 文件清理
-MAX_FILE_AGE_HOURS=1
-CLEANUP_INTERVAL_HOURS=24
-
-# Puppeteer 浏览器
-PUPPETEER_HEADLESS=true
-PUPPETEER_ARGS=--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-gpu
-BROWSER_DATA_DIR=./data/browser_data
-
-# 【更新服务】
-# 在服务器上执行
-cd ~/yt-dlpservice
-
-# 停止服务
-pm2 stop yt-dlpservice
-
-# 拉取最新代码
-git pull origin main
-
-# 重新构建
-npm run build
+# 查看日志
+pm2 logs yt-dlpservice
 
 # 重启服务
 pm2 restart yt-dlpservice
+
+# 停止服务
+pm2 stop yt-dlpservice
+```
+
+## 📝 API 接口
+
+### 创建任务
+```typescript
+POST /api/trpc/task.create
+{
+  "url": "https://www.youtube.com/watch?v=example",
+  "downloadType": "AUDIO_ONLY" // AUDIO_ONLY | VIDEO_ONLY | BOTH
+}
+```
+
+### 查询任务
+```typescript
+GET /api/trpc/task.getAll
+```
+
+### 配置语音服务
+```typescript
+POST /api/trpc/config.setVoiceProvider
+{
+  "provider": "doubao" // doubao | tingwu
+}
+```
+
+### 测试语音服务
+```typescript
+POST /api/trpc/config.testVoiceService
+{
+  "provider": "doubao"
+}
+```
+
+## 🔍 故障排除
+
+### 常见问题
+
+1. **语音识别失败**
+   - 检查API密钥是否正确配置
+   - 确认服务商账户余额充足
+   - 验证网络连接和防火墙设置
+
+2. **视频下载失败**
+   - 确认 yt-dlp 已正确安装
+   - 检查视频URL是否有效
+   - 查看是否需要登录认证
+
+3. **浏览器启动失败**
+   - 检查系统是否安装 Chrome/Chromium
+   - 确认 Puppeteer 配置正确
+   - 查看系统权限设置
+
+### 日志查看
+
+```bash
+# 开发环境
+npm run dev
+
+# 生产环境 (PM2)
+pm2 logs yt-dlpservice
+
+# Docker 环境
+docker-compose logs -f
+```
+
+## 🤝 贡献指南
+
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 打开 Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
+
+## 🙏 致谢
+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - 强大的视频下载工具
+- [Next.js](https://nextjs.org/) - React 开发框架
+- [Prisma](https://www.prisma.io/) - 现代数据库工具包
+- [tRPC](https://trpc.io/) - 端到端类型安全 API
+- [火山引擎](https://www.volcengine.com/) - 豆包语音识别服务
+- [阿里云](https://www.aliyun.com/) - 通义听悟语音服务
+
+## 📞 支持
+
+如果您在使用过程中遇到问题，请：
+
+1. 查看 [故障排除](#🔍-故障排除) 部分
+2. 搜索已有的 [Issues](https://github.com/your-username/yt-dlpservice/issues)
+3. 创建新的 Issue 描述问题
+4. 加入讨论群组获取帮助
+
+---
+
+**注意**: 请确保遵守相关平台的服务条款，合理使用本工具。

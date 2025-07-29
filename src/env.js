@@ -10,10 +10,18 @@ export const env = createEnv({
     NODE_ENV: z.enum(["development", "test", "production"]),
     DATABASE_URL: z.string().min(1),
     
-    // 通义听悟API配置
+    // 通义听悟API配置（保留）
     TINGWU_ACCESS_KEY_ID: z.string().min(1).optional(),
     TINGWU_ACCESS_KEY_SECRET: z.string().min(1).optional(),
     TINGWU_REGION: z.string().min(1).default("cn-beijing"),
+    
+    // 豆包语音API配置（新增）
+    DOUBAO_APP_KEY: z.string().min(1).optional(),
+    DOUBAO_ACCESS_KEY: z.string().min(1).optional(), 
+    DOUBAO_ENDPOINT: z.string().min(1).default("openspeech.bytedance.com"),
+    
+    // 语音服务选择配置
+    VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao"]).default("doubao"),
     
     // 应用配置
     MAX_CONCURRENT_TASKS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("10"),
@@ -51,6 +59,12 @@ export const env = createEnv({
     TINGWU_ACCESS_KEY_ID: process.env.TINGWU_ACCESS_KEY_ID,
     TINGWU_ACCESS_KEY_SECRET: process.env.TINGWU_ACCESS_KEY_SECRET,
     TINGWU_REGION: process.env.TINGWU_REGION,
+    
+    DOUBAO_APP_KEY: process.env.DOUBAO_APP_KEY,
+    DOUBAO_ACCESS_KEY: process.env.DOUBAO_ACCESS_KEY,
+    DOUBAO_ENDPOINT: process.env.DOUBAO_ENDPOINT,
+    
+    VOICE_SERVICE_PROVIDER: process.env.VOICE_SERVICE_PROVIDER,
     
     MAX_CONCURRENT_TASKS: process.env.MAX_CONCURRENT_TASKS,
     TEMP_DIR: process.env.TEMP_DIR,

@@ -1,166 +1,169 @@
 import { z } from 'zod'
+import { createTRPCRouter, publicProcedure, loggedProcedure } from '~/server/api/trpc'
 import { TRPCError } from '@trpc/server'
-
-import { createTRPCRouter, loggedProcedure } from '~/server/api/trpc'
-import { configSchema } from '~/lib/utils/validation'
+import { db } from '~/server/db'
 import { ConfigManager } from '~/lib/utils/config'
+import { doubaoVoiceService } from '~/lib/services/doubao-voice'
+import { Logger } from '~/lib/utils/logger'
+import * as fs from 'fs/promises'
 
 export const configRouter = createTRPCRouter({
-  /**
-   * 获取单个配置值
-   */
-  get: loggedProcedure
-    .input(z.object({
-      key: z.string().min(1, '配置键不能为空'),
-    }))
+  // 获取所有配置
+  getAll: publicProcedure.query(async () => {
+    try {
+      const configs = await ConfigManager.getAll()
+      return {
+        success: true,
+        data: configs
+      }
+    } catch (error) {
+      Logger.error(`获取配置失败: ${error}`)
+      throw new TRPCError({
+        code: 'INTERNAL_SERVER_ERROR',
+        message: `获取配置失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+      })
+    }
+  }),
+
+  // 获取单个配置
+  get: publicProcedure
+    .input(z.object({ key: z.string() }))
     .query(async ({ input }) => {
       try {
         const value = await ConfigManager.get(input.key)
-        return { key: input.key, value }
-      } catch (error) {
-        throw new TRPCError({
-          code: 'NOT_FOUND',
-          message: error instanceof Error ? error.message : '配置不存在',
-        })
-      }
-    }),
-
-  /**
-   * 获取所有配置
-   */
-  getAll: loggedProcedure
-    .query(async () => {
-      const configs = await ConfigManager.getAll()
-      return Object.entries(configs).map(([key, value]) => ({
-        key,
-        value,
-      }))
-    }),
-
-  /**
-   * 获取类型化的配置
-   */
-  getTyped: loggedProcedure
-    .query(async () => {
-      return await ConfigManager.getTyped()
-    }),
-
-  /**
-   * 设置配置值
-   */
-  set: loggedProcedure
-    .input(configSchema)
-    .mutation(async ({ input }) => {
-      try {
-        await ConfigManager.set(input)
-        return { 
-          success: true, 
-          message: `配置 ${input.key} 设置成功`,
-          config: input
+        return {
+          success: true,
+          data: { key: input.key, value }
         }
       } catch (error) {
+        Logger.error(`获取配置失败: ${error}`)
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : '配置设置失败',
+          message: `获取配置失败: ${error instanceof Error ? error.message : 'Unknown error'}`
         })
       }
     }),
 
-  /**
-   * 删除配置
-   */
-  delete: loggedProcedure
+  // 设置配置
+  set: publicProcedure
     .input(z.object({
-      key: z.string().min(1, '配置键不能为空'),
+      key: z.string(),
+      value: z.string()
     }))
     .mutation(async ({ input }) => {
       try {
-        await ConfigManager.delete(input.key)
-        return { 
-          success: true, 
-          message: `配置 ${input.key} 删除成功` 
+        await ConfigManager.set({ key: input.key, value: input.value })
+        Logger.info(`配置已设置: ${input.key} = ${input.value}`)
+        return {
+          success: true,
+          message: '配置设置成功'
         }
       } catch (error) {
+        Logger.error(`设置配置失败: ${error}`)
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: error instanceof Error ? error.message : '配置删除失败',
+          message: `设置配置失败: ${error instanceof Error ? error.message : 'Unknown error'}`
         })
       }
     }),
 
-  /**
-   * 清空配置缓存
-   */
-  clearCache: loggedProcedure
-    .mutation(async () => {
-      ConfigManager.clearCache()
-      return { 
-        success: true, 
-        message: '配置缓存已清空' 
-      }
-    }),
-
-  /**
-   * 预热配置缓存
-   */
-  warmupCache: loggedProcedure
-    .mutation(async () => {
-      await ConfigManager.warmup()
-      return { 
-        success: true, 
-        message: '配置缓存预热完成' 
-      }
-    }),
-
-  /**
-   * 测试数据库连接
-   */
-  testDatabase: loggedProcedure
-    .mutation(async ({ ctx }) => {
+  // 删除配置
+  delete: publicProcedure
+    .input(z.object({ key: z.string() }))
+    .mutation(async ({ input }) => {
       try {
-        // 测试写入
-        const testConfig = await ctx.db.config.create({
-          data: {
-            key: 'DB_TEST_' + Date.now(),
-            value: 'test_value'
-          }
+        await ConfigManager.delete(input.key)
+        Logger.info(`配置已删除: ${input.key}`)
+        return {
+          success: true,
+          message: '配置删除成功'
+        }
+      } catch (error) {
+        Logger.error(`删除配置失败: ${error}`)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `删除配置失败: ${error instanceof Error ? error.message : 'Unknown error'}`
         })
+      }
+    }),
 
-        // 测试读取
-        const readTest = await ctx.db.config.findUnique({
-          where: { key: testConfig.key }
-        })
-
-        // 测试删除
-        await ctx.db.config.delete({
-          where: { key: testConfig.key }
-        })
-
-        // 验证删除成功
-        const deletedTest = await ctx.db.config.findUnique({
-          where: { key: testConfig.key }
-        })
-
-        if (readTest && !deletedTest) {
+  // 测试语音服务
+  testVoiceService: publicProcedure
+    .input(z.object({
+      provider: z.enum(['doubao', 'tingwu']).optional()
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        const provider = input.provider || 'doubao'
+        
+        if (provider === 'doubao') {
+          const status = await doubaoVoiceService.checkServiceStatus()
           return {
             success: true,
-            message: '数据库连接测试成功！读写和删除操作均正常',
-            details: {
-              writeTest: !!testConfig,
-              readTest: !!readTest,
-              deleteTest: !deletedTest,
-              testKey: testConfig.key
+            data: {
+              provider: 'doubao',
+              available: status.available,
+              message: status.message
             }
           }
         } else {
-          throw new Error('数据库操作验证失败')
+          // 通义听悟测试逻辑
+          return {
+            success: true,
+            data: {
+              provider: 'tingwu',
+              available: false,
+              message: '通义听悟API测试功能开发中'
+            }
+          }
         }
       } catch (error) {
-        return {
-          success: false,
-          message: `数据库连接测试失败: ${error instanceof Error ? error.message : '未知错误'}`,
-          details: null
-        }
+        Logger.error(`测试语音服务失败: ${error}`)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `测试语音服务失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+        })
       }
     }),
+
+  // 豆包API测试 - 直接调用API
+  testDoubaoAPI: publicProcedure
+    .input(z.object({
+      audioData: z.string(), // Base64 编码的音频数据
+      fileName: z.string()
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        Logger.info(`开始豆包API测试，文件: ${input.fileName}`)
+        
+        // 将Base64数据写入临时文件
+        const tempFile = `/tmp/doubao_test_${Date.now()}.mp3`
+        const audioBuffer = Buffer.from(input.audioData, 'base64')
+        await fs.writeFile(tempFile, audioBuffer)
+        
+        // 调用豆包语音服务进行转录
+        const transcription = await doubaoVoiceService.speechToText(tempFile)
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempFile)
+        } catch (cleanupError) {
+          Logger.warn(`清理临时文件失败: ${cleanupError}`)
+        }
+        
+        return {
+          success: true,
+          data: {
+            transcription,
+            message: '豆包API测试成功'
+          }
+        }
+      } catch (error) {
+        Logger.error(`豆包API测试失败: ${error}`)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `豆包API测试失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+        })
+      }
+    })
 }) 
