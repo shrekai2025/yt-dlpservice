@@ -9,13 +9,32 @@ import { browserManager } from './browser-manager'
 
 const execAsync = promisify(exec)
 
-export class VideoDownloader {
+class VideoDownloader {
+  private static instance: VideoDownloader;
   private configManager: ConfigManager
   private ytDlpPath: string = 'yt-dlp'
 
-  constructor() {
+  private constructor() {
     this.configManager = new ConfigManager()
     this.detectYtDlpPath()
+  }
+
+  public static getInstance(): VideoDownloader {
+    if (!VideoDownloader.instance) {
+      VideoDownloader.instance = new VideoDownloader();
+    }
+    return VideoDownloader.instance;
+  }
+
+  /**
+   * 构建 yt-dlp 命令
+   */
+  private buildYtDlpCommand(args: string): string {
+    if (this.ytDlpPath.includes('python3 -m')) {
+      return `${this.ytDlpPath} ${args}`
+    } else {
+      return `"${this.ytDlpPath}" ${args}`
+    }
   }
 
   /**
@@ -29,15 +48,24 @@ export class VideoDownloader {
       '/home/ubuntu/.local/bin/yt-dlp', // Ubuntu 用户本地安装
       process.env.HOME + '/.local/bin/yt-dlp', // 动态用户本地路径
       '/opt/homebrew/bin/yt-dlp', // macOS Homebrew
-      '/usr/local/opt/yt-dlp/bin/yt-dlp' // 其他可能位置
+      '/usr/local/opt/yt-dlp/bin/yt-dlp', // 其他可能位置
+      'python3 -m yt_dlp' // Python 模块方式调用
     ]
 
     for (const testPath of possiblePaths) {
       try {
-        await execAsync(`"${testPath}" --version`)
-        this.ytDlpPath = testPath
-        Logger.info(`使用 yt-dlp 路径: ${this.ytDlpPath}`)
-        return
+        if (testPath.includes('python3 -m')) {
+          // 对于 Python 模块调用方式，需要特殊处理
+          await execAsync(`${testPath} --version`)
+          this.ytDlpPath = testPath
+          Logger.info(`使用 yt-dlp 路径: ${this.ytDlpPath}`)
+          return
+        } else {
+          await execAsync(`"${testPath}" --version`)
+          this.ytDlpPath = testPath
+          Logger.info(`使用 yt-dlp 路径: ${this.ytDlpPath}`)
+          return
+        }
       } catch (error) {
         continue
       }
@@ -51,7 +79,7 @@ export class VideoDownloader {
    */
   async checkAvailability(): Promise<{ available: boolean; version?: string; path: string }> {
     try {
-      const { stdout } = await execAsync(`"${this.ytDlpPath}" --version`)
+      const { stdout } = await execAsync(this.buildYtDlpCommand('--version'))
       const version = stdout.trim()
       return { available: true, version, path: this.ytDlpPath }
     } catch (error) {
@@ -67,7 +95,7 @@ export class VideoDownloader {
       const tempDir = '/tmp/yt-dlpservice'
       await fs.mkdir(tempDir, { recursive: true })
 
-      let command = `"${this.ytDlpPath}" --dump-json --no-warnings`
+      let command = this.buildYtDlpCommand('--dump-json --no-warnings')
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
@@ -160,7 +188,7 @@ export class VideoDownloader {
 
       const outputTemplate = path.join(outputDir, '%(id)s_video.%(ext)s')
       
-      let command = `"${this.ytDlpPath}" --no-warnings -f "${format}[height<=${quality}]" -o "${outputTemplate}"`
+      let command = this.buildYtDlpCommand(`--no-warnings -f "${format}[height<=${quality}]" -o "${outputTemplate}"`)
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
@@ -230,7 +258,7 @@ export class VideoDownloader {
         audioFormat = "30280/30232/30216/bestaudio";
       }
 
-      let command = `"${this.ytDlpPath}" --no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`;
+      let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`);
       
       // 如果是 YouTube URL 且启用浏览器 cookies
       if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
@@ -259,7 +287,7 @@ export class VideoDownloader {
         if (url.includes('bilibili.com') && error instanceof Error) {
           Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
           // 使用更通用的音频格式重试
-          const fallbackCommand = `"${this.ytDlpPath}" --no-warnings -f "[ext=m4a]/[ext=mp3]/bestaudio" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
+          const fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "[ext=m4a]/[ext=mp3]/bestaudio" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`)
           Logger.info(`备用下载命令: ${fallbackCommand}`)
           try {
             const fallbackResult = await execAsync(fallbackCommand)
@@ -269,7 +297,7 @@ export class VideoDownloader {
             Logger.error(`备用格式下载失败，错误: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
             Logger.warn('备用格式也失败，尝试最简单的方式...')
             // 最后的尝试：不指定格式，让 yt-dlp 自动选择最佳格式
-            const simpleCommand = `"${this.ytDlpPath}" --no-warnings --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`
+            const simpleCommand = this.buildYtDlpCommand(`--no-warnings --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate "${url}"`)
             Logger.info(`简单下载命令: ${simpleCommand}`)
             try {
               const simpleResult = await execAsync(simpleCommand)
@@ -423,4 +451,6 @@ export class VideoDownloader {
       Logger.error(`清理文件失败: ${error}`)
     }
   }
-} 
+}
+
+export const videoDownloader = VideoDownloader.getInstance(); 

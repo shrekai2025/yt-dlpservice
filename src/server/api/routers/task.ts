@@ -14,11 +14,10 @@ import {
   getDownloadTypeDisplayName
 } from '~/lib/utils/validation'
 import { TaskProcessor } from '~/lib/services/task-processor'
-import { VideoDownloader } from '~/lib/services/video-downloader'
+import { videoDownloader } from '~/lib/services/video-downloader'
 import { Logger } from '~/lib/utils/logger'
 
 const taskProcessor = new TaskProcessor()
-const videoDownloader = new VideoDownloader()
 
 export const taskRouter = createTRPCRouter({
   // 创建新任务
