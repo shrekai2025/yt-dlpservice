@@ -1,54 +1,44 @@
 import { z } from 'zod'
-import type { TaskStatus, Platform, DownloadType } from '~/types/task'
+import { urlNormalizer } from '../services/url-normalizer'
 import platformsConfig from '../../config/platforms.json'
+import type { TaskStatus } from '~/types/task'
 
-// URL验证
-export const urlSchema = z.string().url('请输入有效的URL')
+type Platform = keyof typeof platformsConfig
 
-// 下载类型验证
-export const downloadTypeSchema = z.enum(['AUDIO_ONLY', 'VIDEO_ONLY', 'BOTH']).default('AUDIO_ONLY')
+// URL 验证模式
+export const urlSchema = z.string().url('请提供有效的URL')
 
-// 任务创建验证
+// 任务状态枚举
+const taskStatusEnum = z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLETED', 'FAILED'])
+
+// 下载类型枚举
+const downloadTypeEnum = z.enum(['AUDIO_ONLY', 'VIDEO_ONLY', 'BOTH'])
+
+// 创建任务验证
 export const createTaskSchema = z.object({
   url: urlSchema,
-  downloadType: downloadTypeSchema.optional()
+  downloadType: downloadTypeEnum.default('AUDIO_ONLY')
 })
 
-// 任务更新验证
+// 更新任务验证
 export const updateTaskSchema = z.object({
-  id: z.string().min(1, 'ID不能为空'),
-  status: z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLETED', 'FAILED']).optional(),
-  title: z.string().optional(),
-  videoPath: z.string().optional(),
-  audioPath: z.string().optional(),
-  transcription: z.string().optional(),
-  tingwuTaskId: z.string().optional(),
+  status: taskStatusEnum.optional(),
   errorMessage: z.string().optional(),
-  retryCount: z.number().int().min(0).optional(),
-  duration: z.number().int().min(0).optional(),
-  fileSize: z.number().int().min(0).optional()
+  transcription: z.string().optional()
 })
 
 // 任务查询验证
 export const taskQuerySchema = z.object({
-  status: z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLETED', 'FAILED']).optional(),
+  status: taskStatusEnum.optional(),
   platform: z.enum(['youtube', 'bilibili', 'other']).optional(),
-  downloadType: downloadTypeSchema.optional(),
-  limit: z.number().int().min(1).max(100).default(20),
-  offset: z.number().int().min(0).default(0),
-  orderBy: z.enum(['createdAt', 'updatedAt']).default('createdAt'),
-  orderDirection: z.enum(['asc', 'desc']).default('desc')
+  limit: z.number().min(1).max(100).default(20),
+  offset: z.number().min(0).default(0)
 })
 
-// 配置验证
-export const configSchema = z.object({
-  key: z.string().min(1, '配置键不能为空'),
-  value: z.string()
-})
-
-// ID验证
-export const idSchema = z.object({
-  id: z.string().min(1, 'ID不能为空')
+// 配置输入验证
+export const configInputSchema = z.object({
+  key: z.string().min(1),
+  value: z.string().min(1)
 })
 
 // 获取视频信息验证
@@ -58,16 +48,21 @@ export const getVideoInfoSchema = z.object({
 
 /**
  * 验证视频URL并返回平台信息
+ * 现在支持URL标准化处理
  */
-export function validateVideoUrl(url: string): { isValid: boolean; platform?: Platform; error?: string } {
+export async function validateVideoUrl(url: string): Promise<{ isValid: boolean; platform?: Platform; error?: string; normalizedUrl?: string }> {
   try {
-    const urlObj = new URL(url)
+    const cleanUrl = url.replace(/^@/, '').trim()
+    
+    // 首先尝试标准化URL（特别是B站短链接）
+    const normalizedUrl = await urlNormalizer.normalizeUrl(cleanUrl)
+    
+    const urlObj = new URL(normalizedUrl)
     const hostname = urlObj.hostname.toLowerCase()
     
     // 检查每个平台的域名
     for (const [platformKey, platformConfig] of Object.entries(platformsConfig)) {
       const domains = platformConfig.domains as string[]
-      const urlPatterns = platformConfig.urlPatterns as string[]
       
       // 检查域名匹配
       const domainMatch = domains.some(domain => 
@@ -75,17 +70,11 @@ export function validateVideoUrl(url: string): { isValid: boolean; platform?: Pl
       )
       
       if (domainMatch) {
-        // 检查URL模式匹配
-        const patternMatch = urlPatterns.some(pattern => {
-          const regex = new RegExp(pattern)
-          return regex.test(url)
-        })
-        
-        if (patternMatch) {
-          return {
-            isValid: true,
-            platform: platformKey as Platform
-          }
+        // 域名匹配即视为有效
+        return {
+          isValid: true,
+          platform: platformKey as Platform,
+          normalizedUrl
         }
       }
     }
@@ -116,8 +105,8 @@ export function getSupportedPlatforms(): Array<{ key: Platform; name: string; do
 /**
  * 从URL获取平台类型
  */
-export function getPlatformFromUrl(url: string): Platform | null {
-  const result = validateVideoUrl(url)
+export async function getPlatformFromUrl(url: string): Promise<Platform | null> {
+  const result = await validateVideoUrl(url)
   return result.isValid ? result.platform! : null
 }
 
@@ -125,25 +114,24 @@ export function getPlatformFromUrl(url: string): Platform | null {
  * 验证任务状态转换是否有效
  */
 export function isValidStatusTransition(currentStatus: TaskStatus, newStatus: TaskStatus): boolean {
-  const validTransitions: Record<TaskStatus, TaskStatus[]> = {
+  const allowedTransitions: Record<TaskStatus, TaskStatus[]> = {
     PENDING: ['EXTRACTING', 'FAILED'],
-    EXTRACTING: ['TRANSCRIBING', 'COMPLETED', 'FAILED'], // 提取完成后转录或直接完成（视频转音频未实现时）
+    EXTRACTING: ['TRANSCRIBING', 'COMPLETED', 'FAILED'],
     TRANSCRIBING: ['COMPLETED', 'FAILED'],
-    COMPLETED: [], // 完成状态不能转换到其他状态
-    FAILED: ['PENDING', 'EXTRACTING'] // 失败状态可以重试
+    COMPLETED: [],
+    FAILED: []
   }
-
-  return validTransitions[currentStatus]?.includes(newStatus) ?? false
+  return allowedTransitions[currentStatus]?.includes(newStatus) ?? false
 }
 
 /**
  * 获取下载类型的显示名称
  */
-export function getDownloadTypeDisplayName(downloadType: DownloadType): string {
-  const displayNames: Record<DownloadType, string> = {
+export function getDownloadTypeDisplayName(downloadType: string): string {
+  const displayNames: Record<string, string> = {
     'AUDIO_ONLY': '仅音频',
     'VIDEO_ONLY': '仅视频', 
     'BOTH': '视频+音频'
   }
-  return displayNames[downloadType]
+  return displayNames[downloadType] || downloadType // 如果找不到，返回原始值
 } 

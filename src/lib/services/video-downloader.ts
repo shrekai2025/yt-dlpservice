@@ -1,11 +1,13 @@
+import { db } from '~/server/db'
+import { Logger } from '~/lib/utils/logger'
+import { browserManager } from './browser-manager'
+import { urlNormalizer } from './url-normalizer'
+import { ConfigManager } from '~/lib/utils/config'
+import type { VideoInfo, DownloadOptions } from '~/types/task'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import fs from 'fs/promises'
-import path from 'path'
-import { Logger } from '~/lib/utils/logger'
-import { ConfigManager } from '~/lib/utils/config'
-import type { VideoInfo, DownloadOptions, DownloadType } from '~/types/task'
-import { browserManager } from './browser-manager'
+import * as fs from 'fs/promises'
+import * as path from 'path'
 
 const execAsync = promisify(exec)
 
@@ -174,21 +176,15 @@ class VideoDownloader {
     await this.ensureInitialized()
     
     try {
+      // 标准化URL（特别是B站URL）
+      const normalizedUrl = await this.normalizeUrlIfNeeded(url)
+      
       let command = this.buildYtDlpCommand('--no-warnings --dump-json --no-check-certificate')
       
-      // 如果是 YouTube URL 且启用浏览器 cookies
-      if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
-        try {
-          const cookiesFile = await browserManager.getCookiesForYtDlp()
-          if (cookiesFile) {
-            command += ` --cookies "${cookiesFile}"`
-          }
-        } catch (error) {
-          Logger.warn('获取浏览器 cookies 失败，使用默认方式')
-        }
-      }
+      // 添加平台特定的请求头和Cookie支持
+      command = await this.addPlatformSpecificOptions(command, normalizedUrl, useBrowserCookies)
       
-      command += ` "${url}"`
+      command += ` "${normalizedUrl}"`
 
       Logger.info(`获取视频信息: ${command}`)
       const { stdout } = await execAsync(command)
@@ -257,6 +253,9 @@ class VideoDownloader {
       const { outputDir, format = 'best', quality = 'best' } = options
       await fs.mkdir(outputDir, { recursive: true })
 
+      // 标准化URL（特别是B站URL）
+      const normalizedUrl = await this.normalizeUrlIfNeeded(url)
+
       const outputTemplate = path.join(outputDir, '%(id)s_video.%(ext)s')
       
       let command = this.buildYtDlpCommand(`--no-warnings -f "${format}[height<=${quality}]" -o "${outputTemplate}"`)
@@ -267,19 +266,10 @@ class VideoDownloader {
         Logger.debug(`使用自定义FFmpeg路径: ${this.ffmpegPath}`);
       }
       
-      // 如果是 YouTube URL 且启用浏览器 cookies
-      if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
-        try {
-          const cookiesFile = await browserManager.getCookiesForYtDlp()
-          if (cookiesFile) {
-            command += ` --cookies "${cookiesFile}"`
-          }
-        } catch (error) {
-          Logger.warn('获取浏览器 cookies 失败，使用默认方式')
-        }
-      }
+      // 添加平台特定的请求头和Cookie支持
+      command = await this.addPlatformSpecificOptions(command, normalizedUrl, useBrowserCookies)
       
-      command += ` "${url}"`
+      command += ` "${normalizedUrl}"`
 
       Logger.info(`下载视频: ${command}`)
       const { stdout } = await execAsync(command)
@@ -317,15 +307,18 @@ class VideoDownloader {
       const { outputDir, format = 'bestaudio', quality = 'best' } = options
       await fs.mkdir(outputDir, { recursive: true })
 
+      // 标准化URL（特别是B站URL）
+      const normalizedUrl = await this.normalizeUrlIfNeeded(url)
+
       // 修改输出模板，确保音频文件始终以.mp3结尾
       const outputTemplate = path.join(outputDir, '%(id)s_audio.mp3')
       
       // 对于不同平台使用更兼容的格式选择
       let audioFormat = format;
-      if (url.includes("bilibili.com")) {
-        // Bilibili 需要特殊处理 - 使用已知可用的音频格式ID，确保下载音频
-        audioFormat = "30280/30232/30216/bestaudio";
-      }
+      // 移除B站特定的音频格式ID，统一使用bestaudio
+      // if (normalizedUrl.includes("bilibili.com")) {
+      //   audioFormat = "30280/30232/30216/bestaudio";
+      // }
 
       // 构建命令：明确指定要提取音频并转换为mp3格式，降低质量确保豆包API兼容性
       let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
@@ -348,19 +341,10 @@ class VideoDownloader {
         Logger.debug(`使用自定义FFmpeg路径: ${this.ffmpegPath}`);
       }
       
-      // 如果是 YouTube URL 且启用浏览器 cookies
-      if ((url.includes('youtube.com') || url.includes('youtu.be')) && useBrowserCookies) {
-        try {
-          const cookiesFile = await browserManager.getCookiesForYtDlp()
-          if (cookiesFile) {
-            command += ` --cookies "${cookiesFile}"`
-          }
-        } catch (error) {
-          Logger.warn('获取浏览器 cookies 失败，使用默认方式')
-        }
-      }
+      // 添加平台特定的请求头和Cookie支持
+      command = await this.addPlatformSpecificOptions(command, normalizedUrl, useBrowserCookies)
       
-      command += ` "${url}"`
+      command += ` "${normalizedUrl}"`
 
       Logger.info(`下载音频: ${command}`)
       
@@ -369,43 +353,12 @@ class VideoDownloader {
       try {
         const result = await execAsync(command)
         stdout = result.stdout
-        Logger.info(`主格式下载成功，输出: ${stdout.substring(0, 500)}...`)
+        Logger.info(`主格式下载成功...`)
       } catch (error) {
-        Logger.error(`主格式下载失败，错误: ${error instanceof Error ? error.message : String(error)}`)
-        if (url.includes('bilibili.com') && error instanceof Error) {
-          Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
-          // 使用更通用的音频格式重试，仍然确保输出mp3，使用相同的质量配置
-          let fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "bestaudio" --extract-audio --audio-format mp3 --audio-quality "5" -o "${outputTemplate}" --no-check-certificate`);
-          
-          // 添加相同的FFmpeg参数来标准化音频格式
-          const fallbackFfmpegArgs = [
-            '-ar 16000',      // 采样率降至16kHz（豆包API标准）
-            '-ac 1',          // 单声道（豆包API推荐）
-            '-ab 32k',        // 比特率32kbps（降低质量）
-            '-f mp3'          // 强制MP3格式
-          ].join(' ');
-          
-          fallbackCommand += ` --postprocessor-args "ffmpeg:${fallbackFfmpegArgs}"`;
-          
-          // 添加FFmpeg路径（如果需要）
-          if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
-            fallbackCommand += ` --ffmpeg-location "${this.ffmpegPath}"`;
-          }
-          
-          fallbackCommand += ` "${url}"`;
-          
-          Logger.info(`备用下载命令: ${fallbackCommand}`)
-          try {
-            const fallbackResult = await execAsync(fallbackCommand)
-            stdout = fallbackResult.stdout
-            Logger.info(`备用格式下载成功，输出: ${stdout.substring(0, 500)}...`)
-          } catch (fallbackError) {
-            Logger.error(`备用格式也下载失败: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
-            throw fallbackError
-          }
-        } else {
-          throw error
-        }
+        Logger.error(`主格式下载失败...`)
+        // 备用逻辑不再需要，因为已经使用了bestaudio
+        // if (normalizedUrl.includes('bilibili.com') && error instanceof Error) { ... }
+        throw error
       }
       
       // 直接返回预期的mp3文件路径，因为我们在输出模板中已经指定了.mp3扩展名
@@ -469,6 +422,94 @@ class VideoDownloader {
       Logger.error(`下载音频失败: ${error.message}`)
       throw new Error(`下载音频失败: ${error.message}`)
     }
+  }
+
+  /**
+   * 标准化URL（如果需要）
+   */
+  private async normalizeUrlIfNeeded(url: string): Promise<string> {
+    // 如果是B站URL，进行标准化处理
+    if (urlNormalizer.isBilibiliUrl(url)) {
+      return await urlNormalizer.normalizeUrl(url)
+    }
+    
+    // 其他平台URL直接返回
+    return url
+  }
+  
+  /**
+   * 添加平台特定的选项（请求头、Cookie等）
+   */
+  private async addPlatformSpecificOptions(command: string, url: string, useBrowserCookies: boolean): Promise<string> {
+    let enhancedCommand = command
+    
+    // B站特定处理
+    if (urlNormalizer.isBilibiliUrl(url)) {
+      enhancedCommand = await this.addBilibiliOptions(enhancedCommand, useBrowserCookies)
+    }
+    // YouTube特定处理
+    else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      enhancedCommand = await this.addYouTubeOptions(enhancedCommand, useBrowserCookies)
+    }
+    
+    return enhancedCommand
+  }
+  
+  /**
+   * 添加B站专用选项
+   */
+  private async addBilibiliOptions(command: string, useBrowserCookies: boolean): Promise<string> {
+    let enhancedCommand = command
+    
+    // 添加B站专用请求头 - 优化版本
+    const bilibiliHeaders = [
+      'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer: https://www.bilibili.com/'
+    ]
+    
+    for (const header of bilibiliHeaders) {
+      enhancedCommand += ` --add-header "${header}"`
+    }
+    
+    // 恢复B站专用的extractor参数，优先使用API获取信息
+    enhancedCommand += ' --extractor-args "bilibili:video_info_prefer_api_over_html=true"'
+    
+    // 添加B站Cookie支持
+    if (useBrowserCookies) {
+      try {
+        const cookiesFile = await browserManager.getCookiesForYtDlp()
+        if (cookiesFile) {
+          enhancedCommand += ` --cookies "${cookiesFile}"`
+          Logger.info('✅ 已添加B站浏览器Cookie支持')
+        }
+      } catch (error) {
+        Logger.warn('获取B站浏览器cookies失败，使用默认方式')
+      }
+    }
+    
+    Logger.info('🎯 已添加B站专用请求头和选项')
+    return enhancedCommand
+  }
+  
+  /**
+   * 添加YouTube专用选项
+   */
+  private async addYouTubeOptions(command: string, useBrowserCookies: boolean): Promise<string> {
+    let enhancedCommand = command
+    
+    // YouTube Cookie支持（保持原有逻辑）
+    if (useBrowserCookies) {
+      try {
+        const cookiesFile = await browserManager.getCookiesForYtDlp()
+        if (cookiesFile) {
+          enhancedCommand += ` --cookies "${cookiesFile}"`
+        }
+      } catch (error) {
+        Logger.warn('获取YouTube浏览器cookies失败，使用默认方式')
+      }
+    }
+    
+    return enhancedCommand
   }
 
   /**
