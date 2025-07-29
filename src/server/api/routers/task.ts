@@ -1,16 +1,13 @@
 import { z } from 'zod'
-import { createTRPCRouter, publicProcedure, loggedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, publicProcedure } from '~/server/api/trpc'
 import { TRPCError } from '@trpc/server'
 import { db } from '~/server/db'
 import { 
   createTaskSchema, 
   updateTaskSchema, 
-  taskQuerySchema, 
-  idSchema, 
+  taskQuerySchema,
   getVideoInfoSchema,
-  isValidStatusTransition,
   validateVideoUrl,
-  getPlatformFromUrl,
   getDownloadTypeDisplayName
 } from '~/lib/utils/validation'
 import { TaskProcessor } from '~/lib/services/task-processor'
@@ -27,8 +24,8 @@ export const taskRouter = createTRPCRouter({
     .input(createTaskSchema)
     .mutation(async ({ input }) => {
       try {
-        // 验证URL和获取平台信息
-        const urlValidation = validateVideoUrl(input.url)
+        // 验证URL
+        const urlValidation = await validateVideoUrl(input.url)
         if (!urlValidation.isValid) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -37,24 +34,31 @@ export const taskRouter = createTRPCRouter({
         }
 
         const platform = urlValidation.platform!
-        const downloadType = input.downloadType || 'AUDIO_ONLY'
+        const normalizedUrl = urlValidation.normalizedUrl || input.url
 
-        // 创建任务（允许重复URL）
+        // 创建任务
         const task = await db.task.create({
           data: {
-            url: input.url,
+            url: normalizedUrl, // 使用标准化后的URL
             platform,
-            downloadType,
+            downloadType: input.downloadType,
             status: 'PENDING'
           }
         })
 
-        Logger.info(`新任务创建成功: ${task.id}, URL: ${input.url}, 下载类型: ${getDownloadTypeDisplayName(downloadType)}`)
+        Logger.info(`创建任务: ${task.id}, URL: ${normalizedUrl}, 下载类型: ${getDownloadTypeDisplayName(input.downloadType)}`)
+
+        // 异步处理任务
+        setImmediate(() => {
+          taskProcessor.processTask(task.id).catch(error => {
+            Logger.error(`异步任务处理失败: ${task.id}, 错误: ${error}`)
+          })
+        })
 
         return {
           success: true,
           data: task,
-          message: `任务创建成功，下载类型：${getDownloadTypeDisplayName(downloadType)}`
+          message: `任务创建成功，下载类型：${getDownloadTypeDisplayName(input.downloadType)}`
         }
       } catch (error) {
         Logger.error(`创建任务失败: ${error}`)
@@ -64,125 +68,74 @@ export const taskRouter = createTRPCRouter({
         })
       }
     }),
-
-  // 获取任务列表
+  
+    // 获取任务列表
   list: publicProcedure
     .input(taskQuerySchema)
     .query(async ({ input }) => {
-      try {
-        const { limit, offset, orderBy, orderDirection, status, platform, downloadType } = input
-        
-        const where = {
-          ...(status && { status }),
-          ...(platform && { platform }),
-          ...(downloadType && { downloadType })
-        }
+      const { limit, offset, status, platform } = input
+      
+      const where: any = {}
+      if (status) where.status = status
+      if (platform) where.platform = platform
 
-        const [tasks, total] = await Promise.all([
-          db.task.findMany({
-            where,
-            orderBy: { [orderBy]: orderDirection },
-            take: limit,
-            skip: offset
-          }),
-          db.task.count({ where })
-        ])
-
-        return {
-          data: tasks,
-          pagination: {
-            total,
-            page: Math.floor(offset / limit) + 1,
-            limit,
-            hasMore: offset + limit < total
-          }
-        }
-      } catch (error) {
-        Logger.error(`获取任务列表失败: ${error}`)
-        throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: `获取任务列表失败: ${error instanceof Error ? error.message : 'Unknown error'}`
-        })
+      const [tasks, total] = await Promise.all([
+        db.task.findMany({
+          take: limit,
+          skip: offset,
+          where,
+          orderBy: { createdAt: 'desc' }
+        }),
+        db.task.count({ where })
+      ])
+      
+      return {
+        data: tasks,
+        total
       }
     }),
 
-  // 根据ID获取任务
-  getById: publicProcedure
-    .input(idSchema)
+  // 获取单个任务详情
+  get: publicProcedure
+    .input(z.object({ id: z.string() }))
     .query(async ({ input }) => {
-      try {
-        const task = await db.task.findUnique({
-          where: { id: input.id }
-        })
-
-        if (!task) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: '任务不存在'
-          })
-        }
-
-        return { data: task }
-      } catch (error) {
-        Logger.error(`获取任务失败: ${error}`)
+      const task = await db.task.findUnique({
+        where: { id: input.id }
+      })
+      if (!task) {
         throw new TRPCError({
-          code: 'INTERNAL_SERVER_ERROR',
-          message: `获取任务失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+          code: 'NOT_FOUND',
+          message: '任务未找到'
         })
       }
+      return task
     }),
 
-  // 更新任务
-  update: loggedProcedure
-    .input(updateTaskSchema)
+  // 更新任务（内部使用）
+  update: publicProcedure
+    .input(z.object({
+      id: z.string(),
+      data: updateTaskSchema
+    }))
     .mutation(async ({ input }) => {
+      const { id, data } = input
       try {
-        const { id, ...updateData } = input
-
-        // 检查任务是否存在
-        const existingTask = await db.task.findUnique({
-          where: { id }
-        })
-
-        if (!existingTask) {
-          throw new TRPCError({
-            code: 'NOT_FOUND',
-            message: '任务不存在'
-          })
-        }
-
-        // 验证状态转换
-        if (updateData.status && !isValidStatusTransition(existingTask.status, updateData.status)) {
-          throw new TRPCError({
-            code: 'BAD_REQUEST',
-            message: `不能从状态 ${existingTask.status} 切换到 ${updateData.status}`
-          })
-        }
-
         const updatedTask = await db.task.update({
           where: { id },
-          data: updateData
+          data
         })
-
-        Logger.info(`任务更新成功: ${id}`)
-
-        return {
-          success: true,
-          data: updatedTask,
-          message: '任务更新成功'
-        }
+        return updatedTask
       } catch (error) {
-        Logger.error(`更新任务失败: ${error}`)
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
-          message: `更新任务失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+          message: '更新任务失败'
         })
       }
     }),
-
+    
   // 删除任务
-  delete: loggedProcedure
-    .input(idSchema)
+  delete: publicProcedure
+    .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       try {
         const task = await db.task.findUnique({
@@ -265,8 +218,8 @@ export const taskRouter = createTRPCRouter({
   }),
 
   // 处理单个任务
-  process: loggedProcedure
-    .input(idSchema)
+  process: publicProcedure
+    .input(z.object({ id: z.string() }))
     .mutation(async ({ input }) => {
       try {
         const task = await db.task.findUnique({
@@ -301,7 +254,7 @@ export const taskRouter = createTRPCRouter({
     }),
 
   // 批量处理等待中的任务
-  processPending: loggedProcedure.mutation(async () => {
+  processPending: publicProcedure.mutation(async () => {
     try {
       const pendingTasks = await db.task.findMany({
         where: { status: 'PENDING' },
@@ -344,7 +297,7 @@ export const taskRouter = createTRPCRouter({
     .query(async ({ input }) => {
       try {
         // 验证URL
-        const urlValidation = validateVideoUrl(input.url)
+        const urlValidation = await validateVideoUrl(input.url)
         if (!urlValidation.isValid) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
@@ -352,7 +305,8 @@ export const taskRouter = createTRPCRouter({
           })
         }
 
-        const videoInfo = await videoDownloader.getVideoInfo(input.url)
+        const normalizedUrl = urlValidation.normalizedUrl || input.url
+        const videoInfo = await videoDownloader.getVideoInfo(normalizedUrl)
         
         return {
           success: true,

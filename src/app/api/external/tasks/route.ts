@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const { url, downloadType } = validation.data
 
     // 验证URL和获取平台信息
-    const urlValidation = validateVideoUrl(url)
+    const urlValidation = await validateVideoUrl(url)
     if (!urlValidation.isValid) {
       return NextResponse.json({
         success: false,
@@ -60,11 +60,12 @@ export async function POST(request: NextRequest) {
     }
 
     const platform = urlValidation.platform!
+    const normalizedUrl = urlValidation.normalizedUrl || url
 
     // 创建任务
     const task = await db.task.create({
       data: {
-        url,
+        url: normalizedUrl, // 使用标准化后的URL
         platform,
         downloadType,
         status: 'PENDING'

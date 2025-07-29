@@ -23,9 +23,9 @@
       "b23.tv"
     ],
     "urlPatterns": [
-      "/video/",
-      "/av",
-      "/BV"
+      "^https?://(www\\.)?bilibili\\.com/video/BV[a-zA-Z0-9]+",
+      "^https?://m\\.bilibili\\.com/video/BV[a-zA-Z0-9]+",
+      "^https?://b23\\.tv/[a-zA-Z0-9]+"
     ]
   }
 } 
