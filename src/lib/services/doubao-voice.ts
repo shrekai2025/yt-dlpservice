@@ -105,9 +105,17 @@ class DoubaoVoiceService {
     Logger.info(`🚀 豆包API提交任务开始:`);
     Logger.info(`  - 请求ID: ${requestId}`);
     Logger.info(`  - 音频大小: ${audioSizeMB}MB`);
+    Logger.info(`  - Base64长度: ${audioBase64.length} 字符`);
     Logger.info(`  - 提交URL: ${submitUrl}`);
     Logger.info(`  - APP_KEY: ${this.appKey ? `${this.appKey.substring(0, 8)}...` : '未配置'}`);
     Logger.info(`  - ACCESS_KEY: ${this.accessKey ? `${this.accessKey.substring(0, 8)}...` : '未配置'}`);
+    
+    // 检查音频大小是否超过建议限制
+    if (audioSizeMB > 50) {
+      Logger.warn(`⚠️ 音频文件较大 (${audioSizeMB}MB)，可能导致网络超时`);
+      Logger.warn(`  - 建议: 选择较短的视频片段 (<10分钟)`);
+      Logger.warn(`  - 或考虑压缩音频质量`);
+    }
     
     // 根据API文档和错误信息调整请求格式
     const requestBody = {
@@ -136,13 +144,24 @@ class DoubaoVoiceService {
       'X-Api-Access-Key': this.accessKey,
       'X-Api-Resource-Id': 'volc.bigasr.auc',
       'X-Api-Request-Id': requestId,
-      'X-Api-Sequence': '-1'
+      'X-Api-Sequence': '-1',
+      // 添加Ubuntu服务器优化的请求头
+      'User-Agent': 'yt-dlp-service/1.0 (Ubuntu; Node.js)',
+      'Accept-Encoding': 'gzip, deflate',
+      'Connection': 'keep-alive'
     };
 
-    // 根据音频大小动态调整超时时间
+    // 根据音频大小动态调整超时时间，但对大文件更保守
     const baseTimeout = 60000; // 基础60秒
-    const sizeTimeout = Math.max(audioSizeMB * 2000, 30000); // 每MB增加2秒，最小30秒
-    const finalTimeout = Math.min(baseTimeout + sizeTimeout, 180000); // 最大3分钟
+    let sizeTimeout = Math.max(audioSizeMB * 2000, 30000); // 每MB增加2秒，最小30秒
+    
+    // 对于Ubuntu服务器，网络可能不如本地稳定，增加额外缓冲
+    if (audioSizeMB > 20) {
+      sizeTimeout = Math.max(audioSizeMB * 3000, 60000); // 大文件每MB增加3秒
+      Logger.info(`📡 检测到大文件，增加网络缓冲时间`);
+    }
+    
+    const finalTimeout = Math.min(baseTimeout + sizeTimeout, 300000); // 增加到最大5分钟
 
     const config: AxiosRequestConfig = {
       method: 'POST',
@@ -150,22 +169,46 @@ class DoubaoVoiceService {
       headers,
       data: requestBody,
       timeout: finalTimeout,
+      // 添加Ubuntu服务器网络优化
+      maxContentLength: Infinity,
+      maxBodyLength: Infinity,
       // 添加重试配置
       validateStatus: (status) => status < 500, // 5xx错误才重试
+      // 添加代理配置（如果需要的话）
+      proxy: false, // 禁用代理
+      // 添加keepAlive配置
+      httpAgent: new (require('http').Agent)({ 
+        keepAlive: true,
+        keepAliveMsecs: 30000,
+        timeout: finalTimeout,
+        maxSockets: 5
+      }),
+      httpsAgent: new (require('https').Agent)({ 
+        keepAlive: true,
+        keepAliveMsecs: 30000,
+        timeout: finalTimeout,
+        maxSockets: 5,
+        rejectUnauthorized: true
+      })
     };
 
     Logger.info(`⏱️ 豆包API请求配置:`);
     Logger.info(`  - 超时时间: ${finalTimeout}ms (${Math.round(finalTimeout/1000)}秒)`);
     Logger.info(`  - 请求体大小: ${JSON.stringify(requestBody).length} 字符`);
+    Logger.info(`  - 网络优化: Ubuntu服务器模式`);
 
-    // 重试机制
-    const maxRetries = 3;
+    // 重试机制 - 对于网络不稳定的Ubuntu服务器增加重试次数
+    const maxRetries = audioSizeMB > 20 ? 5 : 3; // 大文件增加重试次数
     let lastError: any;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      let startTime = Date.now(); // 移动到循环内部
       try {
         Logger.info(`📡 豆包API提交尝试 ${attempt}/${maxRetries}: ${requestId}`);
-        const startTime = Date.now();
+        Logger.info(`  - 当前时间: ${new Date().toISOString()}`);
+        Logger.info(`  - 预计完成时间: ${new Date(Date.now() + finalTimeout).toISOString()}`);
+        
+        startTime = Date.now(); // 重新赋值确保准确性
         
         const response = await axios(config);
         const responseTime = Date.now() - startTime;
@@ -175,6 +218,8 @@ class DoubaoVoiceService {
         Logger.info(`  - HTTP状态: ${response.status}`);
         Logger.info(`  - 响应头状态码: ${response.headers['x-api-status-code'] || '无'}`);
         Logger.info(`  - 响应消息: ${response.headers['x-api-message'] || '无'}`);
+        Logger.info(`  - 服务器: ${response.headers.server || '未知'}`);
+        Logger.info(`  - 连接类型: ${response.headers.connection || '未知'}`);
         
         // 检查响应状态
         const statusCode = response.headers['x-api-status-code'];
@@ -192,7 +237,7 @@ class DoubaoVoiceService {
         
       } catch (error: any) {
         lastError = error;
-        const responseTime = Date.now() - (error.config?.metadata?.startTime || Date.now());
+        const responseTime = Date.now() - startTime;
         const errorMessage = error.response?.data?.message || error.message;
         
         Logger.error(`❌ 豆包API提交失败 (尝试${attempt}/${maxRetries}):`);
@@ -200,6 +245,24 @@ class DoubaoVoiceService {
         Logger.error(`  - 错误消息: ${errorMessage}`);
         Logger.error(`  - HTTP状态: ${error.response?.status || '无响应'}`);
         Logger.error(`  - 响应时间: ${responseTime}ms`);
+        Logger.error(`  - 当前时间: ${new Date().toISOString()}`);
+        
+        // 详细的网络错误分析
+        if (error.code === 'ECONNABORTED') {
+          Logger.error(`🌐 网络连接中断分析:`);
+          Logger.error(`  - 错误类型: 连接超时`);
+          Logger.error(`  - 可能原因: 网络不稳定、服务器负载高、防火墙限制`);
+          Logger.error(`  - 音频大小: ${audioSizeMB}MB`);
+          Logger.error(`  - 超时设置: ${finalTimeout}ms`);
+          
+          if (audioSizeMB > 30) {
+            Logger.error(`  - 建议: 音频文件过大，请选择较短的视频 (<15分钟)`);
+          } else if (responseTime < 10000) {
+            Logger.error(`  - 建议: 快速失败，可能是网络配置问题`);
+          } else {
+            Logger.error(`  - 建议: 网络连接不稳定，建议检查服务器网络`);
+          }
+        }
         
         if (error.response) {
           Logger.error(`  - 响应头: ${JSON.stringify(error.response.headers)}`);
@@ -207,13 +270,13 @@ class DoubaoVoiceService {
         }
         
         // 如果是最后一次尝试，或者是非网络错误，直接抛出
-        if (attempt === maxRetries || (!error.code?.includes('TIMEOUT') && !error.code?.includes('ECONNRESET'))) {
+        if (attempt === maxRetries || (!error.code?.includes('TIMEOUT') && !error.code?.includes('ECONNRESET') && error.code !== 'ECONNABORTED')) {
           Logger.error(`💥 豆包API提交最终失败，停止重试`);
           break;
         }
         
-        // 等待后重试
-        const delay = attempt * 2000; // 递增延迟
+        // 等待后重试，对于网络错误增加等待时间
+        const delay = error.code === 'ECONNABORTED' ? attempt * 5000 : attempt * 2000; // 网络中断增加等待时间
         Logger.info(`⏳ 等待 ${delay}ms 后重试...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -221,6 +284,17 @@ class DoubaoVoiceService {
 
     const errorMessage = lastError.response?.data?.message || lastError.message;
     Logger.error(`💀 豆包API提交任务失败 (所有重试均失败): ${errorMessage}`);
+    
+    // 提供针对性的解决建议
+    if (lastError.code === 'ECONNABORTED') {
+      Logger.error(`🔧 网络超时解决建议:`);
+      Logger.error(`  1. 检查服务器网络连接: ping openspeech.bytedance.com`);
+      Logger.error(`  2. 检查防火墙设置: 确保允许HTTPS出站连接`);
+      Logger.error(`  3. 减小音频文件: 选择较短的视频片段`);
+      Logger.error(`  4. 检查服务器负载: top, htop`);
+      Logger.error(`  5. 重启服务: pm2 restart yt-dlpservice`);
+    }
+    
     throw new Error(`豆包API提交任务失败: ${errorMessage}`);
   }
 
@@ -478,18 +552,87 @@ class DoubaoVoiceService {
     };
   }
 
-  public async speechToText(audioPath: string): Promise<string> {
-    // 检查音频文件
-    await this.validateAudioFile(audioPath);
-    
-    const audioBuffer = await fs.readFile(audioPath);
-    const audioBase64 = audioBuffer.toString('base64');
+  /**
+   * 网络连接预检测
+   */
+  private async preCheckNetworkConnection(): Promise<boolean> {
+    try {
+      Logger.info(`🌐 开始网络连接预检测...`);
+      const testUrl = `https://${this.baseUrl}`;
+      const startTime = Date.now();
+      
+      const response = await axios.get(testUrl, {
+        timeout: 10000,
+        validateStatus: () => true, // 接受所有HTTP状态码
+        headers: {
+          'User-Agent': 'yt-dlp-service/1.0 (Ubuntu; Node.js)'
+        }
+      });
+      
+      const responseTime = Date.now() - startTime;
+      
+      Logger.info(`✅ 网络连接预检测成功:`);
+      Logger.info(`  - 响应时间: ${responseTime}ms`);
+      Logger.info(`  - HTTP状态: ${response.status}`);
+      Logger.info(`  - 服务器: ${response.headers.server || '未知'}`);
+      
+      if (responseTime > 5000) {
+        Logger.warn(`⚠️ 网络连接较慢 (${responseTime}ms)，可能影响大文件上传`);
+        return false;
+      }
+      
+      return true;
+      
+    } catch (error: any) {
+      Logger.error(`❌ 网络连接预检测失败:`);
+      Logger.error(`  - 错误类型: ${error.code || '未知'}`);
+      Logger.error(`  - 错误消息: ${error.message}`);
+      
+      if (error.code === 'ENOTFOUND') {
+        Logger.error(`  - DNS解析失败，请检查网络配置`);
+      } else if (error.code === 'ECONNREFUSED') {
+        Logger.error(`  - 连接被拒绝，请检查防火墙设置`);
+      } else if (error.code === 'ECONNABORTED') {
+        Logger.error(`  - 连接超时，网络可能不稳定`);
+      }
+      
+      return false;
+    }
+  }
 
-    // 提交任务
-    const requestId = await this.submitAudioTask(audioBase64);
-    
-    // 轮询结果
-    return this.pollTranscriptionResult(requestId);
+  public async speechToText(audioPath: string): Promise<string> {
+    try {
+      Logger.info(`开始豆包语音转录: ${audioPath}`)
+      
+      // 验证音频文件
+      await this.validateAudioFile(audioPath)
+      
+      // 网络连接预检测
+      const networkOk = await this.preCheckNetworkConnection();
+      if (!networkOk) {
+        Logger.warn(`⚠️ 网络连接不稳定，但继续尝试提交任务...`);
+      }
+      
+      // 读取音频文件并转换为Base64
+      const audioBuffer = await fs.readFile(audioPath)
+      const audioBase64 = audioBuffer.toString('base64')
+      
+      Logger.info(`音频文件读取完成，大小: ${Math.round(audioBuffer.length / 1024 / 1024 * 100) / 100}MB`)
+      
+      // 提交任务到豆包API
+      const requestId = await this.submitAudioTask(audioBase64)
+      
+      // 轮询获取转录结果
+      const transcription = await this.pollTranscriptionResult(requestId)
+      
+      Logger.info(`豆包语音转录完成，文本长度: ${transcription.length}`)
+      return transcription
+      
+    } catch (error: any) {
+      Logger.error(`豆包语音转录失败: ${error.message}`)
+      throw error
+    }
+
   }
 
   /**
