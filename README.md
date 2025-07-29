@@ -319,7 +319,7 @@ pm2 restart yt-dlpservice
 ```
 
 ### 豆包API超时问题
-如果遇到 `timeout of 30000ms exceeded` 或类似超时错误：
+如果遇到 `timeout of 30000ms exceeded` 或 `timeout of 90000ms exceeded` 等超时错误：
 
 ```bash
 # 1. 检查网络连接
@@ -328,12 +328,18 @@ ping openspeech.bytedance.com
 # 2. 检查API配置
 curl -I https://openspeech.bytedance.com
 
-# 3. 清理重启服务
+# 3. 清理重启服务（应用最新优化）
 pm2 restart yt-dlpservice
 
 # 4. 查看详细日志
 pm2 logs yt-dlpservice --lines 50
 ```
+
+**✅ 已优化的功能：**
+- **动态超时**: 根据音频大小自动调整超时时间（60秒-3分钟）
+- **智能轮询**: 最多等待10分钟，根据任务状态调整查询频率
+- **重试机制**: 网络错误自动重试，连续超时智能处理
+- **状态解析**: 精确识别任务状态，避免不必要的等待
 
 **可能原因和解决方案：**
 - **网络问题**: 检查服务器网络连接和DNS解析
@@ -341,6 +347,11 @@ pm2 logs yt-dlpservice --lines 50
 - **API密钥错误**: 在管理页面重新配置豆包API密钥
 - **服务器负载**: 等待一段时间后重试
 - **豆包服务异常**: 使用管理页面的API诊断工具检查
+
+**📊 预期处理时间：**
+- 小文件(< 10MB): 1-3分钟
+- 中等文件(10-50MB): 3-6分钟  
+- 大文件(50-100MB): 6-10分钟
 
 ### 其他常见问题
 - **端口占用**: `sudo lsof -i :3000` 检查占用进程

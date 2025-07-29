@@ -191,39 +191,183 @@ class DoubaoVoiceService {
       'X-Api-Request-Id': requestId
     };
 
+    // 增加查询接口的超时时间到30秒
     const config: AxiosRequestConfig = {
       method: 'POST',
       url: queryUrl,
       headers,
       data: requestBody,
-      timeout: 15000 // 查询接口增加到15秒
+      timeout: 30000, // 从15秒增加到30秒
+      // 添加重试配置
+      validateStatus: (status) => status < 500, // 5xx错误才重试
     };
 
-    try {
-      const response = await axios(config);
-      
-      // 检查响应状态
-      const statusCode = response.headers['x-api-status-code'];
-      const message = response.headers['x-api-message'];
-      
-      // 20000000: 成功, 20000001: 处理中, 20000002: 任务在队列中 - 都是正常状态
-      if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
-        throw new Error(`API错误 (${statusCode}): ${message || '未知错误'}`);
-      }
+    // 查询接口也添加重试机制
+    const maxRetries = 2; // 查询接口最多重试2次
+    let lastError: any;
 
-      return response.data;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message;
-      
-      // 区分不同类型的错误
-      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-        Logger.warn(`豆包API查询超时: ${requestId}`);
-        throw new Error(`豆包API查询超时: ${errorMessage}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await axios(config);
+        
+        // 检查响应状态
+        const statusCode = response.headers['x-api-status-code'];
+        const message = response.headers['x-api-message'];
+        
+        // 20000000: 成功, 20000001: 处理中, 20000002: 任务在队列中 - 都是正常状态
+        if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
+          // 如果是找不到任务的错误，可能任务还没准备好，不算错误
+          if (statusCode === '40000007') {
+            Logger.debug(`任务暂未准备好: ${requestId}`);
+            return { status: 'preparing', message: '任务准备中' };
+          }
+          
+          throw new Error(`API错误 (${statusCode}): ${message || '未知错误'}`);
+        }
+
+        return response.data;
+        
+      } catch (error: any) {
+        lastError = error;
+        const errorMessage = error.response?.data?.message || error.message;
+        
+        // 区分不同类型的错误
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          Logger.warn(`豆包API查询超时 (尝试${attempt}/${maxRetries}): ${requestId}`);
+          
+          // 如果是最后一次尝试，抛出超时错误
+          if (attempt === maxRetries) {
+            throw new Error(`豆包API查询超时: ${errorMessage}`);
+          }
+          
+          // 等待后重试
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          continue;
+        }
+        
+        // 网络连接错误，重试
+        if (error.code === 'ECONNRESET' || error.code === 'ECONNREFUSED') {
+          Logger.warn(`网络连接错误 (尝试${attempt}/${maxRetries}): ${errorMessage}`);
+          
+          if (attempt === maxRetries) {
+            throw new Error(`网络连接失败: ${errorMessage}`);
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          continue;
+        }
+        
+        // 其他错误直接抛出
+        Logger.error(`豆包API查询任务失败: ${errorMessage}`, error.response?.data);
+        throw new Error(`豆包API查询任务失败: ${errorMessage}`);
       }
-      
-      Logger.error(`豆包API查询任务失败: ${errorMessage}`, error.response?.data);
-      throw new Error(`豆包API查询任务失败: ${errorMessage}`);
     }
+
+    // 如果所有重试都失败了
+    const errorMessage = lastError.response?.data?.message || lastError.message;
+    throw new Error(`豆包API查询失败 (所有重试均失败): ${errorMessage}`);
+  }
+
+  /**
+   * 智能等待策略：根据任务状态调整等待时间
+   */
+  private calculateWaitTime(attempt: number, taskStatus?: string): number {
+    const baseInterval = 3000; // 基础3秒
+    
+    // 根据任务状态调整等待时间
+    if (taskStatus === 'preparing' || taskStatus === 'queued') {
+      return baseInterval; // 任务准备中，快速查询
+    } else if (taskStatus === 'processing') {
+      return Math.min(baseInterval * 2, 8000); // 处理中，适中查询
+    } else if (attempt < 10) {
+      return baseInterval; // 前10次快速查询
+    } else {
+      return Math.min(baseInterval * 2, 8000); // 后续慢速查询
+    }
+  }
+
+  /**
+   * 解析豆包API响应状态
+   */
+  private parseTaskStatus(response: any): {
+    status: string;
+    hasResult: boolean;
+    shouldContinue: boolean;
+    message?: string;
+  } {
+    // 检查是否有转录结果
+    const hasResult = !!(response?.result?.text?.trim());
+    
+    // 检查响应头状态码
+    const statusCode = response?.statusCode || response?.status_code;
+    
+    // 检查响应体状态
+    const bodyStatus = response?.status;
+    
+    if (hasResult) {
+      return {
+        status: 'completed',
+        hasResult: true,
+        shouldContinue: false,
+        message: '转录完成'
+      };
+    }
+    
+    // 根据状态码判断
+    if (statusCode === '20000000') {
+      return {
+        status: 'processing',
+        hasResult: false,
+        shouldContinue: true,
+        message: '任务处理完成，等待转录结果'
+      };
+    } else if (statusCode === '20000001') {
+      return {
+        status: 'processing',
+        hasResult: false,
+        shouldContinue: true,
+        message: '任务正在处理中'
+      };
+    } else if (statusCode === '20000002') {
+      return {
+        status: 'queued',
+        hasResult: false,
+        shouldContinue: true,
+        message: '任务在队列中等待'
+      };
+    } else if (statusCode === '40000007') {
+      return {
+        status: 'preparing',
+        hasResult: false,
+        shouldContinue: true,
+        message: '任务准备中'
+      };
+    }
+    
+    // 检查响应体状态
+    if (bodyStatus === 'failed' || bodyStatus === 'error') {
+      return {
+        status: 'failed',
+        hasResult: false,
+        shouldContinue: false,
+        message: response.error || response.message || '任务处理失败'
+      };
+    } else if (bodyStatus === 'completed' || bodyStatus === 'success') {
+      return {
+        status: 'completed',
+        hasResult: false,
+        shouldContinue: true,
+        message: '任务已完成，等待转录结果'
+      };
+    }
+    
+    // 默认继续等待
+    return {
+      status: 'unknown',
+      hasResult: false,
+      shouldContinue: true,
+      message: '任务状态未知，继续等待'
+    };
   }
 
   public async speechToText(audioPath: string): Promise<string> {
@@ -274,66 +418,91 @@ class DoubaoVoiceService {
   }
 
   private async pollTranscriptionResult(requestId: string): Promise<string> {
-    const maxRetries = 60; // 最多轮询60次
-    const interval = 5000;  // 每5秒查询一次
-    const maxWaitTime = maxRetries * interval; // 最大等待5分钟
+    // 根据音频大小动态调整轮询策略
+    const maxRetries = 120; // 增加到120次轮询（最多10分钟）
+    const baseInterval = 3000; // 基础间隔3秒
+    const maxWaitTime = maxRetries * baseInterval;
 
     Logger.info(`开始轮询豆包任务结果: ${requestId}, 最大等待时间: ${maxWaitTime/1000}秒`);
 
+    let consecutiveTimeouts = 0; // 连续超时计数
+    const maxConsecutiveTimeouts = 5; // 最多允许5次连续超时
+
     for (let i = 0; i < maxRetries; i++) {
-      await new Promise(resolve => setTimeout(resolve, interval));
-      Logger.info(`查询豆包任务状态 (${i + 1}/${maxRetries}): ${requestId}`);
+      // 动态调整查询间隔：前10次较频繁，之后逐渐增加
+      const currentInterval = i < 10 ? baseInterval : Math.min(baseInterval * 2, 8000);
+      await new Promise(resolve => setTimeout(resolve, currentInterval));
+      
+      Logger.info(`查询豆包任务状态 (${i + 1}/${maxRetries}): ${requestId}, 间隔: ${currentInterval}ms`);
       
       try {
         const response = await this.queryAudioTask(requestId);
+        consecutiveTimeouts = 0; // 重置超时计数
         
-        // 检查是否有转录结果
-        if (response && response.result && response.result.text) {
+        // 使用智能状态解析
+        const taskStatus = this.parseTaskStatus(response);
+        
+        Logger.info(`豆包任务状态: ${taskStatus.status} - ${taskStatus.message} (${i + 1}/${maxRetries})`);
+        
+        // 如果有转录结果，返回
+        if (taskStatus.hasResult && response.result.text) {
           const transcriptionText = response.result.text.trim();
-          if (transcriptionText.length > 0) {
-            Logger.info(`豆包任务成功: ${requestId}, 转录长度: ${transcriptionText.length}`);
-            return transcriptionText;
-          } else {
-            Logger.warn(`豆包任务返回空结果: ${requestId}`);
-          }
+          Logger.info(`豆包任务成功: ${requestId}, 转录长度: ${transcriptionText.length}`);
+          return transcriptionText;
         }
         
-        // 检查任务状态
-        if (response && response.status) {
-          Logger.debug(`豆包任务状态: ${response.status}`);
-          
-          // 如果任务失败
-          if (response.status === 'failed' || response.status === 'error') {
-            const errorMsg = response.error || response.message || '任务处理失败';
-            throw new Error(`豆包语音识别任务失败: ${errorMsg}`);
-          }
+        // 如果任务失败，抛出异常
+        if (taskStatus.status === 'failed') {
+          throw new Error(`豆包语音识别任务失败: ${taskStatus.message}`);
         }
         
-        // 如果有错误信息，抛出异常
-        if (response && response.error) {
-          throw new Error(`豆包语音识别任务失败: ${response.error}`);
+        // 如果不应该继续，但也没有结果，可能是异常情况
+        if (!taskStatus.shouldContinue) {
+          throw new Error(`豆包任务异常结束: ${taskStatus.message}`);
+        }
+        
+        // 根据任务状态调整下次查询的等待时间
+        const nextInterval = this.calculateWaitTime(i, taskStatus.status);
+        if (nextInterval !== currentInterval) {
+          Logger.debug(`根据任务状态调整查询间隔: ${nextInterval}ms`);
         }
         
       } catch (error: any) {
-        // 如果是查询超时，继续重试
+        // 如果是查询超时，记录并继续重试
         if (error.message.includes('豆包API查询超时')) {
-          Logger.warn(`查询超时，继续重试: ${requestId}`);
+          consecutiveTimeouts++;
+          Logger.warn(`查询超时 (连续${consecutiveTimeouts}次)，继续重试: ${requestId}`);
+          
+          // 如果连续超时次数过多，可能是网络问题
+          if (consecutiveTimeouts >= maxConsecutiveTimeouts) {
+            Logger.error(`连续超时${consecutiveTimeouts}次，可能存在网络问题: ${requestId}`);
+            // 延长等待时间但继续重试
+            await new Promise(resolve => setTimeout(resolve, 10000)); // 额外等待10秒
+            consecutiveTimeouts = 0; // 重置计数
+          }
           continue;
         }
         
         // 如果是其他API错误，直接抛出
-        if (!error.message.includes('timeout') && !error.message.includes('ECONNRESET')) {
+        if (!error.message.includes('timeout') && !error.message.includes('ECONNRESET') && !error.message.includes('ECONNREFUSED')) {
           Logger.error(`豆包任务处理失败: ${requestId}, 错误: ${error.message}`);
           throw error;
         }
         
         // 网络错误，记录并继续重试
-        Logger.warn(`网络错误，继续重试: ${error.message}`);
+        Logger.warn(`网络错误 (第${i + 1}次查询)，继续重试: ${error.message}`);
+        consecutiveTimeouts++;
+        
+        // 网络错误时延长等待时间
+        if (consecutiveTimeouts >= 3) {
+          Logger.info(`网络不稳定，延长等待时间: ${requestId}`);
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
       }
     }
     
-    Logger.error(`豆包语音识别任务超时: ${requestId}, 已轮询${maxRetries}次`);
-    throw new Error(`豆包语音识别任务超时，已等待${maxWaitTime/1000}秒`);
+    Logger.error(`豆包语音识别任务超时: ${requestId}, 已轮询${maxRetries}次，总等待时间: ${maxWaitTime/1000}秒`);
+    throw new Error(`豆包语音识别任务超时，已等待${maxWaitTime/60000}分钟`);
   }
 
   public async checkServiceStatus(): Promise<{ available: boolean, message: string }> {
