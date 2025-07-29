@@ -317,15 +317,17 @@ class VideoDownloader {
       const { outputDir, format = 'bestaudio', quality = 'best' } = options
       await fs.mkdir(outputDir, { recursive: true })
 
-      const outputTemplate = path.join(outputDir, '%(id)s_audio.%(ext)s')
+      // 修改输出模板，确保音频文件始终以.mp3结尾
+      const outputTemplate = path.join(outputDir, '%(id)s_audio.mp3')
       
       // 对于不同平台使用更兼容的格式选择
       let audioFormat = format;
       if (url.includes("bilibili.com")) {
-        // Bilibili 需要特殊处理 - 使用更通用的格式选择
-        audioFormat = "bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio";
+        // Bilibili 需要特殊处理 - 使用已知可用的音频格式ID，确保下载音频
+        audioFormat = "30280/30232/30216/bestaudio";
       }
 
+      // 构建命令：明确指定要提取音频并转换为mp3格式
       let command = this.buildYtDlpCommand(`--no-warnings -f "${audioFormat}" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`);
       
       // 只有当FFmpeg路径不是默认的'ffmpeg'时才添加--ffmpeg-location参数
@@ -360,8 +362,8 @@ class VideoDownloader {
         Logger.error(`主格式下载失败，错误: ${error instanceof Error ? error.message : String(error)}`)
         if (url.includes('bilibili.com') && error instanceof Error) {
           Logger.warn('Bilibili 下载失败，尝试使用备用格式...')
-          // 使用更通用的音频格式重试，不指定特定的格式ID
-          let fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "bestaudio" --extract-audio --audio-format mp3 -o "${outputTemplate}" --no-check-certificate`);
+          // 使用更通用的音频格式重试，仍然确保输出mp3
+          let fallbackCommand = this.buildYtDlpCommand(`--no-warnings -f "bestaudio" --extract-audio --audio-format mp3 --audio-quality "${quality}" -o "${outputTemplate}" --no-check-certificate`);
           
           // 添加FFmpeg路径（如果需要）
           if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
@@ -377,78 +379,78 @@ class VideoDownloader {
             Logger.info(`备用格式下载成功，输出: ${stdout.substring(0, 500)}...`)
           } catch (fallbackError) {
             Logger.error(`备用格式也下载失败: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`)
-            
-            // 最后尝试：直接下载视频然后提取音频
-            Logger.warn('尝试下载视频文件并提取音频...')
-            let videoCommand = this.buildYtDlpCommand(`--no-warnings -f "best[height<=720]" -o "${outputTemplate.replace('_audio', '_video')}" --no-check-certificate`);
-            
-            if (this.ffmpegPath && this.ffmpegPath !== 'ffmpeg') {
-              videoCommand += ` --ffmpeg-location "${this.ffmpegPath}"`;
-            }
-            
-            videoCommand += ` "${url}"`;
-            
-            Logger.info(`视频下载命令: ${videoCommand}`)
-            const videoResult = await execAsync(videoCommand)
-            
-            // TODO: 这里需要实现视频转音频的逻辑
-            Logger.info('视频下载成功，但需要实现视频转音频功能')
-            throw new Error('需要实现视频转音频功能，当前版本暂不支持')
+            throw fallbackError
           }
         } else {
           throw error
         }
       }
       
-      // 从输出中解析文件路径
-      const lines = stdout.split('\n')
-      const downloadLine = lines.find(line => 
-        line.includes('[download] Destination:') || 
-        line.includes('[download] 目标文件:') ||
-        line.includes('has already been downloaded') ||
-        line.includes('[ExtractAudio]') ||
-        line.includes('Deleting original file')
-      )
+      // 直接返回预期的mp3文件路径，因为我们在输出模板中已经指定了.mp3扩展名
+      Logger.info(`yt-dlp 完整输出: ${stdout}`);
       
-      if (downloadLine) {
-        // 尝试多种匹配模式
-        const patterns = [
-          /(?:Destination:|目标文件:)\s+(.+)/,
-          /has already been downloaded.*?(\/.+)/,
-          /\[ExtractAudio\] Destination:\s+(.+)/,
-          /Deleting original file\s+(.+)/
-        ]
+      // 检查文件是否实际存在
+      const expectedPath = outputTemplate.replace('%(id)s', this.extractVideoId(stdout) || 'unknown');
+      
+      try {
+        await fs.access(expectedPath, fs.constants.F_OK);
+        Logger.info(`音频文件下载完成: ${expectedPath}`);
+        return expectedPath;
+      } catch (accessError) {
+        Logger.warn(`预期的mp3文件不存在: ${expectedPath}，尝试查找实际文件...`);
         
-        for (const pattern of patterns) {
-          const match = downloadLine.match(pattern)
-          if (match && match[1]) {
-            const filePath = match[1].trim()
-            // 如果是音频提取，路径可能需要调整
-            const audioPath = filePath.replace(/\.(mp4|webm|mkv)$/, '.mp3')
-            Logger.info(`音频下载完成: ${audioPath}`)
-            return audioPath
-          }
+        // 如果预期路径不存在，查找输出目录中的实际文件
+        const files = await fs.readdir(outputDir)
+        Logger.info(`输出目录文件列表: ${files.join(', ')}`);
+        
+        // 优先查找mp3文件
+        const mp3Files = files.filter(file => 
+          file.includes('_audio') && file.endsWith('.mp3')
+        )
+        
+        if (mp3Files.length > 0 && mp3Files[0]) {
+          const audioPath = path.join(outputDir, mp3Files[0])
+          Logger.info(`找到mp3音频文件: ${audioPath}`)
+          return audioPath
         }
+        
+        // 如果没有mp3文件，查找其他音频文件并重命名为mp3
+        const audioFiles = files.filter(file => 
+          file.includes('_audio') && (file.endsWith('.m4a') || file.endsWith('.wav') || file.endsWith('.webm'))
+        )
+        
+        if (audioFiles.length > 0 && audioFiles[0]) {
+          const originalPath = path.join(outputDir, audioFiles[0])
+          const mp3Path = originalPath.replace(/\.(m4a|wav|webm)$/, '.mp3')
+          
+          Logger.warn(`找到非mp3音频文件: ${originalPath}，重命名为: ${mp3Path}`)
+          await fs.rename(originalPath, mp3Path)
+          return mp3Path
+        }
+        
+        throw new Error('无法找到下载的音频文件')
       }
       
-      // 如果无法从输出解析路径，尝试查找输出目录中的文件
-      Logger.warn('无法从yt-dlp输出解析文件路径，尝试查找输出目录...')
-      const files = await fs.readdir(outputDir)
-      const audioFiles = files.filter(file => 
-        file.includes('_audio') && (file.endsWith('.mp3') || file.endsWith('.m4a') || file.endsWith('.wav'))
-      )
-      
-      if (audioFiles.length > 0 && audioFiles[0]) {
-        const audioPath = path.join(outputDir, audioFiles[0])
-        Logger.info(`找到音频文件: ${audioPath}`)
-        return audioPath
-      }
-      
-      throw new Error('无法确定下载的音频文件路径')
     } catch (error: any) {
       Logger.error(`下载音频失败: ${error.message}`)
       throw new Error(`下载音频失败: ${error.message}`)
     }
+  }
+
+  /**
+   * 从yt-dlp输出中提取视频ID
+   */
+  private extractVideoId(output: string): string | null {
+    const lines = output.split('\n');
+    for (const line of lines) {
+      if (line.includes('[download] Destination:')) {
+        const match = line.match(/\/([^\/]+)_audio\./);
+        if (match && match[1]) {
+          return match[1];
+        }
+      }
+    }
+    return null;
   }
 
   /**
