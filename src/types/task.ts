@@ -9,16 +9,16 @@ export type DownloadType = 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
 
 // 视频信息接口
 export interface VideoInfo {
+  id: string
   title: string
   duration: number
+  thumbnail?: string
   uploader: string
-  formats: Array<{
-    format_id: string
-    ext: string
-    resolution?: string
-    filesize?: number
-  }>
-  originalData: any
+  upload_date?: string
+  view_count?: number
+  like_count?: number
+  description?: string
+  formats: any[]
 }
 
 // 创建任务输入接口
