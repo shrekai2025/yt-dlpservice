@@ -495,33 +495,42 @@ class DoubaoVoiceService {
   /**
    * 验证音频文件
    */
-  private async validateAudioFile(audioPath: string): Promise<void> {
+  private async validateAudioFile(filePath: string): Promise<void> {
     try {
-      const stats = await fs.stat(audioPath);
+      const stats = await fs.stat(filePath);
       const fileSizeMB = Math.round(stats.size / 1024 / 1024 * 100) / 100;
       
-      Logger.info(`音频文件检查: ${audioPath}, 大小: ${fileSizeMB}MB`);
+      Logger.info(`🔍 音频文件验证:`);
+      Logger.info(`  - 文件路径: ${filePath}`);
+      Logger.info(`  - 文件大小: ${fileSizeMB}MB`);
       
-      // 检查文件大小限制（豆包API通常限制在100MB以内）
-      if (stats.size > 100 * 1024 * 1024) {
-        throw new Error(`音频文件过大: ${fileSizeMB}MB，请使用小于100MB的文件`);
-      }
-      
-      if (stats.size === 0) {
-        throw new Error('音频文件为空');
+      // 检查文件大小限制（豆包API限制100MB，但我们设置更保守的限制）
+      const maxSizeMB = 80; // 设置80MB限制，留出缓冲
+      if (fileSizeMB > maxSizeMB) {
+        Logger.error(`❌ 音频文件过大:`);
+        Logger.error(`  - 当前大小: ${fileSizeMB}MB`);
+        Logger.error(`  - 最大限制: ${maxSizeMB}MB`);
+        Logger.error(`  - 建议: 压缩音频文件或选择较短的视频片段`);
+        throw new Error(`音频文件过大 (${fileSizeMB}MB)，超过${maxSizeMB}MB限制。大文件可能导致API超时，请选择较短的视频或压缩音频文件。`);
       }
       
       // 检查文件是否可读
-      await fs.access(audioPath, fs.constants.R_OK);
+      await fs.access(filePath, fs.constants.R_OK);
+      Logger.debug(`✅ 音频文件验证通过: ${fileSizeMB}MB`);
       
     } catch (error: any) {
       if (error.code === 'ENOENT') {
-        throw new Error(`音频文件不存在: ${audioPath}`);
+        Logger.error(`❌ 音频文件不存在: ${filePath}`);
+        throw new Error(`音频文件不存在: ${filePath}`);
+      } else if (error.code === 'EACCES') {
+        Logger.error(`❌ 无法读取音频文件: ${filePath}`);
+        throw new Error(`无法读取音频文件: ${filePath}`);
+      } else if (error.message.includes('音频文件过大')) {
+        throw error; // 重新抛出我们自定义的错误
+      } else {
+        Logger.error(`❌ 音频文件验证失败: ${error.message}`);
+        throw new Error(`音频文件验证失败: ${error.message}`);
       }
-      if (error.code === 'EACCES') {
-        throw new Error(`音频文件无法读取: ${audioPath}`);
-      }
-      throw error;
     }
   }
 
