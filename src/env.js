@@ -33,6 +33,11 @@ export const env = createEnv({
     MAX_FILE_AGE_HOURS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("1"),
     CLEANUP_INTERVAL_HOURS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("24"),
     
+    // 音频压缩配置
+    AUDIO_COMPRESSION_ENABLED: z.string().transform(val => val === 'true').default('true'),
+    AUDIO_COMPRESSION_TEMP_DIR: z.string().default('./temp/compression'),
+    AUDIO_COMPRESSION_MAX_SIZE: z.string().transform(val => parseInt(val, 10)).default('80'), // MB
+    
     // Puppeteer 配置
     PUPPETEER_HEADLESS: z.string().transform(val => val === "true").default("false"), // 生产环境设为 true
     PUPPETEER_ARGS: z.string().default("--no-sandbox --disable-setuid-sandbox"), // Ubuntu 服务器安全配置
@@ -73,6 +78,10 @@ export const env = createEnv({
     
     MAX_FILE_AGE_HOURS: process.env.MAX_FILE_AGE_HOURS,
     CLEANUP_INTERVAL_HOURS: process.env.CLEANUP_INTERVAL_HOURS,
+    
+    AUDIO_COMPRESSION_ENABLED: process.env.AUDIO_COMPRESSION_ENABLED,
+    AUDIO_COMPRESSION_TEMP_DIR: process.env.AUDIO_COMPRESSION_TEMP_DIR,
+    AUDIO_COMPRESSION_MAX_SIZE: process.env.AUDIO_COMPRESSION_MAX_SIZE,
     
     PUPPETEER_HEADLESS: process.env.PUPPETEER_HEADLESS,
     PUPPETEER_ARGS: process.env.PUPPETEER_ARGS,

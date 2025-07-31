@@ -123,315 +123,228 @@ class DoubaoVoiceService {
     return `yt-dlp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
-  private async submitAudioTask(audioBase64: string): Promise<string> {
-    await this.ensureInitialized();
-
-    const requestId = this.generateRequestId();
-    const submitUrl = `https://${this.baseUrl}/api/v3/auc/bigmodel/submit`;
-    
-    // 计算音频大小用于日志
-    const audioSizeMB = Math.round((audioBase64.length * 3 / 4) / 1024 / 1024 * 100) / 100;
-    Logger.info(`🚀 豆包API提交任务开始:`);
-    Logger.info(`  - 请求ID: ${requestId}`);
-    Logger.info(`  - 音频大小: ${audioSizeMB}MB`);
-    Logger.info(`  - Base64长度: ${audioBase64.length} 字符`);
-    Logger.info(`  - 提交URL: ${submitUrl}`);
-    Logger.info(`  - APP_KEY: ${this.appKey ? `${this.appKey.substring(0, 8)}...` : '未配置'}`);
-    Logger.info(`  - ACCESS_KEY: ${this.accessKey ? `${this.accessKey.substring(0, 8)}...` : '未配置'}`);
-    
-    // 检查音频大小是否超过建议限制
-    if (audioSizeMB > 30) {
-      Logger.warn(`⚠️ 音频文件过大 (${audioSizeMB}MB)，1M宽带上传可能需要很长时间`);
-      Logger.warn(`  - 预计上传时间: ${Math.round(audioSizeMB * 8)}秒 (约${Math.round(audioSizeMB * 8 / 60)}分钟)`);
-      Logger.warn(`  - 建议: 选择较短的视频片段 (<15分钟)`);
-    } else if (audioSizeMB > 15) {
-      Logger.warn(`⚠️ 音频文件较大 (${audioSizeMB}MB)，1M宽带上传较慢`);
-      Logger.warn(`  - 预计上传时间: ${Math.round(audioSizeMB * 8)}秒`);
-    }
-    
-    // 根据API文档和错误信息调整请求格式
-    const requestBody = {
-      user: {
-        uid: "yt-dlp-service-user"
-      },
-      audio: {
-        // 尝试使用 data 字段而不是 url 字段
-        data: audioBase64,
-        format: "mp3"
-      },
-      request: {
-        model_name: "bigmodel",
-        enable_itn: true,
-        enable_punc: true,
-        show_utterances: true
+  /**
+   * 提交音频任务到豆包API
+   */
+     async submitAudioTask(audioPath: string): Promise<string> {
+     const startTime = Date.now()
+     Logger.info(`🎤 开始提交音频到豆包API: ${audioPath}`)
+     
+     // 预定义变量，用于错误处理
+     let timeoutSeconds = 600 // 默认10分钟
+     
+     try {
+      // 检查音频文件是否存在
+      const audioExists = await fs.access(audioPath, fs.constants.F_OK).then(() => true).catch(() => false)
+      if (!audioExists) {
+        throw new Error(`音频文件不存在: ${audioPath}`)
       }
-    };
 
-    const headers = {
-      'Content-Type': 'application/json',
-      'X-Api-App-Key': this.appKey,
-      'X-Api-Access-Key': this.accessKey,
-      'X-Api-Resource-Id': 'volc.bigasr.auc',
-      'X-Api-Request-Id': requestId,
-      'X-Api-Sequence': '-1',
-      // 添加Ubuntu服务器优化的请求头
-      'User-Agent': 'yt-dlp-service/1.0 (Ubuntu; Node.js)',
-      'Accept-Encoding': 'gzip, deflate',
-      'Connection': 'keep-alive'
-    };
+      // 获取文件信息
+      const stats = await fs.stat(audioPath)
+      const audioSizeMB = Math.round((stats.size / 1024 / 1024) * 100) / 100
 
-    // 打印详细的请求参数
-    Logger.info(`📋 豆包API请求参数详情:`);
-    Logger.info(`  - 请求方法: POST`);
-    Logger.info(`  - 请求URL: ${submitUrl}`);
-    Logger.info(`  - 请求头:`);
-    Object.entries(headers).forEach(([key, value]) => {
-      if (key.includes('Key')) {
-        Logger.info(`    ${key}: ${typeof value === 'string' ? value.substring(0, 8) + '...' : value}`);
-      } else {
-        Logger.info(`    ${key}: ${value}`);
+      Logger.info(`📊 音频文件信息:`)
+      Logger.info(`  - 文件路径: ${audioPath}`)
+      Logger.info(`  - 文件大小: ${audioSizeMB}MB (${stats.size} bytes)`)
+
+      // 检查文件大小限制（豆包API限制512MB）
+      if (stats.size > 512 * 1024 * 1024) {
+        throw new Error(`音频文件过大 (${audioSizeMB}MB)，超过512MB限制。请使用音频压缩功能。`)
       }
-    });
-    Logger.info(`  - 请求体结构:`);
-    Logger.info(`    user.uid: ${requestBody.user.uid}`);
-    Logger.info(`    audio.format: ${requestBody.audio.format}`);
-    Logger.info(`    audio.data: [Base64数据 ${audioBase64.length} 字符]`);
-    Logger.info(`    request.model_name: ${requestBody.request.model_name}`);
-    Logger.info(`    request.enable_itn: ${requestBody.request.enable_itn}`);
-    Logger.info(`    request.enable_punc: ${requestBody.request.enable_punc}`);
-    Logger.info(`    request.show_utterances: ${requestBody.request.show_utterances}`);
 
-    // 根据音频大小动态调整超时时间，但对大文件更保守
-    const baseTimeout = 120000; // 基础120秒（从60秒增加）
-    let sizeTimeout = Math.max(audioSizeMB * 5000, 60000); // 每MB增加5秒，最小60秒（从2秒增加到5秒）
-    
-    // 对于Ubuntu服务器，网络可能不如本地稳定，增加额外缓冲
-    // 特别针对1M宽带进行优化
-    if (audioSizeMB > 10) {
-      sizeTimeout = Math.max(audioSizeMB * 8000, 120000); // 大文件每MB增加8秒（从3秒增加到8秒）
-      Logger.info(`📡 检测到大文件，针对1M宽带增加网络缓冲时间`);
-    }
-    
-    // 1M宽带理论上传速度约128KB/s，26MB需要约3.4分钟，我们设置10分钟超时
-    const finalTimeout = Math.min(baseTimeout + sizeTimeout, 600000); // 增加到最大10分钟（从5分钟增加）
+      // 读取音频文件并转换为Base64
+      Logger.info(`📖 正在读取音频文件...`)
+      const audioBuffer = await fs.readFile(audioPath)
+      
+      // 确保Base64编码正确，不包含换行符
+      const audioBase64 = audioBuffer.toString('base64').replace(/\n/g, '')
+      
+      Logger.info(`✅ 音频文件读取完成，Base64长度: ${audioBase64.length} 字符`)
 
-    const config: AxiosRequestConfig = {
-      method: 'POST',
-      url: submitUrl,
-      headers,
-      data: requestBody,
-      timeout: finalTimeout,
-      // 添加Ubuntu服务器网络优化
-      maxContentLength: Infinity,
-      maxBodyLength: Infinity,
-      // 添加重试配置
-      validateStatus: (status) => status < 500, // 5xx错误才重试
-      // 添加代理配置（如果需要的话）
-      proxy: false, // 禁用代理
-      // 添加keepAlive配置
-      httpAgent: new (require('http').Agent)({ 
-        keepAlive: true,
-        keepAliveMsecs: 30000,
-        timeout: finalTimeout,
-        maxSockets: 5
-      }),
-      httpsAgent: new (require('https').Agent)({ 
-        keepAlive: true,
-        keepAliveMsecs: 30000,
-        timeout: finalTimeout,
-        maxSockets: 5,
-        rejectUnauthorized: true
-      })
-    };
+             // 生成唯一请求ID
+       const requestId = `yt-dlp-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`
+       const submitUrl = `https://${this.baseUrl}/api/v3/auc/bigmodel/submit`
 
-    Logger.info(`⏱️ 豆包API请求配置:`);
-    Logger.info(`  - 超时时间: ${finalTimeout}ms (${Math.round(finalTimeout/1000)}秒)`);
-    Logger.info(`  - 请求体大小: ${JSON.stringify(requestBody).length} 字符`);
-    Logger.info(`  - 网络优化: Ubuntu服务器模式`);
-
-    // 重试机制 - 对于网络不稳定的Ubuntu服务器和1M宽带增加重试次数
-    const maxRetries = audioSizeMB > 15 ? 7 : 5; // 大文件增加到7次重试（从5次增加）
-    let lastError: any;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      let startTime = Date.now(); // 移动到循环内部
-      try {
-        Logger.info(`📡 豆包API提交尝试 ${attempt}/${maxRetries}: ${requestId}`);
-        Logger.info(`  - 当前时间: ${new Date().toISOString()}`);
-        Logger.info(`  - 预计完成时间: ${new Date(Date.now() + finalTimeout).toISOString()}`);
-        
-        startTime = Date.now(); // 重新赋值确保准确性
-        
-        const response = await axios(config);
-        const responseTime = Date.now() - startTime;
-        
-        // 打印详细的响应信息
-        Logger.info(`✅ 豆包API请求成功:`);
-        Logger.info(`  - 响应时间: ${responseTime}ms`);
-        Logger.info(`  - HTTP状态: ${response.status}`);
-        Logger.info(`  - 响应头状态码: ${response.headers['x-api-status-code'] || '无'}`);
-        Logger.info(`  - 响应消息: ${response.headers['x-api-message'] || '无'}`);
-        Logger.info(`  - 服务器: ${response.headers.server || '未知'}`);
-        Logger.info(`  - 连接类型: ${response.headers.connection || '未知'}`);
-        
-        // 打印完整的响应头
-        Logger.info(`📋 豆包API响应头详情:`);
-        Object.entries(response.headers).forEach(([key, value]) => {
-          Logger.info(`    ${key}: ${value}`);
-        });
-        
-        // 打印响应体内容
-        Logger.info(`📦 豆包API响应体内容:`);
-        try {
-          const responseData = response.data;
-          if (typeof responseData === 'object') {
-            Logger.info(`    响应数据类型: object`);
-            Logger.info(`    响应内容: ${JSON.stringify(responseData, null, 2)}`);
-          } else {
-            Logger.info(`    响应数据类型: ${typeof responseData}`);
-            Logger.info(`    响应内容: ${responseData}`);
-          }
-        } catch (parseError) {
-          Logger.warn(`    响应体解析失败: ${parseError}`);
-          Logger.info(`    原始响应: ${response.data}`);
+      Logger.info(`🔑 API认证信息:`)
+      Logger.info(`  - APP_KEY: ${this.appKey ? `${this.appKey.substring(0, 8)}...` : '未配置'}`)
+      Logger.info(`  - ACCESS_KEY: ${this.accessKey ? `${this.accessKey.substring(0, 8)}...` : '未配置'}`)
+      
+      // 检查音频大小是否超过建议限制
+      if (audioSizeMB > 30) {
+        Logger.warn(`⚠️ 音频文件过大 (${audioSizeMB}MB)，1M宽带上传可能需要很长时间`)
+        Logger.warn(`  - 预计上传时间: ${Math.round(audioSizeMB * 8)}秒 (约${Math.round(audioSizeMB * 8 / 60)}分钟)`)
+        Logger.warn(`  - 建议: 选择较短的视频片段 (<15分钟)`)
+      } else if (audioSizeMB > 15) {
+        Logger.warn(`⚠️ 音频文件较大 (${audioSizeMB}MB)，1M宽带上传较慢`)
+        Logger.warn(`  - 预计上传时间: ${Math.round(audioSizeMB * 8)}秒`)
+      }
+      
+      // 根据火山引擎豆包API文档格式构建请求体
+      const requestBody = {
+        user: {
+          uid: "yt-dlp-service-user"
+        },
+        audio: {
+          // 只保留必要的data字段，移除可能导致格式冲突的format字段
+          data: audioBase64
+        },
+        request: {
+          // 只保留必填的model_name，移除可能导致冲突的其他字段
+          model_name: "bigmodel"
         }
-        
-        // 检查响应状态
-        const statusCode = response.headers['x-api-status-code'];
-        const message = response.headers['x-api-message'];
-        
-        // 检查是否为成功或处理中的状态码
-        const acceptableStatusCodes = ['20000000', '20000001', '20000002'];
-        
-        if (statusCode && !acceptableStatusCodes.includes(statusCode)) {
-          Logger.error(`❌ 豆包API提交返回错误状态:`);
-          Logger.error(`  - 状态码: ${statusCode}`);
-          Logger.error(`  - 错误消息: ${message || '未知错误'}`);
-          
-          // 根据状态码给出具体的错误说明
-          let errorDetail = '';
-          switch (statusCode) {
-            case '20000003':
-              errorDetail = '静音音频，请检查音频文件是否有声音内容';
-              break;
-            case '45000001':
-              errorDetail = '请求参数无效，请检查音频格式和请求参数';
-              break;
-            case '45000002':
-              errorDetail = '空音频文件，请检查音频文件是否为空';
-              break;
-            case '45000151':
-              errorDetail = '音频格式不正确，请确保为MP3格式，16kHz采样率，单声道';
-              break;
-            case '55000031':
-              errorDetail = '服务器繁忙，请稍后重试';
-              break;
-            default:
-              if (statusCode.startsWith('550')) {
-                errorDetail = '服务内部处理错误，请稍后重试或联系技术支持';
-              } else {
-                errorDetail = '未知错误';
-              }
-          }
-          
-          throw new Error(`豆包API提交失败 (${statusCode}): ${message || errorDetail}`);
-        }
+      }
 
-        Logger.info(`🎉 豆包任务提交成功: ${requestId}`);
-        return requestId;
-        
-      } catch (error: any) {
-        lastError = error;
-        const responseTime = Date.now() - startTime;
-        const errorMessage = error.response?.data?.message || error.message;
-        
-        Logger.error(`❌ 豆包API提交失败 (尝试${attempt}/${maxRetries}):`);
-        Logger.error(`  - 错误类型: ${error.code || '未知'}`);
-        Logger.error(`  - 错误消息: ${errorMessage}`);
-        Logger.error(`  - HTTP状态: ${error.response?.status || '无响应'}`);
-        Logger.error(`  - 响应时间: ${responseTime}ms`);
-        Logger.error(`  - 当前时间: ${new Date().toISOString()}`);
-        
-        // 打印失败时的完整错误响应
-        if (error.response) {
-          Logger.error(`📋 豆包API错误响应头:`);
-          Object.entries(error.response.headers || {}).forEach(([key, value]) => {
-            Logger.error(`    ${key}: ${value}`);
-          });
-          
-          Logger.error(`📦 豆包API错误响应体:`);
-          try {
-            const errorData = error.response.data;
-            if (typeof errorData === 'object') {
-              Logger.error(`    错误数据类型: object`);
-              Logger.error(`    错误内容: ${JSON.stringify(errorData, null, 2)}`);
-            } else {
-              Logger.error(`    错误数据类型: ${typeof errorData}`);
-              Logger.error(`    错误内容: ${errorData}`);
-            }
-          } catch (parseError) {
-            Logger.error(`    错误响应体解析失败: ${parseError}`);
-            Logger.error(`    原始错误响应: ${error.response.data}`);
-          }
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-Api-App-Key': this.appKey,
+        'X-Api-Access-Key': this.accessKey,
+        'X-Api-Resource-Id': 'volc.bigasr.auc',
+        'X-Api-Request-Id': requestId,
+        'X-Api-Sequence': '-1',
+        // 添加标准的HTTP请求头
+        'User-Agent': 'yt-dlp-service/1.0 (Ubuntu; Node.js)',
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive'
+      }
+
+      // 打印详细的请求参数（调试用）
+      Logger.info(`📋 豆包API请求参数详情:`)
+      Logger.info(`  - 请求方法: POST`)
+      Logger.info(`  - 请求URL: ${submitUrl}`)
+      Logger.info(`  - 请求头:`)
+      Object.entries(headers).forEach(([key, value]) => {
+        if (key.includes('Key')) {
+          Logger.info(`    ${key}: ${typeof value === 'string' ? value.substring(0, 8) + '...' : value}`)
         } else {
-          Logger.error(`📋 网络错误详情:`);
-          Logger.error(`    - 错误配置: ${JSON.stringify({
-            url: error.config?.url,
-            method: error.config?.method,
-            timeout: error.config?.timeout,
-            headers: error.config?.headers ? Object.keys(error.config.headers) : []
-          }, null, 2)}`);
+          Logger.info(`    ${key}: ${value}`)
         }
-        
-        // 详细的网络错误分析
-        if (error.code === 'ECONNABORTED') {
-          Logger.error(`🌐 网络连接中断分析:`);
-          Logger.error(`  - 错误类型: 连接超时`);
-          Logger.error(`  - 可能原因: 网络不稳定、服务器负载高、防火墙限制`);
-          Logger.error(`  - 音频大小: ${audioSizeMB}MB`);
-          Logger.error(`  - 超时设置: ${finalTimeout}ms`);
-          
-          if (audioSizeMB > 30) {
-            Logger.error(`  - 建议: 音频文件过大，请选择较短的视频 (<15分钟)`);
-          } else if (responseTime < 10000) {
-            Logger.error(`  - 建议: 快速失败，可能是网络配置问题`);
-          } else {
-            Logger.error(`  - 建议: 网络连接不稳定，建议检查服务器网络`);
-          }
-        }
-        
-        if (error.response) {
-          Logger.error(`  - 响应头: ${JSON.stringify(error.response.headers)}`);
-          Logger.error(`  - 响应体: ${JSON.stringify(error.response.data)}`);
-        }
-        
-        // 如果是最后一次尝试，或者是非网络错误，直接抛出
-        if (attempt === maxRetries || (!error.code?.includes('TIMEOUT') && !error.code?.includes('ECONNRESET') && error.code !== 'ECONNABORTED')) {
-          Logger.error(`💥 豆包API提交最终失败，停止重试`);
-          break;
-        }
-        
-        // 等待后重试，对于网络错误增加等待时间
-        const delay = error.code === 'ECONNABORTED' ? attempt * 10000 : attempt * 5000; // 1M宽带网络中断增加等待时间到10秒
-        Logger.info(`⏳ 等待 ${delay}ms 后重试...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
+      })
+      Logger.info(`  - 请求体结构:`)
+      Logger.info(`    user.uid: ${requestBody.user.uid}`)
+      Logger.info(`    audio.data: [Base64数据 ${audioBase64.length} 字符]`)
+      Logger.info(`    request.model_name: ${requestBody.request.model_name}`)
+
+             // 根据音频大小动态调整超时时间
+       const baseTimeout = 120000 // 基础120秒
+       let sizeTimeout = Math.max(audioSizeMB * 5000, 60000) // 每MB增加5秒，最小60秒
+       
+       // 对于大文件，增加额外缓冲时间
+       if (audioSizeMB > 10) {
+         sizeTimeout = Math.max(audioSizeMB * 8000, 120000) // 大文件每MB增加8秒
+         Logger.info(`📡 检测到大文件，增加网络缓冲时间`)
+       }
+       
+       // 最大超时时间限制为10分钟
+       const finalTimeout = Math.min(baseTimeout + sizeTimeout, 600000)
+       timeoutSeconds = Math.round(finalTimeout / 1000) // 更新用于错误处理
+
+      const config: AxiosRequestConfig = {
+        method: 'POST',
+        url: submitUrl,
+        headers,
+        data: requestBody,
+        timeout: finalTimeout,
+        // 设置请求体大小限制
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        // 禁用自动重试，避免重复提交
+        validateStatus: (status) => status < 500,
+        // 添加响应类型
+        responseType: 'json'
+      }
+
+      Logger.info(`⏱️ 请求超时设置: ${finalTimeout}ms (${Math.round(finalTimeout / 1000)}秒)`)
+      Logger.info(`🚀 开始发送请求到豆包API...`)
+
+      const response = await axios(config)
+      const endTime = Date.now()
+      const duration = endTime - startTime
+
+      Logger.info(`📦 豆包API提交响应:`)
+      Logger.info(`  - HTTP状态码: ${response.status}`)
+      Logger.info(`  - 响应时间: ${duration}ms`)
+      Logger.info(`  - 响应头:`, response.headers)
+
+      // 检查HTTP状态码
+      if (response.status !== 200) {
+        Logger.error(`❌ HTTP状态码错误: ${response.status}`)
+        Logger.error(`  - 响应数据:`, response.data)
+        throw new Error(`HTTP请求失败: ${response.status} ${response.statusText}`)
+      }
+
+      const responseData = response.data
+      Logger.info(`📋 响应数据结构:`, responseData)
+
+      // 检查响应头中的状态码
+      const apiStatusCode = response.headers['x-api-status-code']
+      const apiMessage = response.headers['x-api-message']
+      const apiRequestId = response.headers['x-api-request-id']
+
+      Logger.info(`📋 豆包API响应头状态:`)
+      Logger.info(`  - API状态码: ${apiStatusCode}`)
+      Logger.info(`  - API消息: ${apiMessage}`)
+      Logger.info(`  - API请求ID: ${apiRequestId}`)
+
+      // 检查API状态码
+      if (!apiStatusCode || apiStatusCode !== '20000000') {
+        const errorMsg = apiMessage || '未知错误'
+        Logger.error(`❌ 豆包API返回错误状态码: ${apiStatusCode}`)
+        Logger.error(`  - 错误消息: ${errorMsg}`)
+        throw new Error(`豆包API错误 (${apiStatusCode}): ${errorMsg}`)
+      }
+
+      // 从响应头中提取任务ID（豆包API通过x-api-request-id返回任务ID）
+      const taskId = apiRequestId
+      if (!taskId) {
+        Logger.error(`❌ 响应头中未找到任务ID`)
+        Logger.error(`  - 响应头:`, response.headers)
+        throw new Error('豆包API响应头中缺少任务ID')
+      }
+
+      Logger.info(`✅ 音频任务提交成功!`)
+      Logger.info(`  - 任务ID: ${taskId}`)
+      Logger.info(`  - 请求ID: ${requestId}`)
+      Logger.info(`  - 提交耗时: ${duration}ms`)
+
+      return taskId
+
+    } catch (error: any) {
+      const endTime = Date.now()
+      const duration = endTime - startTime
+      
+      Logger.error(`💥 豆包API提交任务失败:`)
+      Logger.error(`  - 错误类型: ${error.constructor.name}`)
+      Logger.error(`  - 错误消息: ${error.message}`)
+      Logger.error(`  - 请求耗时: ${duration}ms`)
+      
+      if (error.response) {
+        Logger.error(`  - HTTP状态: ${error.response.status}`)
+        Logger.error(`  - 响应数据:`, error.response.data)
+        Logger.error(`  - 响应头:`, error.response.headers)
+      } else if (error.request) {
+        Logger.error(`  - 网络错误: 无响应`)
+        Logger.error(`  - 请求配置:`, {
+          url: error.config?.url,
+          method: error.config?.method,
+          timeout: error.config?.timeout
+        })
+      }
+      
+             // 根据错误类型提供更具体的错误信息
+       if (error.code === 'ECONNABORTED') {
+         throw new Error(`豆包API请求超时 (${timeoutSeconds}秒): 请检查网络连接或减小音频文件大小`)
+       } else if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+        throw new Error(`豆包API连接失败: 请检查网络连接和API地址`)
+      } else if (error.response?.status === 401) {
+        throw new Error(`豆包API认证失败: 请检查APP_KEY和ACCESS_KEY配置`)
+      } else if (error.response?.status === 413) {
+        throw new Error(`音频文件过大: 豆包API不支持超过512MB的文件`)
+      } else {
+        throw new Error(`豆包API提交任务失败: ${error.message}`)
       }
     }
-
-    const errorMessage = lastError.response?.data?.message || lastError.message;
-    Logger.error(`💀 豆包API提交任务失败 (所有重试均失败): ${errorMessage}`);
-    
-    // 提供针对性的解决建议
-    if (lastError.code === 'ECONNABORTED') {
-      Logger.error(`🔧 网络超时解决建议:`);
-      Logger.error(`  1. 检查服务器网络连接: ping openspeech.bytedance.com`);
-      Logger.error(`  2. 检查防火墙设置: 确保允许HTTPS出站连接`);
-      Logger.error(`  3. 减小音频文件: 选择较短的视频片段`);
-      Logger.error(`  4. 检查服务器负载: top, htop`);
-      Logger.error(`  5. 重启服务: pm2 restart yt-dlpservice`);
-    }
-    
-    throw new Error(`豆包API提交任务失败: ${errorMessage}`);
   }
 
   private async queryAudioTask(requestId: string): Promise<any> {
@@ -439,12 +352,8 @@ class DoubaoVoiceService {
 
     const queryUrl = `https://${this.baseUrl}/api/v3/auc/bigmodel/query`;
     
-    // 查询接口通常只需要 request_id，不需要 user 字段
-    const requestBody = {
-      request: {
-        model_name: "bigmodel"
-      }
-    };
+    // 根据API文档，查询接口使用空的请求体
+    const requestBody = {}
 
     const headers = {
       'Content-Type': 'application/json',
@@ -479,8 +388,7 @@ class DoubaoVoiceService {
         Logger.info(`    ${key}: ${value}`);
       }
     });
-    Logger.info(`  - 请求体:`);
-    Logger.info(`    request.model_name: ${requestBody.request.model_name}`);
+    Logger.info(`  - 请求体: {} (空)`);
 
     // 查询接口也添加重试机制
     const maxRetries = 2; // 查询接口最多重试2次
@@ -935,15 +843,8 @@ class DoubaoVoiceService {
         Logger.warn(`⚠️ 网络连接不稳定，但继续尝试提交任务...`);
       }
       
-      // 读取音频文件并转换为Base64（分块处理减少内存占用）
-      Logger.info(`开始读取音频文件，使用分块处理减少服务器负载...`);
-      const audioBuffer = await this.readAudioFileInChunks(audioPath);
-      const audioBase64 = await this.convertToBase64InChunks(audioBuffer);
-      
-      Logger.info(`音频文件读取完成，大小: ${Math.round(audioBuffer.length / 1024 / 1024 * 100) / 100}MB`)
-      
-      // 提交任务到豆包API
-      const requestId = await this.submitAudioTask(audioBase64)
+      // 提交任务到豆包API（现在直接传递文件路径）
+      const requestId = await this.submitAudioTask(audioPath)
       
       // 轮询获取转录结果
       const transcription = await this.pollTranscriptionResult(requestId)
@@ -1062,22 +963,23 @@ class DoubaoVoiceService {
   }
 
   private async pollTranscriptionResult(requestId: string): Promise<string> {
-    // 根据音频大小动态调整轮询策略
-    const maxRetries = 40; // 调整为40次轮询（配合15秒间隔，最多10分钟）
-    const baseInterval = 15000; // 基础间隔15秒
+    // 根据音频大小动态调整轮询策略 - 针对长音频优化
+    const maxRetries = 80; // 延长一倍：80次轮询（配合30秒间隔，最多40分钟）
+    const baseInterval = 30000; // 延长一倍：基础间隔30秒
     const maxWaitTime = maxRetries * baseInterval;
 
-    Logger.info(`🔄 开始轮询豆包任务结果:`);
+    Logger.info(`🔄 开始轮询豆包任务结果 (长音频优化):`);
     Logger.info(`  - 任务ID: ${requestId}`);
-    Logger.info(`  - 最大轮询次数: ${maxRetries}`);
-    Logger.info(`  - 最大等待时间: ${maxWaitTime/60000}分钟`);
+    Logger.info(`  - 最大轮询次数: ${maxRetries} (针对长音频延长一倍)`);
+    Logger.info(`  - 轮询间隔: ${baseInterval/1000}秒 (延长一倍)`);
+    Logger.info(`  - 最大等待时间: ${Math.round(maxWaitTime/60000)}分钟`);
 
     let consecutiveTimeouts = 0; // 连续超时计数
     const maxConsecutiveTimeouts = 5; // 最多允许5次连续超时
 
     for (let i = 0; i < maxRetries; i++) {
-      // 动态调整查询间隔：前5次较频繁，之后正常间隔
-      const currentInterval = i < 5 ? Math.max(baseInterval / 2, 8000) : baseInterval;
+      // 动态调整查询间隔：前5次较频繁，之后正常间隔（针对长音频优化）
+      const currentInterval = i < 5 ? Math.max(baseInterval / 2, 15000) : baseInterval;
       await new Promise(resolve => setTimeout(resolve, currentInterval));
       
       const progress = Math.round((i + 1) / maxRetries * 100);

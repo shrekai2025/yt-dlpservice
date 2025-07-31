@@ -3,10 +3,13 @@ import { Logger } from '~/lib/utils/logger'
 import { contentDownloader } from './content-downloader'
 import { doubaoVoiceService } from './doubao-voice'
 import { cleanupManager } from './cleanup-manager'
+import { audioCompressor } from './audio-compressor'
 import { env } from '~/env'
 import { ConfigManager } from '~/lib/utils/config'
 import { GlobalInit } from '~/lib/utils/global-init'
-import type { TaskStatus, DownloadType } from '~/types/task'
+import type { TaskStatus, DownloadType, CompressionPreset } from '~/types/task'
+import type { CompressionOptions } from '~/types/compression'
+import { formatFileSize, bytesToMB } from './audio-utils'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 
@@ -86,8 +89,13 @@ export class TaskProcessor {
 
       Logger.info(`任务 ${taskId} 提取完成，类型: ${this.getDownloadTypeDisplayName(task.downloadType)}`)
 
-      // 处理音频转录（所有类型都需要转录）
+      // 处理音频压缩（如果需要）
       let audioPathForTranscription = downloadResult.audioPath
+      if (task.compressionPreset && task.compressionPreset !== 'none' && audioPathForTranscription) {
+        audioPathForTranscription = await this.processAudioCompression(taskId, audioPathForTranscription, task.compressionPreset as CompressionPreset)
+      }
+
+      // 处理音频转录（所有类型都需要转录）
       Logger.info(`🎵 准备音频转录: ${taskId}`)
 
       // 如果是视频下载，需要从视频中提取音频
@@ -201,6 +209,86 @@ export class TaskProcessor {
       'BOTH': '视频+音频'
     }
     return typeMap[downloadType] || downloadType
+  }
+
+  /**
+   * 处理音频压缩
+   */
+  private async processAudioCompression(taskId: string, audioPath: string, preset: CompressionPreset): Promise<string> {
+    try {
+      Logger.info(`🗜️ 开始音频压缩: ${taskId}, 预设: ${preset}`)
+      
+      // 更新状态为压缩中（我们可以复用 EXTRACTING 状态或添加新状态）
+      await this.updateTaskStatus(taskId, 'EXTRACTING')
+      
+      // 获取原始文件信息
+      const originalStats = await fs.stat(audioPath)
+      const originalSize = originalStats.size
+      const originalSizeMB = bytesToMB(originalSize)
+      
+      Logger.info(`📊 原始音频文件: ${formatFileSize(originalSize)} (${originalSizeMB.toFixed(2)}MB)`)
+      
+      // 生成压缩后的文件路径
+      const dir = path.dirname(audioPath)
+      const ext = path.extname(audioPath)
+      const basename = path.basename(audioPath, ext)
+      const compressedPath = path.join(dir, `${basename}_compressed${ext}`)
+      
+      // 配置压缩选项
+      const compressionOptions: CompressionOptions = {
+        preset,
+        inputPath: audioPath,
+        outputPath: compressedPath,
+        maxSizeMB: 80, // 豆包API限制
+        skipIfSmaller: true
+      }
+      
+      // 执行压缩
+      const result = await audioCompressor.compressAudio(compressionOptions)
+      
+      if (!result.success) {
+        Logger.warn(`⚠️ 音频压缩失败，使用原文件: ${result.error}`)
+        return audioPath
+      }
+      
+      if (result.skipped) {
+        Logger.info(`⏭️ 跳过压缩: ${result.skipReason}`)
+        return audioPath
+      }
+      
+      // 压缩成功，更新数据库记录
+      await db.task.update({
+        where: { id: taskId },
+        data: {
+          originalFileSize: result.originalSize,
+          compressedFileSize: result.compressedSize,
+          compressionRatio: result.compressionRatio,
+          compressionDuration: result.duration,
+          compressionPreset: preset
+        }
+      })
+      
+      const compressedSizeMB = result.compressedSize ? bytesToMB(result.compressedSize) : 0
+      Logger.info(`✅ 音频压缩完成: ${taskId}`)
+      Logger.info(`  📉 大小变化: ${formatFileSize(result.originalSize)} → ${formatFileSize(result.compressedSize || 0)}`)
+      Logger.info(`  📊 压缩比例: ${result.compressionRatio ? (result.compressionRatio * 100).toFixed(1) : '0'}%`)
+      Logger.info(`  ⏱️ 压缩耗时: ${((result.duration || 0) / 1000).toFixed(1)}s`)
+      
+      // 删除原文件，使用压缩后的文件
+      try {
+        await fs.unlink(audioPath)
+        Logger.debug(`🗑️ 已删除原始音频文件: ${audioPath}`)
+      } catch (error) {
+        Logger.warn(`清理原始文件失败: ${error}`)
+      }
+      
+      return result.compressedPath || audioPath
+      
+    } catch (error: any) {
+      Logger.error(`❌ 音频压缩处理失败: ${taskId}, 错误: ${error.message}`)
+      Logger.warn(`⚠️ 使用原始音频文件继续处理`)
+      return audioPath
+    }
   }
 
   /**
