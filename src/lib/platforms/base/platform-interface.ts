@@ -49,6 +49,12 @@ export interface PlatformValidation {
 
 /**
  * 平台接口 - 所有平台必须实现
+ * 
+ * 下载方法说明：
+ * - downloadMethod 为 'ytdlp' (默认): 使用 yt-dlp 下载，需要实现 getContentInfo 和 getDownloadConfig
+ * - downloadMethod 为 'custom': 使用 WebBasedDownloader，必须实现 getExtractor() 方法
+ *   在 custom 模式下，ContentDownloader 会绕过 getContentInfo 和 getDownloadConfig，
+ *   直接使用 WebBasedDownloader 和提供的 extractor
  */
 export interface IPlatform {
   /** 平台名称 */
@@ -62,6 +68,9 @@ export interface IPlatform {
   
   /** 是否需要认证 */
   requiresAuth: boolean
+  
+  /** 下载方法 - ytdlp 使用 yt-dlp，custom 使用自定义下载器 */
+  downloadMethod?: 'ytdlp' | 'custom'
   
   /**
    * 验证URL是否被此平台支持
@@ -87,6 +96,11 @@ export interface IPlatform {
    * 添加平台特定的yt-dlp参数
    */
   addPlatformSpecificArgs(command: string, url: string, useBrowserCookies?: boolean): Promise<string>
+  
+  /**
+   * 获取自定义提取器 (仅在 downloadMethod 为 'custom' 时需要)
+   */
+  getExtractor?(): import('~/lib/downloaders/types').PlatformExtractor
   
   /**
    * 处理认证需求 (可选)

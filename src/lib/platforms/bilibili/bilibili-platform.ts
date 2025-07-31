@@ -158,18 +158,7 @@ export class BilibiliPlatform extends AbstractPlatform {
     // 添加B站专用的extractor参数
     enhancedCommand += ' --extractor-args "bilibili:video_info_prefer_api_over_html=true"'
     
-    // 添加B站Cookie支持
-    if (useBrowserCookies) {
-      try {
-        const cookiesFile = await browserManager.getCookiesForYtDlp()
-        if (cookiesFile) {
-          enhancedCommand += ` --cookies "${cookiesFile}"`
-          this.log('info', '✅ 已添加B站浏览器Cookie支持')
-        }
-      } catch (error) {
-        this.log('warn', '获取B站浏览器cookies失败，使用默认方式')
-      }
-    }
+    // 注意：浏览器Cookie功能已移除，如需要可以手动配置cookies文件
     
     this.log('info', '🎯 已添加B站专用请求头和选项')
     return enhancedCommand

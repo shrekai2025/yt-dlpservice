@@ -37,16 +37,16 @@
   "xiaoyuzhou": {
     "name": "小宇宙",
     "domains": [
-      "xiaoyuzhou.fm",
-      "www.xiaoyuzhou.fm"
+      "xiaoyuzhoufm.com",
+      "www.xiaoyuzhoufm.com"
     ],
     "urlPatterns": [
-      "^https?://(www\\.)?xiaoyuzhou\\.fm/episodes?/[a-zA-Z0-9]+",
-      "^https?://(www\\.)?xiaoyuzhou\\.fm/podcast/[a-zA-Z0-9]+"
+      "^https?://(www\\.)?xiaoyuzhoufm\\.com/episode/[a-zA-Z0-9]+",
+      "^https?://(www\\.)?xiaoyuzhoufm\\.com/podcast/[a-zA-Z0-9]+"
     ],
     "contentTypes": ["audio", "podcast"],
     "requiresAuth": false,
     "downloadMethod": "custom",
-    "note": "小宇宙平台暂未完全支持，需要自定义下载逻辑"
+    "note": "小宇宙平台使用网页解析方式下载音频"
   }
 } 
