@@ -614,7 +614,7 @@ class DoubaoVoiceService {
 
   /**
    * 解析豆包API响应状态
-   * 根据官方错误码文档完整实现状态识别
+   * 豆包每次都返回完整结果，简化状态判断逻辑
    */
   private parseTaskStatus(response: any): {
     status: string;
@@ -638,25 +638,13 @@ class DoubaoVoiceService {
     Logger.debug(`  - hasResult: ${hasResult}`);
     Logger.debug(`  - result.text length: ${response?.result?.text?.length || 0}`);
     
-    // 🔧 修复：只有在状态码明确表示成功完成时，才认为任务真正完成
-    // 避免在处理过程中获取到部分结果就停止轮询
-    if (hasResult && statusCode === '20000000') {
+    // 🔧 简化逻辑：豆包每次都返回完整结果，有结果就表示任务完成
+    if (hasResult) {
       return {
         status: 'completed',
         hasResult: true,
         shouldContinue: false,
         message: '转录完成'
-      };
-    }
-    
-    // 如果有结果但状态码不是成功，继续轮询等待最终结果
-    if (hasResult && statusCode !== '20000000') {
-      Logger.debug(`⏳ 检测到部分转录结果，但状态码为 ${statusCode}，继续等待完整结果`);
-      return {
-        status: 'processing_with_partial_result',
-        hasResult: false, // 设为false以继续轮询
-        shouldContinue: true,
-        message: '检测到部分结果，等待完整转录'
       };
     }
     
@@ -1027,7 +1015,7 @@ class DoubaoVoiceService {
         
         Logger.info(`📈 豆包任务状态: ${taskStatus.status} - ${taskStatus.message} (${i + 1}/${maxRetries})`);
         
-        // 如果有转录结果，返回
+        // 豆包API返回完整结果，有结果就表示任务完成
         if (taskStatus.hasResult && response.result.text) {
           // 🔍 确保使用原始未修改的转录文本
           const originalText = response.result.text;
