@@ -160,22 +160,66 @@ export class WebBasedDownloader {
         }
       })
       
+      // 获取文件总大小
+      const totalSize = parseInt(response.headers['content-length'] || '0', 10)
+      const totalSizeMB = totalSize > 0 ? (totalSize / 1024 / 1024).toFixed(2) : '未知'
+      
+      Logger.info(`📊 文件信息: 总大小 ${totalSizeMB}MB`)
+      
       // 创建写入流
       const writer = await fs.open(filepath, 'w')
       const stream = writer.createWriteStream()
+      
+      // 下载进度监控
+      let downloadedBytes = 0
+      const startTime = Date.now()
+      
+      // 设置进度监控定时器（每10秒打印一次）
+      const progressInterval = setInterval(() => {
+        const currentTime = Date.now()
+        const elapsedSeconds = Math.round((currentTime - startTime) / 1000)
+        const downloadedMB = (downloadedBytes / 1024 / 1024).toFixed(2)
+        const speed = downloadedBytes > 0 ? (downloadedBytes / 1024 / (currentTime - startTime) * 1000).toFixed(1) : '0'
+        
+        if (totalSize > 0) {
+          const progress = ((downloadedBytes / totalSize) * 100).toFixed(1)
+          Logger.info(`📥 下载进度: ${downloadedMB}MB / ${totalSizeMB}MB (${progress}%) - 速度: ${speed}KB/s - 用时: ${elapsedSeconds}s`)
+        } else {
+          Logger.info(`📥 下载进度: ${downloadedMB}MB - 速度: ${speed}KB/s - 用时: ${elapsedSeconds}s`)
+        }
+      }, 10000) // 每10秒执行一次
+      
+      // 监听数据流，更新下载字节数
+      response.data.on('data', (chunk: Buffer) => {
+        downloadedBytes += chunk.length
+      })
       
       // 管道数据
       response.data.pipe(stream)
       
       // 等待下载完成
       await new Promise<void>((resolve, reject) => {
-        stream.on('finish', () => resolve())
-        stream.on('error', reject)
+        stream.on('finish', () => {
+          clearInterval(progressInterval) // 清除定时器
+          resolve()
+        })
+        stream.on('error', (error) => {
+          clearInterval(progressInterval) // 清除定时器
+          reject(error)
+        })
       })
       
       await writer.close()
       
-      Logger.info(`WebBasedDownloader: 文件下载完成 ${filepath}`)
+      // 打印最终下载统计
+      const finalTime = Date.now()
+      const totalElapsedSeconds = Math.round((finalTime - startTime) / 1000)
+      const finalDownloadedMB = (downloadedBytes / 1024 / 1024).toFixed(2)
+      const avgSpeed = downloadedBytes > 0 ? (downloadedBytes / 1024 / (finalTime - startTime) * 1000).toFixed(1) : '0'
+      
+      Logger.info(`✅ 文件下载完成: ${filepath}`)
+      Logger.info(`📊 下载统计: ${finalDownloadedMB}MB - 总用时: ${totalElapsedSeconds}s - 平均速度: ${avgSpeed}KB/s`)
+      
       return filepath
     } catch (error: any) {
       Logger.error(`WebBasedDownloader: 文件下载失败 - ${error.message}`)

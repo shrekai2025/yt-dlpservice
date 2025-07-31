@@ -25,7 +25,11 @@ export interface VideoInfo {
 export interface CreateTaskInput {
   url: string
   downloadType?: DownloadType // 新增下载类型参数，默认为 AUDIO_ONLY
+  compressionPreset?: CompressionPreset // 音频压缩预设，默认为 none
 }
+
+// 压缩预设类型
+export type CompressionPreset = 'none' | 'light' | 'standard' | 'heavy'
 
 // 更新任务输入接口
 export interface UpdateTaskInput {
@@ -40,6 +44,12 @@ export interface UpdateTaskInput {
   retryCount?: number
   duration?: number
   fileSize?: number
+  // 压缩相关字段
+  compressionPreset?: CompressionPreset
+  originalFileSize?: number
+  compressedFileSize?: number
+  compressionRatio?: number
+  compressionDuration?: number
 }
 
 // 任务查询选项接口

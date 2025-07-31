@@ -49,6 +49,13 @@ model Task {
   thumbnail     String?    // 缩略图URL
   description   String?    // 内容描述
   
+  // 音频压缩相关
+  compressionPreset    String?  @default("none")  // 压缩预设: none, light, standard, heavy
+  originalFileSize     Int?     // 压缩前文件大小（字节）
+  compressedFileSize   Int?     // 压缩后文件大小（字节）
+  compressionRatio     Float?   // 压缩比例 (0-1)
+  compressionDuration  Int?     // 压缩耗时（毫秒）
+  
   // 重试和错误处理
   retryCount    Int        @default(0)
   errorMessage  String?    // 错误信息

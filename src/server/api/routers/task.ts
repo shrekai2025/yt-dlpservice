@@ -39,6 +39,7 @@ export const taskRouter = createTRPCRouter({
             url: normalizedUrl, // 使用标准化后的URL
             platform,
             downloadType: input.downloadType,
+            compressionPreset: input.compressionPreset,
             status: 'PENDING'
           }
         })

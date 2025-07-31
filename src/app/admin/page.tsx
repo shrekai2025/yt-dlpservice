@@ -6,6 +6,7 @@ import { api } from "~/components/providers/trpc-provider"
 export default function TaskManagementPage() {
   const [url, setUrl] = useState("")
   const [downloadType, setDownloadType] = useState<"AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH">("AUDIO_ONLY")
+  const [compressionPreset, setCompressionPreset] = useState<"none" | "light" | "standard" | "heavy">("none")
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false)
   const [selectedTranscription, setSelectedTranscription] = useState<{taskId: string, text: string} | null>(null)
 
@@ -19,6 +20,7 @@ export default function TaskManagementPage() {
     onSuccess: () => {
       setUrl("")
       setDownloadType("AUDIO_ONLY")
+      setCompressionPreset("none")
       refetchTasks()
     },
   })
@@ -35,7 +37,7 @@ export default function TaskManagementPage() {
     if (!url.trim()) return
 
     try {
-      await createTask.mutateAsync({ url: url.trim(), downloadType })
+      await createTask.mutateAsync({ url: url.trim(), downloadType, compressionPreset })
     } catch (error) {
       console.error("Failed to create task:", error)
     }
@@ -137,6 +139,31 @@ export default function TaskManagementPage() {
               默认选择"仅音频"适合语音转录需求，节省存储空间
             </p>
           </div>
+
+          <div>
+            <label htmlFor="compressionPreset" className="block text-sm font-medium text-gray-700 mb-2">
+              音频压缩设置
+            </label>
+            <select
+              id="compressionPreset"
+              value={compressionPreset}
+              onChange={(e) => setCompressionPreset(e.target.value as "none" | "light" | "standard" | "heavy")}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="none">不压缩 - 保持原始质量</option>
+              <option value="light">轻度压缩 - 减少30-50%文件大小</option>
+              <option value="standard">标准压缩 - 减少50-70%文件大小 (推荐)</option>
+              <option value="heavy">高度压缩 - 减少70-85%文件大小</option>
+            </select>
+            <div className="mt-1 text-sm text-gray-500">
+              <p>💡 压缩建议：</p>
+              <ul className="ml-4 list-disc">
+                <li><strong>轻度压缩</strong>：适合高质量音频需求</li>
+                <li><strong>标准压缩</strong>：平衡质量与大小，推荐语音转录</li>
+                <li><strong>高度压缩</strong>：文件过大时使用，满足豆包API 80MB限制</li>
+              </ul>
+            </div>
+          </div>
           
           <button
             type="submit"
@@ -182,6 +209,9 @@ export default function TaskManagementPage() {
                   下载类型
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  压缩设置
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   状态
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -218,6 +248,31 @@ export default function TaskManagementPage() {
                       {task.downloadType === 'AUDIO_ONLY' ? '仅音频' :
                        task.downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频+音频'}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <div className="space-y-1">
+                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                        (task as any).compressionPreset === 'none' ? 'bg-gray-100 text-gray-800' :
+                        (task as any).compressionPreset === 'light' ? 'bg-yellow-100 text-yellow-800' :
+                        (task as any).compressionPreset === 'standard' ? 'bg-orange-100 text-orange-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {(task as any).compressionPreset === 'none' ? '不压缩' :
+                         (task as any).compressionPreset === 'light' ? '轻度' :
+                         (task as any).compressionPreset === 'standard' ? '标准' :
+                         (task as any).compressionPreset === 'heavy' ? '高度' : '未知'}
+                      </span>
+                      {(task as any).compressionRatio && (
+                        <div className="text-xs text-gray-500">
+                          压缩率: {((task as any).compressionRatio * 100).toFixed(1)}%
+                        </div>
+                      )}
+                      {(task as any).originalFileSize && (task as any).compressedFileSize && (
+                        <div className="text-xs text-gray-500">
+                          {Math.round((task as any).originalFileSize / 1024 / 1024)}MB → {Math.round((task as any).compressedFileSize / 1024 / 1024)}MB
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span

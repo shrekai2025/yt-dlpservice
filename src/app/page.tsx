@@ -27,6 +27,14 @@ export default function HomePage() {
               <span className="text-green-500 mr-2">✓</span>
               语音转文字
             </li>
+            <li className="flex items-center">
+              <span className="text-green-500 mr-2">✓</span>
+              音频智能压缩
+            </li>
+            <li className="flex items-center">
+              <span className="text-green-500 mr-2">✓</span>
+              小宇宙播客下载
+            </li>
           </ul>
           <div className="mt-6">
             <a 
