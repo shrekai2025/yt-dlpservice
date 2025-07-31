@@ -48,6 +48,16 @@ export default function ApiDocPage() {
               >
                 外部API (预留)
               </button>
+              <button
+                onClick={() => setActiveTab('download-strategy')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'download-strategy'
+                    ? 'border-blue-500 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                下载策略
+              </button>
             </nav>
           </div>
         </div>
@@ -243,7 +253,7 @@ export default function ApiDocPage() {
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-medium mb-2">文件位置:</h3>
-                  <code className="text-sm">src/lib/services/video-downloader.ts</code>
+                  <code className="text-sm">src/lib/services/content-downloader.ts</code>
                 </div>
               </div>
             </div>
@@ -299,7 +309,7 @@ export default function ApiDocPage() {
                   <h3 className="font-medium mb-2">工作流程:</h3>
                   <ol className="list-decimal list-inside text-sm text-gray-600 space-y-1">
                     <li>接收任务请求，验证URL有效性</li>
-                    <li>根据下载类型调用video-downloader</li>
+                    <li>根据下载类型调用content-downloader，使用平台插件化架构</li>
                     <li>下载完成后提取音频文件</li>
                     <li>调用语音服务进行转录</li>
                     <li>更新任务状态和结果</li>
@@ -1064,6 +1074,189 @@ if __name__ == "__main__":
                     <li>外部API使用标准 REST 风格</li>
                     <li>所有API都应该有完整的错误处理</li>
                     <li>使用 Zod 进行输入验证</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 下载策略内容 */}
+        {activeTab === 'download-strategy' && (
+          <div className="space-y-8">
+            {/* 概述 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">🎯 下载策略概述</h2>
+              <p className="text-gray-600 mb-4">
+                本系统基于 <code className="bg-gray-100 px-1 rounded">yt-dlp</code> 实现智能下载策略，支持多平台视频/音频获取，
+                采用分层降级机制确保最大兼容性和成功率。
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-blue-900 mb-2">🎵 音频优先</h3>
+                  <p className="text-sm text-blue-700">智能选择最佳音频格式，确保高质量转录</p>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-green-900 mb-2">🌐 多平台支持</h3>
+                  <p className="text-sm text-green-700">针对B站、YouTube等平台优化</p>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h3 className="font-medium text-purple-900 mb-2">⚡ 自动降级</h3>
+                  <p className="text-sm text-purple-700">格式不可用时自动切换备选方案</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 格式选择策略 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">📊 格式选择策略</h2>
+              
+              <div className="space-y-6">
+                {/* 通用策略 */}
+                <div className="border-l-4 border-blue-500 pl-4">
+                  <h3 className="font-medium text-blue-900 mb-2">🌍 通用平台策略</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-700 mb-2"><strong>格式选择:</strong> <code>bestaudio/best</code></p>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li>• <strong>bestaudio</strong>: 优先选择最佳音频流（无视频，文件更小）</li>
+                      <li>• <strong>best</strong>: 如无独立音频流，选择最佳质量视频（后续提取音频）</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* B站特殊策略 */}
+                <div className="border-l-4 border-red-500 pl-4">
+                  <h3 className="font-medium text-red-900 mb-2">📺 B站专用策略</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-700 mb-2"><strong>格式选择:</strong> <code>bestaudio/best</code></p>
+                    <p className="text-sm text-gray-600 mb-2"><strong>特殊优化:</strong></p>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li>• <strong>请求头伪装</strong>: 添加真实浏览器User-Agent和Referer</li>
+                      <li>• <strong>API优先</strong>: 使用 <code>video_info_prefer_api_over_html=true</code></li>
+                      <li>• <strong>URL标准化</strong>: 短链接自动解析为标准桌面端URL</li>
+                      <li>• <strong>Cookie支持</strong>: 自动获取浏览器Cookie（可选）</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* yt-dlp 参数详解 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">⚙️ yt-dlp 参数配置</h2>
+              
+              <div className="space-y-6">
+                {/* 音频下载参数 */}
+                <div>
+                  <h3 className="font-medium mb-3">🎵 音频下载命令</h3>
+                  <div className="bg-black text-green-400 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                    <div className="mb-2">
+                      <span className="text-yellow-400"># 基础命令结构</span>
+                    </div>
+                    <div>
+                      yt-dlp --no-warnings -f "bestaudio/best" \<br/>
+                      &nbsp;&nbsp;--extract-audio --audio-format mp3 --audio-quality 5 \<br/>
+                      &nbsp;&nbsp;-o "temp/[taskId]/%(id)s_audio.mp3" \<br/>
+                      &nbsp;&nbsp;--no-check-certificate \<br/>
+                      &nbsp;&nbsp;--postprocessor-args "ffmpeg:-ar 16000 -ac 1 -b:a 32k" \<br/>
+                      &nbsp;&nbsp;[URL]
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 space-y-2">
+                    <div className="text-sm">
+                      <strong className="text-blue-600">参数说明:</strong>
+                    </div>
+                    <ul className="text-sm text-gray-600 space-y-1 ml-4">
+                      <li>• <code>--no-warnings</code>: 隐藏警告信息，简化输出</li>
+                      <li>• <code>-f "bestaudio/best"</code>: 格式选择策略</li>
+                      <li>• <code>--extract-audio</code>: 从视频中提取音频</li>
+                      <li>• <code>--audio-format mp3</code>: 强制输出MP3格式</li>
+                      <li>• <code>--audio-quality 5</code>: 音频质量等级（0-9，5为平衡点）</li>
+                      <li>• <code>--postprocessor-args</code>: FFmpeg后处理参数</li>
+                      <li>&nbsp;&nbsp;• <code>-ar 16000</code>: 采样率16kHz（豆包API标准）</li>
+                      <li>&nbsp;&nbsp;• <code>-ac 1</code>: 单声道（减小文件大小）</li>
+                      <li>&nbsp;&nbsp;• <code>-b:a 32k</code>: 音频比特率32kbps</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* B站特殊参数 */}
+                <div>
+                  <h3 className="font-medium mb-3">📺 B站专用参数</h3>
+                  <div className="bg-black text-green-400 p-4 rounded-lg font-mono text-sm overflow-x-auto">
+                    <div className="mb-2">
+                      <span className="text-yellow-400"># B站附加参数</span>
+                    </div>
+                    <div>
+                      --add-header "User-Agent: Mozilla/5.0..." \<br/>
+                      --add-header "Referer: https://www.bilibili.com/" \<br/>
+                      --extractor-args "bilibili:video_info_prefer_api_over_html=true" \<br/>
+                      --cookies "browser_cookies.txt"  <span className="text-gray-500"># 可选</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 文件路径和命名规则 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">📁 文件路径与命名</h2>
+              
+              <div className="space-y-4">
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">🗂️ 目录结构</h3>
+                  <div className="bg-gray-50 p-3 rounded font-mono text-sm">
+                    temp/<br/>
+                    ├── [taskId]/<br/>
+                    │&nbsp;&nbsp;&nbsp;├── [videoId]_audio.mp3<br/>
+                    │&nbsp;&nbsp;&nbsp;└── [videoId]_video.mp4<br/>
+                    └── cleanup_logs/
+                  </div>
+                </div>
+
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">📝 命名规则</h3>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li>• <strong>音频文件</strong>: <code>[videoId]_audio.mp3</code></li>
+                    <li>• <strong>视频文件</strong>: <code>[videoId]_video.mp4</code></li>
+                    <li>• <strong>任务目录</strong>: <code>cmd[随机字符串]</code></li>
+                    <li>• <strong>清理策略</strong>: 任务完成后自动清理，支持手动清理</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* 错误处理和故障排除 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">🚨 错误处理与排障</h2>
+              
+              <div className="space-y-4">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <h3 className="font-medium text-red-900 mb-2">❌ 常见错误类型</h3>
+                  <ul className="text-sm text-red-700 space-y-1">
+                    <li>• <code>Requested format is not available</code> - 格式不可用</li>
+                    <li>• <code>Failed to parse JSON</code> - 网页解析失败（反爬虫）</li>
+                    <li>• <code>HTTP Error 403</code> - 访问被拒绝</li>
+                    <li>• <code>timeout of Xms exceeded</code> - 网络超时</li>
+                  </ul>
+                </div>
+
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <h3 className="font-medium text-yellow-900 mb-2">🔧 排障命令</h3>
+                  <div className="font-mono text-sm bg-yellow-100 p-2 rounded">
+                    yt-dlp --list-formats "[URL]"
+                  </div>
+                  <p className="text-sm text-yellow-700 mt-1">查看视频可用格式列表，用于诊断格式问题</p>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 mb-2">💡 优化建议</h3>
+                  <ul className="text-sm text-blue-700 space-y-1">
+                    <li>• 优先使用桌面端URL，避免移动端和短链接</li>
+                    <li>• 网络较慢时，系统会自动调整超时时间</li>
+                    <li>• B站视频建议登录后获取Cookie以提高成功率</li>
+                    <li>• 大文件处理时系统会分块处理避免内存占用过高</li>
                   </ul>
                 </div>
               </div>

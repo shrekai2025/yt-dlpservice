@@ -48,6 +48,9 @@ export default function ToolsPage() {
     }
   })
 
+  // yt-dlp 状态检查
+  const { data: downloaderStatus, refetch: refetchDownloaderStatus } = api.task.checkDownloader.useQuery()
+
   // 文件清理相关
   const { data: cleanupStatus, refetch: refetchCleanupStatus } = api.cleanup.status.useQuery()
   const manualCleanup = api.cleanup.manual.useMutation({
@@ -281,6 +284,109 @@ export default function ToolsPage() {
                 <div className="text-sm text-green-800">
                   <p className="font-medium">Chrome 自动登录已就绪</p>
                   <p>系统将在需要时自动使用已保存的 Chrome 登录状态处理 YouTube 视频</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* yt-dlp 路径配置 */}
+      <div className="mb-6 bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4">yt-dlp 路径配置</h2>
+        <div className="space-y-4">
+          {/* yt-dlp 状态显示 */}
+          <div className="bg-gray-50 border border-gray-200 rounded p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium text-gray-900">yt-dlp 工具状态</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {downloaderStatus?.available 
+                    ? `✅ yt-dlp 已找到并可用${downloaderStatus.version ? ` (版本: ${downloaderStatus.version})` : ''}` 
+                    : "❌ yt-dlp 未找到或不可用"}
+                </p>
+                {downloaderStatus?.path && (
+                  <p className="text-sm text-blue-600 mt-2 font-mono bg-blue-50 px-2 py-1 rounded">
+                    📍 检测到的路径: {downloaderStatus.path}
+                  </p>
+                )}
+                {!downloaderStatus?.available && (
+                  <p className="text-sm text-red-600 mt-1">{downloaderStatus?.message}</p>
+                )}
+              </div>
+              
+              <button
+                onClick={() => refetchDownloaderStatus()}
+                className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              >
+                重新检测
+              </button>
+            </div>
+          </div>
+          
+          {/* 配置说明 */}
+          <div className="bg-blue-50 border border-blue-200 rounded p-4">
+            <div className="flex items-start space-x-2">
+              <div className="text-blue-500 mt-0.5">⚙️</div>
+              <div className="text-sm text-blue-800">
+                <p className="font-medium mb-2">yt-dlp 路径配置说明</p>
+                <div className="space-y-2">
+                  <p>
+                    系统会自动在以下位置按顺序搜索 yt-dlp：
+                  </p>
+                  <ul className="list-disc list-inside text-xs space-y-1 ml-2 font-mono">
+                    <li>yt-dlp (系统PATH)</li>
+                    <li>/usr/local/bin/yt-dlp</li>
+                    <li>/usr/bin/yt-dlp</li>
+                    <li>/home/ubuntu/.local/bin/yt-dlp</li>
+                    <li>/Users/[用户名]/.local/bin/yt-dlp</li>
+                    <li>/opt/homebrew/bin/yt-dlp</li>
+                    <li>/usr/local/opt/yt-dlp/bin/yt-dlp</li>
+                    <li>/Users/[用户名]/Library/Python/3.9/bin/yt-dlp</li>
+                  </ul>
+                  <div className="mt-3 p-3 bg-white rounded border border-blue-200">
+                    <p className="font-medium text-blue-900 mb-2">🔧 自定义 yt-dlp 路径</p>
+                    <p className="mb-2">如果需要修改 yt-dlp 搜索路径，请编辑以下文件：</p>
+                    <code className="block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs">
+                      src/lib/services/content-downloader.ts
+                    </code>
+                    <p className="mt-2 text-xs">
+                      在 <code className="bg-gray-100 px-1 rounded">detectYtDlpPath()</code> 方法中的 
+                      <code className="bg-gray-100 px-1 rounded">possiblePaths</code> 数组中添加您的自定义路径。
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 安装指南 */}
+          {!downloaderStatus?.available && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+              <div className="flex items-start space-x-2">
+                <div className="text-yellow-600 mt-0.5">💡</div>
+                <div className="text-sm text-yellow-800">
+                  <p className="font-medium mb-2">yt-dlp 安装指南</p>
+                  <div className="space-y-2">
+                    <p className="mb-2">推荐的安装方法：</p>
+                    <div className="bg-white rounded border border-yellow-300 p-3">
+                      <p className="font-medium mb-2">🐍 Python pip 安装（推荐）：</p>
+                      <code className="block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs mb-2">
+                        pip3 install --user yt-dlp
+                      </code>
+                      <p className="font-medium mb-2">🍺 macOS Homebrew 安装：</p>
+                      <code className="block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs mb-2">
+                        brew install yt-dlp
+                      </code>
+                      <p className="font-medium mb-2">📦 Ubuntu/Debian 安装：</p>
+                      <code className="block bg-gray-100 text-gray-800 px-2 py-1 rounded text-xs">
+                        sudo apt update && sudo apt install yt-dlp
+                      </code>
+                    </div>
+                    <p className="text-xs mt-2">
+                      安装完成后，点击"重新检测"按钮刷新状态。
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

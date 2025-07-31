@@ -10,13 +10,10 @@ import {
   validateVideoUrl,
   getDownloadTypeDisplayName
 } from '~/lib/utils/validation'
-import { TaskProcessor } from '~/lib/services/task-processor'
-import { videoDownloader } from '~/lib/services/video-downloader'
+import { contentDownloader } from '~/lib/services/content-downloader'
 import { Logger } from '~/lib/utils/logger'
-// 确保应用服务已初始化
-import '~/lib/init'
-
-const taskProcessor = new TaskProcessor()
+// 导入全局TaskProcessor实例并确保应用服务已初始化
+import { taskProcessor } from '~/lib/init'
 
 export const taskRouter = createTRPCRouter({
   // 创建新任务
@@ -50,7 +47,7 @@ export const taskRouter = createTRPCRouter({
 
         // 异步处理任务
         setImmediate(() => {
-          taskProcessor.processTask(task.id).catch(error => {
+          taskProcessor.processTask(task.id).catch((error: any) => {
             Logger.error(`异步任务处理失败: ${task.id}, 错误: ${error}`)
           })
         })
@@ -236,7 +233,7 @@ export const taskRouter = createTRPCRouter({
         Logger.info(`开始处理任务: ${input.id}, 下载类型: ${getDownloadTypeDisplayName(task.downloadType)}`)
 
         // 异步处理任务
-        taskProcessor.processTask(input.id).catch(error => {
+        taskProcessor.processTask(input.id).catch((error: any) => {
           Logger.error(`任务处理失败: ${input.id}, 错误: ${error}`)
         })
 
@@ -273,7 +270,7 @@ export const taskRouter = createTRPCRouter({
 
       // 异步处理所有等待任务
       for (const task of pendingTasks) {
-        taskProcessor.processTask(task.id).catch(error => {
+        taskProcessor.processTask(task.id).catch((error: any) => {
           Logger.error(`批量任务处理失败: ${task.id}, 错误: ${error}`)
         })
       }
@@ -306,7 +303,7 @@ export const taskRouter = createTRPCRouter({
         }
 
         const normalizedUrl = urlValidation.normalizedUrl || input.url
-        const videoInfo = await videoDownloader.getVideoInfo(normalizedUrl)
+        const videoInfo = await contentDownloader.getContentInfo(normalizedUrl)
         
         return {
           success: true,
@@ -325,7 +322,7 @@ export const taskRouter = createTRPCRouter({
   // 检查下载器可用性
   checkDownloader: publicProcedure.query(async () => {
     try {
-      const status = await videoDownloader.checkAvailability()
+      const status = await contentDownloader.checkAvailability()
       return {
         available: status.available,
         version: status.version,

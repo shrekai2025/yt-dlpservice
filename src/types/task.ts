@@ -1,5 +1,5 @@
 // 平台类型
-export type Platform = 'youtube' | 'bilibili' | 'other'
+export type Platform = 'youtube' | 'bilibili' | 'xiaoyuzhou' | 'other'
 
 // 任务状态类型
 export type TaskStatus = 'PENDING' | 'EXTRACTING' | 'TRANSCRIBING' | 'COMPLETED' | 'FAILED'

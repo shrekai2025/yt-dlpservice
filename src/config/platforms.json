@@ -12,7 +12,10 @@
       "/embed/",
       "/v/",
       "youtu.be/"
-    ]
+    ],
+    "contentTypes": ["video"],
+    "requiresAuth": false,
+    "downloadMethod": "yt-dlp"
   },
   "bilibili": {
     "name": "哔哩哔哩",
@@ -26,6 +29,24 @@
       "^https?://(www\\.)?bilibili\\.com/video/BV[a-zA-Z0-9]+",
       "^https?://m\\.bilibili\\.com/video/BV[a-zA-Z0-9]+",
       "^https?://b23\\.tv/[a-zA-Z0-9]+"
-    ]
+    ],
+    "contentTypes": ["video"],
+    "requiresAuth": false,
+    "downloadMethod": "yt-dlp"
+  },
+  "xiaoyuzhou": {
+    "name": "小宇宙",
+    "domains": [
+      "xiaoyuzhou.fm",
+      "www.xiaoyuzhou.fm"
+    ],
+    "urlPatterns": [
+      "^https?://(www\\.)?xiaoyuzhou\\.fm/episodes?/[a-zA-Z0-9]+",
+      "^https?://(www\\.)?xiaoyuzhou\\.fm/podcast/[a-zA-Z0-9]+"
+    ],
+    "contentTypes": ["audio", "podcast"],
+    "requiresAuth": false,
+    "downloadMethod": "custom",
+    "note": "小宇宙平台暂未完全支持，需要自定义下载逻辑"
   }
 } 

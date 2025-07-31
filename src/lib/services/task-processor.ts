@@ -1,10 +1,11 @@
 import { db } from '~/server/db'
 import { Logger } from '~/lib/utils/logger'
-import { videoDownloader } from './video-downloader'
+import { contentDownloader } from './content-downloader'
 import { doubaoVoiceService } from './doubao-voice'
 import { cleanupManager } from './cleanup-manager'
 import { env } from '~/env'
 import { ConfigManager } from '~/lib/utils/config'
+import { GlobalInit } from '~/lib/utils/global-init'
 import type { TaskStatus, DownloadType } from '~/types/task'
 import * as fs from 'fs/promises'
 import * as path from 'path'
@@ -16,7 +17,7 @@ export class TaskProcessor {
    */
   async processTask(taskId: string): Promise<void> {
     try {
-      Logger.info(`开始处理任务: ${taskId}`)
+      Logger.info(`🚀 开始处理任务: ${taskId}`)
 
       // 获取任务信息
       const task = await db.task.findUnique({
@@ -27,8 +28,11 @@ export class TaskProcessor {
         throw new Error(`任务 ${taskId} 不存在`)
       }
 
-      if (task.status !== 'PENDING') {
-        Logger.warn(`任务 ${taskId} 状态为 ${task.status}，跳过处理`)
+      Logger.info(`📋 任务详情: ${taskId} - 状态:${task.status}, 平台:${task.platform}, 类型:${task.downloadType}, URL:${task.url}`)
+
+      // 允许重新处理EXTRACTING和TRANSCRIBING状态的任务（可能是超时重试）
+      if (!['PENDING', 'EXTRACTING', 'TRANSCRIBING'].includes(task.status)) {
+        Logger.warn(`⏭️ 任务 ${taskId} 状态为 ${task.status}，跳过处理`)
         return
       }
 
@@ -41,11 +45,18 @@ export class TaskProcessor {
 
       Logger.info(`任务 ${taskId} 输出目录: ${outputDir}`)
 
-      // 更新状态为提取中（包括下载和音频提取过程）
-      await this.updateTaskStatus(taskId, 'EXTRACTING')
+      // 只有PENDING状态的任务才需要更新为EXTRACTING
+      if (task.status === 'PENDING') {
+        Logger.info(`📥 开始下载内容: ${taskId}`)
+        await this.updateTaskStatus(taskId, 'EXTRACTING')
+      } else {
+        Logger.info(`🔄 继续处理任务: ${taskId} (当前状态: ${task.status})`)
+      }
 
       // 根据下载类型进行相应处理
+      Logger.info(`🎯 下载配置: ${taskId} - 类型:${task.downloadType}, 输出目录:${outputDir}`)
       const downloadResult = await this.handleDownloadByType(task.url, task.downloadType, outputDir)
+      Logger.info(`✅ 下载完成: ${taskId} - 视频:${downloadResult.videoPath ? '✓' : '✗'}, 音频:${downloadResult.audioPath ? '✓' : '✗'}`)
 
       // 更新任务的文件路径
       await db.task.update({
@@ -60,22 +71,36 @@ export class TaskProcessor {
 
       // 处理音频转录（所有类型都需要转录）
       let audioPathForTranscription = downloadResult.audioPath
+      Logger.info(`🎵 准备音频转录: ${taskId}`)
 
       // 如果是视频下载，需要从视频中提取音频
       if (task.downloadType === 'VIDEO_ONLY' && downloadResult.videoPath) {
         // TODO: 实现视频转音频功能
         // audioPathForTranscription = await this.extractAudioFromVideo(downloadResult.videoPath)
-        Logger.warn(`视频转音频功能尚未实现，任务 ${taskId} 暂时跳过转录`)
+        Logger.warn(`⚠️ 视频转音频功能尚未实现，任务 ${taskId} 暂时跳过转录`)
         await this.updateTaskStatus(taskId, 'COMPLETED')
         return
       }
 
       // 如果没有音频文件，标记为失败
       if (!audioPathForTranscription) {
+        Logger.error(`❌ 未找到音频文件: ${taskId}`)
         throw new Error('未能获取到音频文件用于转录')
       }
 
+      Logger.info(`🎯 音频文件路径: ${taskId} - ${audioPathForTranscription}`)
+      
+      // 检查音频文件是否存在
+      try {
+        const stats = await fs.stat(audioPathForTranscription)
+        Logger.info(`📊 音频文件信息: ${taskId} - 大小:${(stats.size / 1024 / 1024).toFixed(2)}MB`)
+      } catch (error) {
+        Logger.error(`❌ 音频文件不存在: ${taskId} - ${audioPathForTranscription}`)
+        throw new Error(`音频文件不存在: ${audioPathForTranscription}`)
+      }
+
       // 开始转录流程
+      Logger.info(`🎤 开始音频转录: ${taskId}`)
       await this.processAudioTranscription(taskId, audioPathForTranscription)
 
       // 转录完成后，延迟清理临时文件
@@ -113,41 +138,29 @@ export class TaskProcessor {
     videoPath: string | null
     audioPath: string | null
   }> {
-    switch (downloadType) {
-      case 'AUDIO_ONLY':
-        Logger.info('开始下载音频文件')
-        const audioPath = await videoDownloader.downloadAudio(url, {
-          outputDir: outputDir,
-          format: 'bestaudio',
-          downloadType: 'AUDIO_ONLY'
-        })
-        return { videoPath: null, audioPath: audioPath }
-        
-      case 'VIDEO_ONLY':
-        Logger.info('开始下载视频文件（用于音频提取）')
-        const videoPath = await videoDownloader.downloadVideo(url, {
-          outputDir: outputDir,
-          quality: 'best',
-          downloadType: 'VIDEO_ONLY'
-        })
-        return { videoPath: videoPath, audioPath: null }
-        
-      case 'BOTH':
-        Logger.info('开始下载视频和音频文件')
-        const videoResult = await videoDownloader.downloadVideo(url, {
-          outputDir: outputDir,
-          quality: 'best',
-          downloadType: 'BOTH'
-        })
-        const audioResult = await videoDownloader.downloadAudio(url, {
-          outputDir: outputDir,
-          format: 'bestaudio',
-          downloadType: 'BOTH'
-        })
-        return { videoPath: videoResult, audioPath: audioResult }
-        
-      default:
-        throw new Error(`不支持的下载类型: ${downloadType}`)
+    Logger.info(`📥 开始下载内容 - 类型: ${downloadType}, URL: ${url}`)
+    Logger.info(`📁 输出目录: ${outputDir}`)
+    
+    const startTime = Date.now()
+    
+    try {
+      const result = await contentDownloader.downloadContent(url, {
+        outputDir: outputDir,
+        downloadType: downloadType
+      })
+      
+      const duration = Date.now() - startTime
+      Logger.info(`⏱️ 下载完成 - 耗时: ${duration}ms`)
+      Logger.info(`📄 下载结果: 视频=${result.videoPath || 'null'}, 音频=${result.audioPath || 'null'}`)
+      
+      return {
+        videoPath: result.videoPath || null,
+        audioPath: result.audioPath || null
+      }
+    } catch (error: any) {
+      const duration = Date.now() - startTime
+      Logger.error(`❌ 下载失败 - 耗时: ${duration}ms, 错误: ${error.message}`)
+      throw error
     }
   }
 
@@ -176,12 +189,14 @@ export class TaskProcessor {
    */
   private async processAudioTranscription(taskId: string, audioPath: string): Promise<void> {
     try {
-      Logger.info(`开始音频转录: ${taskId}, 文件: ${audioPath}`)
+      Logger.info(`🎤 开始音频转录处理: ${taskId}, 文件: ${audioPath}`)
       
       // 更新状态为转录中
       await this.updateTaskStatus(taskId, 'TRANSCRIBING')
+      Logger.info(`📝 任务状态已更新为转录中: ${taskId}`)
       
       // 从配置中获取语音服务提供商
+      Logger.info(`🔧 获取语音服务配置: ${taskId}`)
       let provider: string;
       try {
         provider = await ConfigManager.get('voice_service_provider');
@@ -190,19 +205,24 @@ export class TaskProcessor {
         provider = env.VOICE_SERVICE_PROVIDER;
       }
       
-      Logger.info(`使用语音服务提供商: ${provider}`)
+      Logger.info(`🚀 使用语音服务提供商: ${taskId} - ${provider}`)
       
       let transcription = ''
       
       if (provider === 'doubao') {
         // 使用豆包语音API
+        Logger.info(`🎯 调用豆包语音API: ${taskId}`)
         transcription = await this.processWithDoubaoVoice(audioPath)
       } else if (provider === 'tingwu') {
         // 使用通义听悟API（保留原有逻辑）
+        Logger.info(`🎯 调用通义听悟API: ${taskId}`)
         transcription = await this.processWithTingwuAPI(audioPath)
       } else {
+        Logger.error(`❌ 不支持的语音服务提供商: ${taskId} - ${provider}`)
         throw new Error(`不支持的语音服务提供商: ${provider}`)
       }
+      
+      Logger.info(`✅ 语音转录成功: ${taskId} - 文本长度: ${transcription.length}字符`)
       
       // 豆包API成功返回，更新任务转录结果并标记为完成
       await db.task.update({
@@ -213,7 +233,8 @@ export class TaskProcessor {
         }
       })
       
-      Logger.info(`音频转录完成: ${taskId}, 转录文本长度: ${transcription.length}`)
+      // 删除重复日志 - 豆包服务中已输出详细转录完成信息
+      Logger.info(`🎉 任务 ${taskId} 转录处理完成`)
       
     } catch (error: any) {
       Logger.error(`音频转录失败: ${taskId}, 错误: ${error.message}`)
@@ -227,23 +248,39 @@ export class TaskProcessor {
    */
   private async processWithDoubaoVoice(audioPath: string): Promise<string> {
     try {
+      Logger.info(`🔍 检查豆包语音服务状态 - 文件: ${audioPath}`)
+      
       // 检查服务状态
       const status = await doubaoVoiceService.checkServiceStatus()
+      Logger.info(`🟢 豆包服务状态: 可用=${status.available}, 消息=${status.message}`)
+      
       if (!status.available) {
+        Logger.error(`❌ 豆包语音服务不可用: ${status.message}`)
         throw new Error(`豆包语音服务不可用: ${status.message}`)
       }
       
+      Logger.info(`🎤 开始调用豆包语音识别API - 文件: ${audioPath}`)
+      
       // 进行语音识别
+      const startTime = Date.now()
       const transcription = await doubaoVoiceService.speechToText(audioPath)
+      const duration = Date.now() - startTime
+      
+      Logger.info(`⏱️ 豆包API调用完成 - 耗时: ${duration}ms`)
       
       if (!transcription || transcription.trim().length === 0) {
+        Logger.error(`❌ 豆包语音识别结果为空`)
         throw new Error('语音识别结果为空')
       }
+      
+      // 删除重复日志 - 豆包服务中已输出详细识别成功信息
+      Logger.debug(`✅ 豆包语音识别成功 - 文本长度: ${transcription.length}字符`)
       
       return transcription
       
     } catch (error: any) {
-      Logger.error(`豆包语音转录失败: ${error.message}`)
+      Logger.error(`❌ 豆包语音转录失败: ${error.message}`)
+      Logger.error(`🔧 错误详情: ${error.stack || 'No stack trace'}`)
       throw error
     }
   }
@@ -313,45 +350,100 @@ export class TaskProcessor {
    * 启动任务处理器
    */
   async start(): Promise<void> {
-    Logger.info('任务处理器启动')
-    
-    // 启动自动文件清理服务
-    try {
-      await cleanupManager.startAutoCleanup()
-      Logger.info('自动文件清理服务已启动')
-    } catch (error) {
-      Logger.error(`启动自动文件清理失败: ${error}`)
+    // 尝试获取任务处理器启动权限
+    if (!GlobalInit.tryInitializeTaskProcessor()) {
+      // 如果没有获取到权限，等待其他实例完成启动
+      await GlobalInit.waitForTaskProcessor()
+      return
     }
     
-    // 定期检查待处理任务
-    setInterval(async () => {
+    try {
+      Logger.info('任务处理器启动')
+      GlobalInit.setTaskProcessorInitialized()
+      
+      // 启动自动文件清理服务
       try {
-        await this.processPendingTasks()
-      } catch (error: any) {
-        Logger.error(`任务处理器执行失败: ${error.message}`)
+        await cleanupManager.startAutoCleanup()
+        Logger.info('自动文件清理服务已启动')
+      } catch (error) {
+        Logger.error(`启动自动文件清理失败: ${error}`)
       }
-    }, 5000) // 每5秒检查一次
+      
+      // 定期检查待处理任务
+      setInterval(async () => {
+        try {
+          await this.processPendingTasks()
+        } catch (error: any) {
+          Logger.error(`任务处理器执行失败: ${error.message}`)
+        }
+      }, 10000) // 每10秒检查一次
+    } catch (error) {
+      GlobalInit.setTaskProcessorInitializationFailed()
+      throw error
+    }
   }
 
   /**
    * 处理待处理的任务
    */
   private async processPendingTasks(): Promise<void> {
+    // 查找需要处理的任务（包括PENDING和EXTRACTING状态）
     const pendingTasks = await db.task.findMany({
-      where: { status: 'PENDING' },
+      where: { 
+        status: { 
+          in: ['PENDING', 'EXTRACTING', 'TRANSCRIBING'] 
+        } 
+      },
       orderBy: { createdAt: 'asc' },
       take: env.MAX_CONCURRENT_TASKS
     })
 
+    Logger.debug(`定期检查任务 - 总任务数: ${pendingTasks.length}`)
+    
     if (pendingTasks.length === 0) {
       return
     }
 
-    Logger.info(`发现 ${pendingTasks.length} 个待处理任务`)
+    // 按状态分组统计
+    const statusCounts = pendingTasks.reduce((acc, task) => {
+      acc[task.status] = (acc[task.status] || 0) + 1
+      return acc
+    }, {} as Record<string, number>)
+    
+    Logger.info(`发现待处理任务: ${Object.entries(statusCounts).map(([status, count]) => `${status}:${count}`).join(', ')}`)
+
+    // 只处理真正需要处理的任务
+    const tasksToProcess = pendingTasks.filter(task => {
+      // PENDING任务总是需要处理
+      if (task.status === 'PENDING') {
+        Logger.debug(`任务 ${task.id} 状态为PENDING，将被处理`)
+        return true
+      }
+      
+      // EXTRACTING和TRANSCRIBING任务检查是否超时（防止卡住）
+      const now = new Date()
+      const taskAge = now.getTime() - new Date(task.updatedAt).getTime()
+      const timeoutMs = 10 * 60 * 1000 // 10分钟超时
+      
+      if (taskAge > timeoutMs) {
+        Logger.warn(`任务 ${task.id} 状态 ${task.status} 超时 ${Math.round(taskAge/1000)}秒，重新处理`)
+        return true
+      }
+      
+      Logger.debug(`任务 ${task.id} 状态 ${task.status} 运行中 ${Math.round(taskAge/1000)}秒，暂不处理（10分钟后超时重试）`)
+      return false
+    })
+
+    if (tasksToProcess.length === 0) {
+      Logger.debug('没有需要处理的任务')
+      return
+    }
+
+    Logger.info(`开始处理 ${tasksToProcess.length} 个任务`)
 
     // 并发处理任务
-    const promises = pendingTasks.map(task => 
-      this.processTask(task.id).catch(error => {
+    const promises = tasksToProcess.map(task => 
+      this.processTask(task.id).catch((error: any) => {
         Logger.error(`任务 ${task.id} 处理失败: ${error.message}`)
       })
     )
