@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import { env } from '~/env';
 import { Logger } from '~/lib/utils/logger';
 import { ConfigManager } from '~/lib/utils/config';
+import { GlobalInit } from '~/lib/utils/global-init';
 
 class DoubaoVoiceService {
   private static instance: DoubaoVoiceService;
@@ -12,7 +13,7 @@ class DoubaoVoiceService {
   private isInitializing: boolean = false;
 
   private constructor() { 
-    this.initialize(); 
+    // 移除自动初始化，改为按需初始化
   }
 
   public static getInstance(): DoubaoVoiceService {
@@ -23,6 +24,13 @@ class DoubaoVoiceService {
   }
 
   private async initialize() {
+    // 尝试获取初始化权限
+    if (!GlobalInit.tryInitializeDoubaoVoice()) {
+      // 如果没有获取到权限，等待其他实例完成初始化
+      await GlobalInit.waitForDoubaoVoice();
+      return;
+    }
+    
     if (this.isInitializing) return;
     this.isInitializing = true;
     try {
@@ -75,13 +83,34 @@ class DoubaoVoiceService {
         Logger.error('2. 或在管理页面配置 doubao_app_key 和 doubao_access_key');
       } else {
         Logger.info('✅ 豆包语音API配置完成');
+        GlobalInit.setDoubaoVoiceInitialized({
+          appKey: this.appKey,
+          accessKey: this.accessKey,
+          endpoint: this.baseUrl
+        });
       }
+    } catch (error) {
+      GlobalInit.setDoubaoVoiceInitializationFailed();
+      throw error;
     } finally {
       this.isInitializing = false;
     }
   }
 
   private async ensureInitialized() {
+    if (GlobalInit.isDoubaoVoiceInitialized()) {
+      // 全局已初始化，同步实例状态
+      if (!this.appKey || !this.accessKey) {
+        const savedData = GlobalInit.getDoubaoVoiceData();
+        if (savedData && savedData.appKey && savedData.accessKey) {
+          this.appKey = savedData.appKey;
+          this.accessKey = savedData.accessKey;
+          this.baseUrl = savedData.endpoint || 'openspeech.bytedance.com';
+        }
+      }
+      return;
+    }
+    
     if ((!this.appKey || !this.accessKey) && !this.isInitializing) {
       await this.initialize();
     }
@@ -271,11 +300,41 @@ class DoubaoVoiceService {
         const statusCode = response.headers['x-api-status-code'];
         const message = response.headers['x-api-message'];
         
-        if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
-          Logger.error(`❌ 豆包API返回错误状态:`);
+        // 检查是否为成功或处理中的状态码
+        const acceptableStatusCodes = ['20000000', '20000001', '20000002'];
+        
+        if (statusCode && !acceptableStatusCodes.includes(statusCode)) {
+          Logger.error(`❌ 豆包API提交返回错误状态:`);
           Logger.error(`  - 状态码: ${statusCode}`);
           Logger.error(`  - 错误消息: ${message || '未知错误'}`);
-          throw new Error(`API错误 (${statusCode}): ${message || '未知错误'}`);
+          
+          // 根据状态码给出具体的错误说明
+          let errorDetail = '';
+          switch (statusCode) {
+            case '20000003':
+              errorDetail = '静音音频，请检查音频文件是否有声音内容';
+              break;
+            case '45000001':
+              errorDetail = '请求参数无效，请检查音频格式和请求参数';
+              break;
+            case '45000002':
+              errorDetail = '空音频文件，请检查音频文件是否为空';
+              break;
+            case '45000151':
+              errorDetail = '音频格式不正确，请确保为MP3格式，16kHz采样率，单声道';
+              break;
+            case '55000031':
+              errorDetail = '服务器繁忙，请稍后重试';
+              break;
+            default:
+              if (statusCode.startsWith('550')) {
+                errorDetail = '服务内部处理错误，请稍后重试或联系技术支持';
+              } else {
+                errorDetail = '未知错误';
+              }
+          }
+          
+          throw new Error(`豆包API提交失败 (${statusCode}): ${message || errorDetail}`);
         }
 
         Logger.info(`🎉 豆包任务提交成功: ${requestId}`);
@@ -450,13 +509,36 @@ class DoubaoVoiceService {
           Logger.info(`    ${key}: ${value}`);
         });
         
-        // 打印查询响应体内容
+        // 打印查询响应体内容（优化版本）
         Logger.info(`📦 豆包API查询响应体:`);
         try {
           const responseData = response.data;
           if (typeof responseData === 'object') {
             Logger.info(`    响应数据类型: object`);
-            Logger.info(`    响应内容: ${JSON.stringify(responseData, null, 2)}`);
+            
+            // 优化响应内容显示
+            const optimizedResponse = { ...responseData };
+            
+            // 只显示result.text的前300字符
+            if (optimizedResponse.result?.text) {
+              const fullText = optimizedResponse.result.text;
+              optimizedResponse.result.text = fullText.length > 300 
+                ? `${fullText.substring(0, 300)}...[共${fullText.length}字符]`
+                : fullText;
+            }
+            
+            // 完全删除utterances
+            if (optimizedResponse.result?.utterances) {
+              delete optimizedResponse.result.utterances;
+              Logger.debug(`    utterances已隐藏（包含${responseData.result.utterances?.length || 0}条记录）`);
+            }
+            
+            // 显示audio_info（如果存在）
+            if (responseData.audio_info) {
+              Logger.info(`    audio_info: ${JSON.stringify(responseData.audio_info, null, 2)}`);
+            }
+            
+            Logger.info(`    响应内容: ${JSON.stringify(optimizedResponse, null, 2)}`);
           } else {
             Logger.info(`    响应数据类型: ${typeof responseData}`);
             Logger.info(`    响应内容: ${responseData}`);
@@ -466,18 +548,52 @@ class DoubaoVoiceService {
           Logger.info(`    原始响应: ${response.data}`);
         }
         
-        // 20000000: 成功, 20000001: 处理中, 20000002: 任务在队列中 - 都是正常状态
-        if (statusCode && statusCode !== '20000000' && statusCode !== '20000001' && statusCode !== '20000002') {
-          // 如果是找不到任务的错误，可能任务还没准备好，不算错误
-          if (statusCode === '40000007') {
-            Logger.debug(`⏳ 任务暂未准备好: ${requestId}`);
-            return { status: 'preparing', message: '任务准备中' };
+        // 检查状态码 - 正常查询状态码包括成功、处理中、队列中等
+        const normalStatusCodes = [
+          '20000000', // 成功
+          '20000001', // 处理中
+          '20000002', // 队列中
+          '20000003', // 静音音频 - 也需要返回给上层处理
+          '40000007'  // 任务准备中
+        ];
+        
+        if (statusCode && !normalStatusCodes.includes(statusCode)) {
+          // 根据状态码给出具体处理
+          switch (statusCode) {
+            case '45000001':
+              Logger.error(`❌ 请求参数无效: ${message}`);
+              throw new Error(`请求参数无效 (${statusCode}): ${message || '请求参数缺失必需字段、字段值无效或重复请求'}`);
+            
+            case '45000002':
+              Logger.error(`❌ 空音频文件: ${message}`);
+              throw new Error(`空音频文件 (${statusCode}): ${message || '音频文件为空'}`);
+            
+            case '45000151':
+              Logger.error(`❌ 音频格式不正确: ${message}`);
+              throw new Error(`音频格式不正确 (${statusCode}): ${message || '请确保音频为MP3格式，16kHz采样率，单声道'}`);
+            
+            case '55000031':
+              Logger.warn(`⚠️ 服务器繁忙，将继续重试: ${message}`);
+              // 服务器繁忙不抛出异常，让上层继续重试
+              return { statusCode, status: 'server_busy', message: message || '服务器繁忙，服务过载' };
+            
+            default:
+              if (statusCode.startsWith('550')) {
+                Logger.error(`❌ 服务内部错误: ${statusCode} - ${message}`);
+                throw new Error(`服务内部错误 (${statusCode}): ${message || '服务内部处理错误'}`);
+              } else {
+                Logger.warn(`⚠️ 豆包API返回未知状态:`);
+                Logger.warn(`  - 状态码: ${statusCode}`);
+                Logger.warn(`  - 消息: ${message || '未知错误'}`);
+                throw new Error(`API未知状态 (${statusCode}): ${message || '未知错误'}`);
+              }
           }
-          
-          Logger.warn(`⚠️ 豆包API返回异常状态:`);
-          Logger.warn(`  - 状态码: ${statusCode}`);
-          Logger.warn(`  - 消息: ${message || '未知错误'}`);
-          throw new Error(`API错误 (${statusCode}): ${message || '未知错误'}`);
+        }
+        
+        // 特殊处理：任务准备中
+        if (statusCode === '40000007') {
+          Logger.debug(`⏳ 任务暂未准备好: ${requestId}`);
+          return { statusCode, status: 'preparing', message: '任务准备中' };
         }
 
         Logger.debug(`📦 查询响应数据大小: ${JSON.stringify(response.data).length} 字符`);
@@ -542,22 +658,39 @@ class DoubaoVoiceService {
    * 智能等待策略：根据任务状态调整等待时间
    */
   private calculateWaitTime(attempt: number, taskStatus?: string): number {
-    const baseInterval = 3000; // 基础3秒
+    const baseInterval = 15000; // 基础15秒（原3秒的5倍）
     
     // 根据任务状态调整等待时间
-    if (taskStatus === 'preparing' || taskStatus === 'queued') {
-      return baseInterval; // 任务准备中，快速查询
-    } else if (taskStatus === 'processing') {
-      return Math.min(baseInterval * 2, 8000); // 处理中，适中查询
-    } else if (attempt < 10) {
-      return baseInterval; // 前10次快速查询
-    } else {
-      return Math.min(baseInterval * 2, 8000); // 后续慢速查询
+    switch (taskStatus) {
+      case 'preparing':
+      case 'queued':
+        return baseInterval; // 任务准备中/队列中，正常查询间隔
+      
+      case 'processing':
+        return Math.min(baseInterval * 1.2, 20000); // 处理中，稍微增加间隔
+      
+      case 'server_busy':
+        return Math.min(baseInterval * 2, 30000); // 服务器繁忙，延长间隔
+      
+      case 'completed':
+        return Math.max(baseInterval / 2, 8000); // 已完成，快速查询获取结果
+      
+      case 'unknown':
+        return attempt < 3 ? Math.max(baseInterval / 2, 8000) : baseInterval; // 未知状态，前几次快速查询
+      
+      default:
+        // 基于尝试次数的默认策略
+        if (attempt < 5) {
+          return Math.max(baseInterval / 2, 8000); // 前5次稍快查询（最少8秒）
+        } else {
+          return baseInterval; // 后续正常查询（15秒）
+        }
     }
   }
 
   /**
    * 解析豆包API响应状态
+   * 根据官方错误码文档完整实现状态识别
    */
   private parseTaskStatus(response: any): {
     status: string;
@@ -590,35 +723,106 @@ class DoubaoVoiceService {
       };
     }
     
-    // 根据状态码判断
-    if (statusCode === '20000000') {
-      return {
-        status: 'processing',
-        hasResult: false,
-        shouldContinue: true,
-        message: '任务处理完成，等待转录结果'
-      };
-    } else if (statusCode === '20000001') {
-      return {
-        status: 'processing',
-        hasResult: false,
-        shouldContinue: true,
-        message: '任务正在处理中'
-      };
-    } else if (statusCode === '20000002') {
-      return {
-        status: 'queued',
-        hasResult: false,
-        shouldContinue: true,
-        message: '任务在队列中等待'
-      };
-    } else if (statusCode === '40000007') {
-      return {
-        status: 'preparing',
-        hasResult: false,
-        shouldContinue: true,
-        message: '任务准备中'
-      };
+    // 根据官方状态码完整判断
+    switch (statusCode) {
+      // 成功状态码
+      case '20000000':
+        return {
+          status: 'completed',
+          hasResult: false,
+          shouldContinue: true,
+          message: '任务处理完成，等待转录结果'
+        };
+      
+      // 处理中状态码
+      case '20000001':
+        return {
+          status: 'processing',
+          hasResult: false,
+          shouldContinue: true,
+          message: '任务正在处理中'
+        };
+      
+      // 队列中状态码
+      case '20000002':
+        return {
+          status: 'queued',
+          hasResult: false,
+          shouldContinue: true,
+          message: '任务在队列中等待'
+        };
+      
+      // 静音音频 - 特殊处理，需要重新提交
+      case '20000003':
+        Logger.warn(`⚠️ 检测到静音音频，建议重新提交任务`);
+        return {
+          status: 'silent_audio',
+          hasResult: false,
+          shouldContinue: false,
+          message: '检测到静音音频，无需重新查询，请直接重新提交任务'
+        };
+      
+      // 请求参数无效
+      case '45000001':
+        Logger.error(`❌ 请求参数无效: 请求参数缺失必需字段/字段值无效/重复请求`);
+        return {
+          status: 'failed',
+          hasResult: false,
+          shouldContinue: false,
+          message: '请求参数无效：请求参数缺失必需字段、字段值无效或重复请求'
+        };
+      
+      // 空音频
+      case '45000002':
+        Logger.error(`❌ 空音频文件`);
+        return {
+          status: 'failed',
+          hasResult: false,
+          shouldContinue: false,
+          message: '音频文件为空，请检查音频文件是否有效'
+        };
+      
+      // 音频格式不正确
+      case '45000151':
+        Logger.error(`❌ 音频格式不正确`);
+        return {
+          status: 'failed',
+          hasResult: false,
+          shouldContinue: false,
+          message: '音频格式不正确，请确保音频为MP3格式，采样率16kHz，单声道'
+        };
+      
+      // 服务器繁忙
+      case '55000031':
+        Logger.warn(`⚠️ 服务器繁忙，服务过载，无法处理当前请求`);
+        return {
+          status: 'server_busy',
+          hasResult: false,
+          shouldContinue: true,
+          message: '服务器繁忙，服务过载，请稍后重试'
+        };
+      
+      // 任务准备中 (原有)
+      case '40000007':
+        return {
+          status: 'preparing',
+          hasResult: false,
+          shouldContinue: true,
+          message: '任务准备中'
+        };
+      
+      // 服务内部处理错误 (550xxxx 系列)
+      default:
+        if (statusCode && statusCode.startsWith('550')) {
+          Logger.error(`❌ 服务内部处理错误: ${statusCode}`);
+          return {
+            status: 'failed',
+            hasResult: false,
+            shouldContinue: false,
+            message: `服务内部处理错误 (${statusCode})，请稍后重试或联系技术支持`
+          };
+        }
+        break;
     }
     
     // 检查响应体状态
@@ -649,7 +853,17 @@ class DoubaoVoiceService {
       ? `任务状态未知 (${unknownDetails.join(', ')})，继续等待`
       : '任务状态未知，继续等待';
     
-    Logger.warn(`未知的豆包API响应状态: ${JSON.stringify(response)}`);
+    Logger.warn(`⚠️ 未知的豆包API响应状态: ${JSON.stringify(response)}`);
+    Logger.warn(`📋 支持的状态码列表:`);
+    Logger.warn(`  - 20000000: 成功`);
+    Logger.warn(`  - 20000001: 正在处理中`);
+    Logger.warn(`  - 20000002: 任务在队列中`);
+    Logger.warn(`  - 20000003: 静音音频`);
+    Logger.warn(`  - 45000001: 请求参数无效`);
+    Logger.warn(`  - 45000002: 空音频`);
+    Logger.warn(`  - 45000151: 音频格式不正确`);
+    Logger.warn(`  - 550xxxx: 服务内部处理错误`);
+    Logger.warn(`  - 55000031: 服务器繁忙`);
     
     // 默认继续等待
     return {
@@ -734,7 +948,8 @@ class DoubaoVoiceService {
       // 轮询获取转录结果
       const transcription = await this.pollTranscriptionResult(requestId)
       
-      Logger.info(`豆包语音转录完成，文本长度: ${transcription.length}`)
+      // 删除重复日志 - pollTranscriptionResult中已经输出详细信息
+      Logger.info(`✅ 豆包语音转录完成，文本长度: ${transcription.length}字符`)
       return transcription
       
     } catch (error: any) {
@@ -848,8 +1063,8 @@ class DoubaoVoiceService {
 
   private async pollTranscriptionResult(requestId: string): Promise<string> {
     // 根据音频大小动态调整轮询策略
-    const maxRetries = 120; // 增加到120次轮询（最多10分钟）
-    const baseInterval = 3000; // 基础间隔3秒
+    const maxRetries = 40; // 调整为40次轮询（配合15秒间隔，最多10分钟）
+    const baseInterval = 15000; // 基础间隔15秒
     const maxWaitTime = maxRetries * baseInterval;
 
     Logger.info(`🔄 开始轮询豆包任务结果:`);
@@ -861,8 +1076,8 @@ class DoubaoVoiceService {
     const maxConsecutiveTimeouts = 5; // 最多允许5次连续超时
 
     for (let i = 0; i < maxRetries; i++) {
-      // 动态调整查询间隔：前10次较频繁，之后逐渐增加
-      const currentInterval = i < 10 ? baseInterval : Math.min(baseInterval * 2, 8000);
+      // 动态调整查询间隔：前5次较频繁，之后正常间隔
+      const currentInterval = i < 5 ? Math.max(baseInterval / 2, 8000) : baseInterval;
       await new Promise(resolve => setTimeout(resolve, currentInterval));
       
       const progress = Math.round((i + 1) / maxRetries * 100);
@@ -884,21 +1099,52 @@ class DoubaoVoiceService {
         // 如果有转录结果，返回
         if (taskStatus.hasResult && response.result.text) {
           const transcriptionText = response.result.text.trim();
-          Logger.info(`🎉 豆包任务成功完成:`);
+          
+          // 计算实际总耗时
+          const totalElapsedTime = (i + 1) * currentInterval;
+          
+          Logger.info(`🎉 豆包任务转录完成:`);
           Logger.info(`  - 任务ID: ${requestId}`);
           Logger.info(`  - 轮询次数: ${i + 1}/${maxRetries}`);
-          Logger.info(`  - 总耗时: ${Math.round((Date.now() - (Date.now() - (i + 1) * currentInterval)) / 1000)}秒`);
+          Logger.info(`  - 总耗时: ${Math.round(totalElapsedTime / 1000)}秒`);
           Logger.info(`  - 转录长度: ${transcriptionText.length}字符`);
-          Logger.info(`  - 转录预览: ${transcriptionText.substring(0, 100)}...`);
+          Logger.info(`  - 转录预览: ${transcriptionText.substring(0, 300)}${transcriptionText.length > 300 ? '...' : ''}`);
+          
+          // 显示音频信息（如果存在）
+          if (response.audio_info) {
+            Logger.info(`  - 音频信息: 时长=${response.audio_info.duration || 'N/A'}s, 采样率=${response.audio_info.sample_rate || 'N/A'}Hz`);
+          }
+          
           return transcriptionText;
         }
         
-        // 如果任务失败，抛出异常
+        // 处理各种特殊状态
         if (taskStatus.status === 'failed') {
           Logger.error(`💥 豆包任务失败:`);
           Logger.error(`  - 任务ID: ${requestId}`);
           Logger.error(`  - 失败原因: ${taskStatus.message}`);
           throw new Error(`豆包语音识别任务失败: ${taskStatus.message}`);
+        }
+        
+        // 处理静音音频 - 特殊处理，建议重新提交
+        if (taskStatus.status === 'silent_audio') {
+          Logger.warn(`🔇 豆包检测到静音音频:`);
+          Logger.warn(`  - 任务ID: ${requestId}`);
+          Logger.warn(`  - 建议: ${taskStatus.message}`);
+          throw new Error(`${taskStatus.message}`);
+        }
+        
+        // 处理服务器繁忙 - 延长等待间隔
+        if (taskStatus.status === 'server_busy') {
+          const busyWaitTime = this.calculateWaitTime(i, 'server_busy');
+          Logger.warn(`🚫 豆包服务器繁忙:`);
+          Logger.warn(`  - 任务ID: ${requestId}`);
+          Logger.warn(`  - 消息: ${taskStatus.message}`);
+          Logger.warn(`  - 延长等待间隔到${Math.round(busyWaitTime/1000)}秒...`);
+          
+          // 服务器繁忙时延长等待时间
+          await new Promise(resolve => setTimeout(resolve, busyWaitTime));
+          continue;
         }
         
         // 如果不应该继续，但也没有结果，可能是异常情况

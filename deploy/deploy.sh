@@ -187,9 +187,9 @@ update_ytdlp_path() {
     log_info "yt-dlp 路径: $YTDLP_PATH"
     
     # 更新代码中的路径配置 (如果需要)
-    if [ -f "$APP_DIR/src/lib/services/video-downloader.ts" ]; then
+    if [ -f "$APP_DIR/src/lib/services/content-downloader.ts" ]; then
         # 这里可以添加自动更新路径的逻辑，或者提醒用户手动更新
-        log_warn "请确保 src/lib/services/video-downloader.ts 中的 ytDlpPath 配置正确"
+        log_warn "请确保 src/lib/services/content-downloader.ts 中的 ytDlpPath 配置正确"
         log_warn "当前 yt-dlp 路径: $YTDLP_PATH"
     fi
 }
