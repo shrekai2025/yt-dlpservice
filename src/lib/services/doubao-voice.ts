@@ -424,29 +424,34 @@ class DoubaoVoiceService {
           if (typeof responseData === 'object') {
             Logger.info(`    响应数据类型: object`);
             
-            // 优化响应内容显示 - 使用深拷贝避免修改原始数据
-            const optimizedResponse = JSON.parse(JSON.stringify(responseData));
+            // 🔧 完全移除数据截断逻辑，只记录数据统计信息
+            Logger.info(`    响应数据统计:`);
             
-            // 只显示result.text的前300字符
-            if (optimizedResponse.result?.text) {
-              const fullText = optimizedResponse.result.text;
-              optimizedResponse.result.text = fullText.length > 300 
-                ? `${fullText.substring(0, 300)}...[共${fullText.length}字符]`
-                : fullText;
+            if (responseData.result?.text) {
+              const textLength = responseData.result.text.length;
+              Logger.info(`      - 转录文本长度: ${textLength} 字符`);
+              Logger.info(`      - 转录文本预览: ${responseData.result.text.substring(0, 200)}...`);
             }
             
-            // 完全删除utterances
-            if (optimizedResponse.result?.utterances) {
-              delete optimizedResponse.result.utterances;
-              Logger.debug(`    utterances已隐藏（包含${responseData.result.utterances?.length || 0}条记录）`);
+            if (responseData.result?.utterances) {
+              Logger.info(`      - utterances数量: ${responseData.result.utterances.length} 条`);
             }
             
-            // 显示audio_info（如果存在）
             if (responseData.audio_info) {
-              Logger.info(`    audio_info: ${JSON.stringify(responseData.audio_info, null, 2)}`);
+              Logger.info(`      - 音频信息: ${JSON.stringify(responseData.audio_info, null, 2)}`);
             }
             
-            Logger.info(`    响应内容: ${JSON.stringify(optimizedResponse, null, 2)}`);
+            // 显示其他非敏感字段的完整内容
+            const safeFields = { ...responseData };
+            if (safeFields.result) {
+              safeFields.result = {
+                ...safeFields.result,
+                text: safeFields.result.text ? `[${safeFields.result.text.length} 字符]` : undefined,
+                utterances: safeFields.result.utterances ? `[${safeFields.result.utterances.length} 条]` : undefined
+              };
+            }
+            
+            Logger.info(`    响应结构: ${JSON.stringify(safeFields, null, 2)}`);
           } else {
             Logger.info(`    响应数据类型: ${typeof responseData}`);
             Logger.info(`    响应内容: ${responseData}`);
