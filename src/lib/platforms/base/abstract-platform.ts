@@ -91,11 +91,19 @@ export abstract class AbstractPlatform implements IPlatform {
     // 如果是音频内容，强制使用音频下载
     if (this.isAudioContent(contentInfo.contentType)) {
               return {
-          format: 'bestaudio/best',
+          format: 'worstaudio/worst[acodec!=none]/bestaudio[abr<=128]/best[abr<=128]',  // 优先选择低质量音频
           outputTemplate: this.buildOutputTemplate(contentInfo.contentType),
           audioOnly: true,
           extractAudio: true,
-          additionalArgs: ['--audio-format', 'mp3', '--audio-quality', '5', '--no-playlist']
+          additionalArgs: [
+            '--audio-format', 'mp3', 
+            '--audio-quality', '9',  // 使用最低质量
+            '--no-playlist',
+            '--postprocessor-args', '"ffmpeg:-ar 16000 -ac 1 -b:a 32k"',  // 32k比特率
+            '--retries', '10',
+            '--fragment-retries', '10',
+            '--retry-sleep', '1'
+          ]
         }
     }
 
@@ -103,15 +111,18 @@ export abstract class AbstractPlatform implements IPlatform {
     switch (downloadType) {
       case 'AUDIO_ONLY':
         return {
-          format: 'bestaudio/best',
+          format: 'worstaudio/worst[acodec!=none]/bestaudio[abr<=128]/best[abr<=128]',  // 优先选择低质量音频
           outputTemplate: this.buildOutputTemplate('audio'),
           audioOnly: true,
           extractAudio: true,
           additionalArgs: [
             '--audio-format', 'mp3', 
-            '--audio-quality', '5', 
+            '--audio-quality', '9',  // 使用最低质量，保证音频能听清即可
             '--no-playlist',
-            '--postprocessor-args', '"ffmpeg:-ar 16000 -ac 1 -ab 64k"'  // 16kHz单声道64k比特率，符合豆包API要求
+            '--postprocessor-args', '"ffmpeg:-ar 16000 -ac 1 -b:a 32k"',  // 降低比特率到32k
+            '--retries', '10',  // 增加重试次数
+            '--fragment-retries', '10',  // 分片重试次数
+            '--retry-sleep', '1'  // 重试间隔1秒
           ]
         }
       case 'VIDEO_ONLY':
