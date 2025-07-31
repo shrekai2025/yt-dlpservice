@@ -505,6 +505,17 @@ class DoubaoVoiceService {
         }
 
         Logger.debug(`📦 查询响应数据大小: ${JSON.stringify(response.data).length} 字符`);
+        
+        // 🔍 调试：检查原始API响应中的转录文本长度
+        if (response.data?.result?.text) {
+          const originalTextLength = response.data.result.text.length;
+          const hasMarker = response.data.result.text.includes('[共') && response.data.result.text.includes('字符]');
+          Logger.debug(`🔍 原始API转录文本长度: ${originalTextLength} 字符，包含截断标记: ${hasMarker}`);
+          if (hasMarker) {
+            Logger.error(`❌ 豆包API返回的数据本身就被截断了！这不应该发生。`);
+          }
+        }
+        
         return response.data;
         
       } catch (error: any) {
@@ -606,14 +617,14 @@ class DoubaoVoiceService {
     shouldContinue: boolean;
     message?: string;
   } {
-    // 检查是否有转录结果
-    const hasResult = !!(response?.result?.text?.trim());
-    
-    // 检查响应头状态码
+    // 检查响应头状态码（优先级最高）
     const statusCode = response?.statusCode || response?.status_code;
     
     // 检查响应体状态
     const bodyStatus = response?.status;
+    
+    // 检查是否有转录结果
+    const hasResult = !!(response?.result?.text?.trim());
     
     // 详细日志记录响应内容
     Logger.debug(`豆包API响应解析:`);
@@ -622,12 +633,25 @@ class DoubaoVoiceService {
     Logger.debug(`  - hasResult: ${hasResult}`);
     Logger.debug(`  - result.text length: ${response?.result?.text?.length || 0}`);
     
-    if (hasResult) {
+    // 🔧 修复：只有在状态码明确表示成功完成时，才认为任务真正完成
+    // 避免在处理过程中获取到部分结果就停止轮询
+    if (hasResult && statusCode === '20000000') {
       return {
         status: 'completed',
         hasResult: true,
         shouldContinue: false,
         message: '转录完成'
+      };
+    }
+    
+    // 如果有结果但状态码不是成功，继续轮询等待最终结果
+    if (hasResult && statusCode !== '20000000') {
+      Logger.debug(`⏳ 检测到部分转录结果，但状态码为 ${statusCode}，继续等待完整结果`);
+      return {
+        status: 'processing_with_partial_result',
+        hasResult: false, // 设为false以继续轮询
+        shouldContinue: true,
+        message: '检测到部分结果，等待完整转录'
       };
     }
     
@@ -1000,7 +1024,20 @@ class DoubaoVoiceService {
         
         // 如果有转录结果，返回
         if (taskStatus.hasResult && response.result.text) {
-          const transcriptionText = response.result.text.trim();
+          // 🔍 确保使用原始未修改的转录文本
+          const originalText = response.result.text;
+          const transcriptionText = originalText.trim();
+          
+          // 🔍 调试：验证转录文本的完整性
+          const hasMarker = transcriptionText.includes('[共') && transcriptionText.includes('字符]');
+          if (hasMarker) {
+            Logger.error(`❌ 严重错误：转录文本在返回前已被截断！`);
+            Logger.error(`  - 文本长度: ${transcriptionText.length}`);
+            Logger.error(`  - 前100字符: ${transcriptionText.substring(0, 100)}`);
+            Logger.error(`  - 这表明数据在某个地方被意外修改了`);
+          } else {
+            Logger.info(`✅ 转录文本完整性验证通过，长度: ${transcriptionText.length} 字符`);
+          }
           
           // 计算实际总耗时
           const totalElapsedTime = (i + 1) * currentInterval;
