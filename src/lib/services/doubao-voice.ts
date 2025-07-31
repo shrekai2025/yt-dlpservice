@@ -424,8 +424,8 @@ class DoubaoVoiceService {
           if (typeof responseData === 'object') {
             Logger.info(`    响应数据类型: object`);
             
-            // 优化响应内容显示
-            const optimizedResponse = { ...responseData };
+            // 优化响应内容显示 - 使用深拷贝避免修改原始数据
+            const optimizedResponse = JSON.parse(JSON.stringify(responseData));
             
             // 只显示result.text的前300字符
             if (optimizedResponse.result?.text) {

@@ -173,15 +173,18 @@ export class BilibiliPlatform extends AbstractPlatform {
     switch (downloadType) {
       case 'AUDIO_ONLY':
         return {
-          format: 'bestaudio/best',
+          format: 'worstaudio/worst[acodec!=none]/bestaudio[abr<=128]/best[abr<=128]',  // 优先选择低质量音频
           outputTemplate: this.buildOutputTemplate('audio'),
           audioOnly: true,
           extractAudio: true,
           additionalArgs: [
             '--audio-format', 'mp3',
-            '--audio-quality', '5',
-            '--no-playlist',  // 只下载单个视频，不下载整个播放列表
-            '--postprocessor-args', '"ffmpeg:-ar 16000 -ac 1 -ab 64k"'  // 16kHz单声道64k比特率，符合豆包API要求
+            '--audio-quality', '9',  // 使用最低质量（0-9，9为最低）
+            '--no-playlist',
+            '--postprocessor-args', '"ffmpeg:-ar 16000 -ac 1 -b:a 32k"',  // 降低比特率到32k，保证能听清即可
+            '--retries', '10',  // 增加重试次数
+            '--fragment-retries', '10',  // 分片重试次数
+            '--retry-sleep', '1'  // 重试间隔1秒
           ]
         }
       case 'VIDEO_ONLY':
