@@ -142,10 +142,18 @@ export async function validateAudioFile(filePath: string): Promise<boolean> {
     Logger.debug(`  - 时长: ${info.duration}s`)
     Logger.debug(`  - 大小: ${formatFileSize(info.size)}`)
     
-    // 检查是否为MP3格式
-    if (info.format && !info.format.toLowerCase().includes('mp3')) {
-      Logger.warn(`音频文件格式不是MP3: ${info.format}`)
-      return false
+    // 检查音频格式（支持多种格式：MP3, M4A, WAV等）
+    if (info.format) {
+      const supportedFormats = ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg']
+      const formatLower = info.format.toLowerCase()
+      const isSupported = supportedFormats.some(fmt => formatLower.includes(fmt))
+      
+      if (!isSupported) {
+        Logger.warn(`音频文件格式可能不被支持: ${info.format}`)
+        // 不直接返回false，让FFmpeg尝试处理
+      } else {
+        Logger.debug(`✅ 音频格式支持: ${info.format}`)
+      }
     }
     
     // 检查采样率（豆包API偏好16kHz）
@@ -207,10 +215,14 @@ export async function ensureDirectoryExists(dirPath: string): Promise<void> {
  */
 export async function checkFFmpegAvailable(): Promise<boolean> {
   try {
-    await execAsync('ffmpeg -version')
+    const { stdout, stderr } = await execAsync('ffmpeg -version')
+    Logger.debug('FFmpeg 可用性检查成功')
+    Logger.debug(`FFmpeg 版本信息: ${stdout.split('\n')[0]}`)
     return true
-  } catch (error) {
+  } catch (error: any) {
     Logger.error('FFmpeg 不可用，音频压缩功能将无法使用')
+    Logger.error(`FFmpeg 检查错误: ${error.message}`)
+    Logger.error('请确保已安装 FFmpeg: sudo apt update && sudo apt install ffmpeg')
     return false
   }
 }
