@@ -2,17 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { validateExternalApiKey, createAuthErrorResponse } from '~/lib/utils/auth'
 import { db } from '~/server/db'
 import { TaskProcessor } from '~/lib/services/task-processor'
-import { validateVideoUrl, getPlatformFromUrl, getDownloadTypeDisplayName } from '~/lib/utils/validation'
+import { validateVideoUrl, getPlatformFromUrl, getDownloadTypeDisplayName, createTaskSchema } from '~/lib/utils/validation'
 import { Logger } from '~/lib/utils/logger'
 import { z } from 'zod'
 
 const taskProcessor = new TaskProcessor()
-
-// 创建任务的输入验证
-const createTaskSchema = z.object({
-  url: z.string().url('请提供有效的视频URL'),
-  downloadType: z.enum(['AUDIO_ONLY', 'VIDEO_ONLY', 'BOTH']).optional().default('AUDIO_ONLY')
-})
 
 // 查询参数验证
 const querySchema = z.object({
@@ -48,7 +42,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const { url, downloadType } = validation.data
+    const { url, downloadType, compressionPreset } = validation.data
 
     // 验证URL和获取平台信息
     const urlValidation = await validateVideoUrl(url)
@@ -68,6 +62,7 @@ export async function POST(request: NextRequest) {
         url: normalizedUrl, // 使用标准化后的URL
         platform,
         downloadType,
+        compressionPreset,
         status: 'PENDING'
       }
     })
@@ -86,11 +81,12 @@ export async function POST(request: NextRequest) {
         url: task.url,
         platform: task.platform,
         downloadType: task.downloadType,
+        compressionPreset: task.compressionPreset,
         status: task.status,
         createdAt: task.createdAt,
         updatedAt: task.updatedAt
       },
-      message: `任务创建成功，下载类型：${getDownloadTypeDisplayName(downloadType)}`
+      message: `任务创建成功，下载类型：${getDownloadTypeDisplayName(downloadType)}，压缩设置：${compressionPreset === 'none' ? '无压缩' : compressionPreset}`
     })
 
   } catch (error) {

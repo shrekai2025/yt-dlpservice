@@ -89,8 +89,9 @@ export default function ApiDocPage() {
                   <div className="bg-gray-50 p-3 rounded text-sm">
                     <strong>输入参数:</strong>
                     <pre className="mt-1">{`{
-  url: string,          // 视频URL
-  downloadType: enum    // 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
+  url: string,                    // 视频URL
+  downloadType: enum,             // 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
+  compressionPreset?: enum        // 'none' | 'light' | 'standard' | 'heavy' (可选)
 }`}</pre>
                   </div>
                 </div>
@@ -368,6 +369,48 @@ export default function ApiDocPage() {
               </div>
             </div>
 
+            {/* 音频压缩器 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">音频压缩器</h2>
+              <div className="mb-4">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  文件处理
+                </span>
+              </div>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="font-medium mb-2">主要功能:</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>智能音频压缩，支持多种预设</li>
+                    <li>FFmpeg集成，高质量音频编码</li>
+                    <li>自动文件大小检测和跳过逻辑</li>
+                    <li>压缩后文件完整性验证</li>
+                    <li>豆包API格式优化（16kHz, 单声道）</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">压缩策略:</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li>轻度压缩：128k比特率，保持较高质量</li>
+                    <li>标准压缩：64k比特率，平衡质量与大小</li>
+                    <li>高度压缩：32k比特率，最大程度减小文件</li>
+                    <li>智能跳过：小文件自动跳过压缩</li>
+                  </ul>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-medium mb-2">文件位置:</h3>
+                  <div className="space-y-1 text-sm">
+                    <div><code>src/lib/services/audio-compressor.ts</code> - 核心压缩逻辑</div>
+                    <div><code>src/lib/services/compression-presets.ts</code> - 压缩预设配置</div>
+                    <div><code>src/lib/services/audio-utils.ts</code> - 音频工具函数</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* 配置管理器 */}
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-xl font-semibold mb-4">配置管理器</h2>
@@ -468,7 +511,8 @@ export default function ApiDocPage() {
                       <h4 className="text-sm font-medium mb-2">请求体</h4>
                       <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
   "url": "https://www.youtube.com/watch?v=example",
-  "downloadType": "AUDIO_ONLY"  // AUDIO_ONLY | VIDEO_ONLY | BOTH
+  "downloadType": "AUDIO_ONLY",  // AUDIO_ONLY | VIDEO_ONLY | BOTH
+  "compressionPreset": "standard"  // none | light | standard | heavy (可选)
 }`}</code></pre>
                     </div>
                     
@@ -481,11 +525,12 @@ export default function ApiDocPage() {
     "url": "https://www.youtube.com/watch?v=example",
     "platform": "youtube",
     "downloadType": "AUDIO_ONLY",
+    "compressionPreset": "standard",
     "status": "PENDING",
     "createdAt": "2024-01-01T00:00:00.000Z",
     "updatedAt": "2024-01-01T00:00:00.000Z"
   },
-  "message": "任务创建成功，下载类型：仅音频"
+  "message": "任务创建成功，下载类型：仅音频，压缩设置：标准压缩"
 }`}</code></pre>
                     </div>
                   </div>
@@ -524,9 +569,13 @@ export default function ApiDocPage() {
       "title": "视频标题",
       "status": "COMPLETED",
       "downloadType": "AUDIO_ONLY",
+      "compressionPreset": "standard",
+      "originalFileSize": 84840000,
+      "compressedFileSize": 25452000,
+      "compressionRatio": 0.30,
       "transcription": "转录文本内容...",
       "duration": 300,
-      "fileSize": 5242880,
+      "fileSize": 25452000,
       "createdAt": "2024-01-01T00:00:00.000Z",
       "updatedAt": "2024-01-01T00:01:00.000Z"
     }
@@ -563,12 +612,17 @@ export default function ApiDocPage() {
     "title": "视频标题",
     "status": "COMPLETED",
     "downloadType": "AUDIO_ONLY",
+    "compressionPreset": "standard",
+    "originalFileSize": 84840000,
+    "compressedFileSize": 25452000,
+    "compressionRatio": 0.30,
+    "compressionDuration": 8500,
     "videoPath": "/path/to/video.mp4",
-    "audioPath": "/path/to/audio.mp3",
+    "audioPath": "/path/to/audio_compressed.mp3",
     "transcription": "完整的转录文本内容...",
     "tingwuTaskId": "tingwu_task_123",
     "duration": 300,
-    "fileSize": 5242880,
+    "fileSize": 25452000,
     "retryCount": 0,
     "errorMessage": null,
     "createdAt": "2024-01-01T00:00:00.000Z",
@@ -576,6 +630,153 @@ export default function ApiDocPage() {
   }
 }`}</code></pre>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 音频压缩功能 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">🗜️ 音频压缩功能</h2>
+              <div className="mb-4">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  智能压缩
+                </span>
+              </div>
+              
+              <div className="space-y-6">
+                {/* 功能概述 */}
+                <div>
+                  <h3 className="font-medium mb-3">功能概述</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    系统提供智能音频压缩功能，解决大音频文件超出豆包API 80MB限制的问题。
+                    通过FFmpeg实现高质量压缩，确保转录准确性的同时大幅减小文件大小。
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-green-900">轻度压缩</h4>
+                      <p className="text-xs text-green-700 mt-1">128k比特率，减小30-50%</p>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-blue-900">标准压缩</h4>
+                      <p className="text-xs text-blue-700 mt-1">64k比特率，减小50-70%</p>
+                    </div>
+                    <div className="bg-orange-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-orange-900">高度压缩</h4>
+                      <p className="text-xs text-orange-700 mt-1">32k比特率，减小70-85%</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 压缩参数说明 */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-3">压缩预设参数</h3>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium">预设</th>
+                          <th className="px-3 py-2 text-left font-medium">比特率</th>
+                          <th className="px-3 py-2 text-left font-medium">采样率</th>
+                          <th className="px-3 py-2 text-left font-medium">声道</th>
+                          <th className="px-3 py-2 text-left font-medium">预期压缩率</th>
+                          <th className="px-3 py-2 text-left font-medium">适用场景</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        <tr>
+                          <td className="px-3 py-2 font-mono text-gray-600">none</td>
+                          <td className="px-3 py-2">原始</td>
+                          <td className="px-3 py-2">原始</td>
+                          <td className="px-3 py-2">原始</td>
+                          <td className="px-3 py-2">0%</td>
+                          <td className="px-3 py-2">小文件，无需压缩</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 font-mono text-green-600">light</td>
+                          <td className="px-3 py-2">128k</td>
+                          <td className="px-3 py-2">16kHz</td>
+                          <td className="px-3 py-2">单声道</td>
+                          <td className="px-3 py-2">30-50%</td>
+                          <td className="px-3 py-2">保持较高质量</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 font-mono text-blue-600">standard</td>
+                          <td className="px-3 py-2">64k</td>
+                          <td className="px-3 py-2">16kHz</td>
+                          <td className="px-3 py-2">单声道</td>
+                          <td className="px-3 py-2">50-70%</td>
+                          <td className="px-3 py-2">推荐用于语音转录</td>
+                        </tr>
+                        <tr>
+                          <td className="px-3 py-2 font-mono text-orange-600">heavy</td>
+                          <td className="px-3 py-2">32k</td>
+                          <td className="px-3 py-2">16kHz</td>
+                          <td className="px-3 py-2">单声道</td>
+                          <td className="px-3 py-2">70-85%</td>
+                          <td className="px-3 py-2">严重超标的文件</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* 使用示例 */}
+                <div>
+                  <h3 className="font-medium mb-3">使用示例</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">创建带压缩的任务</h4>
+                      <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto"><code>{`curl -X POST http://localhost:3000/api/external/tasks \\
+  -H "X-API-Key: textget-api-key-demo" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://www.xiaoyuzhoufm.com/episode/example",
+    "downloadType": "AUDIO_ONLY",
+    "compressionPreset": "standard"
+  }'`}</code></pre>
+                    </div>
+                    
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-2">压缩信息返回示例</h4>
+                      <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
+  "success": true,
+  "data": {
+    "id": "clxxxxx",
+    "status": "COMPLETED",
+    "compressionPreset": "standard",
+    "originalFileSize": 84840000,      // 原始文件大小 (约81MB)
+    "compressedFileSize": 25452000,    // 压缩后大小 (约24MB)
+    "compressionRatio": 0.30,          // 压缩比 (30%，减小70%)
+    "compressionDuration": 8500,       // 压缩耗时 (毫秒)
+    "transcription": "完整转录文本..."
+  }
+}`}</code></pre>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 压缩策略 */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 mb-2">💡 智能压缩策略</h3>
+                  <ul className="text-sm text-blue-700 space-y-1">
+                    <li>• <strong>自动跳过</strong>：文件小于80MB且压缩预设为"none"时跳过压缩</li>
+                    <li>• <strong>格式标准化</strong>：所有压缩输出统一为MP3格式，16kHz采样率</li>
+                    <li>• <strong>元数据清理</strong>：移除所有元数据，避免格式兼容性问题</li>
+                    <li>• <strong>豆包API优化</strong>：参数完全符合豆包语音识别要求</li>
+                    <li>• <strong>错误恢复</strong>：压缩失败时自动使用原文件</li>
+                  </ul>
+                </div>
+
+                {/* 技术说明 */}
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2">🔧 技术实现</h3>
+                  <div className="text-sm text-gray-600 space-y-2">
+                    <p><strong>压缩引擎</strong>：FFmpeg + libmp3lame编码器</p>
+                    <p><strong>处理流程</strong>：下载 → 压缩 → 验证 → 替换原文件 → 转录</p>
+                    <p><strong>文件验证</strong>：压缩后自动验证音频文件完整性</p>
+                    <p><strong>性能优化</strong>：支持大文件处理，内存占用可控</p>
                   </div>
                 </div>
               </div>
@@ -632,7 +833,7 @@ export default function ApiDocPage() {
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-sm font-medium text-gray-700 mb-2">创建任务</h4>
-                      <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto"><code>{`# 创建音频下载任务
+                      <pre className="bg-gray-900 text-gray-100 p-3 rounded text-sm overflow-x-auto"><code>{`# 创建音频下载任务（无压缩）
 curl -X POST http://localhost:3000/api/external/tasks \\
   -H "X-API-Key: textget-api-key-demo" \\
   -H "Content-Type: application/json" \\
@@ -641,13 +842,24 @@ curl -X POST http://localhost:3000/api/external/tasks \\
     "downloadType": "AUDIO_ONLY"
   }'
 
-# 创建视频+音频任务
+# 创建音频任务（标准压缩）
+curl -X POST http://localhost:3000/api/external/tasks \\
+  -H "X-API-Key: textget-api-key-demo" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://www.xiaoyuzhoufm.com/episode/example",
+    "downloadType": "AUDIO_ONLY",
+    "compressionPreset": "standard"
+  }'
+
+# 创建视频+音频任务（轻度压缩）
 curl -X POST http://localhost:3000/api/external/tasks \\
   -H "Authorization: Bearer textget-api-key-demo" \\
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://www.bilibili.com/video/BV1xx411c7mu",
-    "downloadType": "BOTH"
+    "downloadType": "BOTH",
+    "compressionPreset": "light"
   }'`}</code></pre>
                     </div>
                     
@@ -676,14 +888,14 @@ const API_BASE = 'http://localhost:3000/api/external';
 const API_KEY = 'textget-api-key-demo';
 
 // 创建任务
-async function createTask(url, downloadType = 'AUDIO_ONLY') {
+async function createTask(url, downloadType = 'AUDIO_ONLY', compressionPreset = 'none') {
   const response = await fetch(\`\${API_BASE}/tasks\`, {
     method: 'POST',
     headers: {
       'X-API-Key': API_KEY,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ url, downloadType })
+    body: JSON.stringify({ url, downloadType, compressionPreset })
   });
   
   return await response.json();
@@ -710,8 +922,8 @@ async function getTask(taskId) {
 
 // 使用示例
 (async () => {
-  // 创建任务
-  const task = await createTask('https://www.youtube.com/watch?v=example');
+  // 创建任务（带标准压缩）
+  const task = await createTask('https://www.xiaoyuzhoufm.com/episode/example', 'AUDIO_ONLY', 'standard');
   console.log('Task created:', task);
   
   // 轮询任务状态
@@ -750,11 +962,12 @@ class TextGetAPI:
             'Content-Type': 'application/json'
         }
     
-    def create_task(self, url, download_type='AUDIO_ONLY'):
+    def create_task(self, url, download_type='AUDIO_ONLY', compression_preset='none'):
         """创建下载任务"""
         data = {
             'url': url,
-            'downloadType': download_type
+            'downloadType': download_type,
+            'compressionPreset': compression_preset
         }
         response = requests.post(
             f'{self.base_url}/tasks',
@@ -806,8 +1019,8 @@ class TextGetAPI:
 if __name__ == "__main__":
     api = TextGetAPI(API_KEY)
     
-    # 创建任务
-    result = api.create_task('https://www.youtube.com/watch?v=example')
+    # 创建任务（带标准压缩）
+    result = api.create_task('https://www.xiaoyuzhoufm.com/episode/example', 'AUDIO_ONLY', 'standard')
     task_id = result['data']['id']
     print(f"任务创建成功: {task_id}")
     
