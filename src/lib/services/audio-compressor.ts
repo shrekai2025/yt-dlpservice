@@ -159,6 +159,26 @@ export class AudioCompressor {
       Logger.error(`❌ 音频压缩失败: ${error.message}`)
       Logger.error(`⏱️ 失败耗时: ${(duration / 1000).toFixed(1)}s`)
       
+      // 添加详细的调试信息
+      Logger.error(`🔍 压缩失败详情:`)
+      Logger.error(`  - 输入文件: ${options.inputPath}`)
+      Logger.error(`  - 压缩预设: ${options.preset}`)
+      Logger.error(`  - 错误类型: ${error.constructor.name}`)
+      Logger.error(`  - 错误代码: ${error.code || '未知'}`)
+      
+      // 检查文件是否存在
+      try {
+        const fs = require('fs')
+        const exists = fs.existsSync(options.inputPath)
+        Logger.error(`  - 输入文件存在: ${exists}`)
+        if (exists) {
+          const stats = fs.statSync(options.inputPath)
+          Logger.error(`  - 文件大小: ${stats.size} bytes`)
+        }
+      } catch (fsError) {
+        Logger.error(`  - 文件检查失败: ${fsError}`)
+      }
+      
       // 清理可能的临时文件
       const tempPath = generateTempFilePath(options.inputPath, `compressed_${options.preset}`)
       await cleanupTempFile(tempPath).catch(() => {})
