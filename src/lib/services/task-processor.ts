@@ -58,13 +58,30 @@ export class TaskProcessor {
       const downloadResult = await this.handleDownloadByType(task.url, task.downloadType, outputDir)
       Logger.info(`✅ 下载完成: ${taskId} - 视频:${downloadResult.videoPath ? '✓' : '✗'}, 音频:${downloadResult.audioPath ? '✓' : '✗'}`)
 
-      // 更新任务的文件路径
+      // 更新任务的文件路径和元数据
+      const updateData: any = {
+        videoPath: downloadResult.videoPath,
+        audioPath: downloadResult.audioPath
+      }
+      
+      // 如果有元数据，更新额外信息
+      if (downloadResult.metadata) {
+        updateData.title = downloadResult.metadata.title
+        updateData.platform = downloadResult.metadata.platform
+        if (downloadResult.metadata.duration) {
+          updateData.duration = downloadResult.metadata.duration
+        }
+        if (downloadResult.metadata.description) {
+          updateData.description = downloadResult.metadata.description
+        }
+        if (downloadResult.metadata.coverUrl) {
+          updateData.thumbnail = downloadResult.metadata.coverUrl
+        }
+      }
+      
       await db.task.update({
         where: { id: taskId },
-        data: {
-          videoPath: downloadResult.videoPath,
-          audioPath: downloadResult.audioPath
-        }
+        data: updateData
       })
 
       Logger.info(`任务 ${taskId} 提取完成，类型: ${this.getDownloadTypeDisplayName(task.downloadType)}`)
@@ -137,6 +154,7 @@ export class TaskProcessor {
   private async handleDownloadByType(url: string, downloadType: DownloadType, outputDir: string): Promise<{
     videoPath: string | null
     audioPath: string | null
+    metadata?: any
   }> {
     Logger.info(`📥 开始下载内容 - 类型: ${downloadType}, URL: ${url}`)
     Logger.info(`📁 输出目录: ${outputDir}`)
@@ -155,7 +173,8 @@ export class TaskProcessor {
       
       return {
         videoPath: result.videoPath || null,
-        audioPath: result.audioPath || null
+        audioPath: result.audioPath || null,
+        metadata: result.metadata
       }
     } catch (error: any) {
       const duration = Date.now() - startTime

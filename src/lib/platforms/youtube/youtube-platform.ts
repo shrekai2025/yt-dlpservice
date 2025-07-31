@@ -150,62 +150,18 @@ export class YouTubePlatform extends AbstractPlatform {
   async addPlatformSpecificArgs(command: string, url: string, useBrowserCookies: boolean = true): Promise<string> {
     let enhancedCommand = this.addCommonArgs(command)
     
-    // 添加YouTube Cookie支持
-    if (useBrowserCookies) {
-      try {
-        const cookiesFile = await browserManager.getCookiesForYtDlp()
-        if (cookiesFile) {
-          enhancedCommand += ` --cookies "${cookiesFile}"`
-          this.log('info', '✅ 已添加YouTube浏览器Cookie支持')
-        }
-      } catch (error) {
-        this.log('warn', '获取YouTube浏览器cookies失败，使用默认方式')
-      }
-    }
+    // 注意：浏览器Cookie功能已移除，如需要可以手动配置cookies文件
     
     return enhancedCommand
   }
 
   /**
    * 处理YouTube认证需求
+   * 注意：自动登录功能已移除，请手动配置cookies文件或使用其他认证方式
    */
   async handleAuthRequired(): Promise<boolean> {
-    try {
-      this.log('info', '开始处理YouTube认证需求...')
-      
-      // 1. 初始化BrowserManager
-      await browserManager.initialize()
-      
-      // 2. 检查当前登录状态
-      const currentStatus = await browserManager.getLoginStatus()
-      if (currentStatus.isLoggedIn) {
-        this.log('info', '检测到已有登录状态，刷新cookies...')
-        await browserManager.getCookiesForYtDlp()
-        return true
-      }
-      
-      // 3. 创建YouTube会话
-      const session = await browserManager.createYouTubeSession()
-      if (!session || !session.isLoggedIn) {
-        this.log('info', '当前未登录，需要手动登录')
-      }
-      
-      // 4. 提示用户登录
-      this.log('info', '弹出浏览器窗口，请手动完成YouTube登录...')
-      const loginSuccess = await browserManager.promptForLogin()
-      
-      if (loginSuccess) {
-        this.log('info', 'YouTube登录成功，保存cookies...')
-        await browserManager.getCookiesForYtDlp()
-        return true
-      } else {
-        this.log('warn', 'YouTube登录失败或超时')
-        return false
-      }
-    } catch (error) {
-      this.log('error', `处理YouTube认证失败: ${error}`)
-      return false
-    }
+    this.log('warn', 'YouTube认证功能已简化，请手动配置cookies文件或使用其他认证方式')
+    return false
   }
 
 

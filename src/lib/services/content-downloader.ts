@@ -11,6 +11,8 @@ import {
 } from '~/lib/utils/errors'
 import type { ContentInfo, DownloadConfig, IPlatform } from '~/lib/platforms'
 import type { DownloadOptions } from '~/types/task'
+import { webBasedDownloader } from '~/lib/downloaders'
+import type { ContentMetadata } from '~/lib/downloaders/types'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import * as fs from 'fs/promises'
@@ -126,7 +128,16 @@ class ContentDownloader {
       // 查找对应的平台
       const platform = await platformRegistry.findPlatformForUrl(url)
       
-      // 获取内容信息
+      // 检查是否使用自定义下载器
+      if (platform.downloadMethod === 'custom' && platform.getExtractor) {
+        const extractor = platform.getExtractor()
+        const metadata = await webBasedDownloader.getContentInfo(url, extractor)
+        
+        // 转换为 ContentInfo 格式
+        return this.convertMetadataToContentInfo(metadata, platform.name)
+      }
+      
+      // 使用 yt-dlp 获取内容信息
       const contentInfo = await platform.getContentInfo(url)
       
       Logger.info(`✅ 获取内容信息成功: ${contentInfo.title} (${contentInfo.platform})`)
@@ -145,7 +156,7 @@ class ContentDownloader {
   /**
    * 下载内容
    */
-  async downloadContent(url: string, options: DownloadOptions): Promise<{ videoPath?: string; audioPath?: string }> {
+  async downloadContent(url: string, options: DownloadOptions): Promise<{ videoPath?: string; audioPath?: string; metadata?: ContentMetadata }> {
     await this.ensureInitialized()
     
     try {
@@ -155,7 +166,28 @@ class ContentDownloader {
       // 标准化URL
       const normalizedUrl = await platform.normalizeUrl(url)
       
-      // 获取下载配置
+      // 检查是否使用自定义下载器
+      if (platform.downloadMethod === 'custom' && platform.getExtractor) {
+        const extractor = platform.getExtractor()
+        const result = await webBasedDownloader.downloadContent(
+          normalizedUrl,
+          extractor,
+          options.downloadType,
+          {
+            outputDir: options.outputDir,
+            timeout: 180000,
+            headless: true
+          }
+        )
+        
+        return {
+          videoPath: result.videoPath,
+          audioPath: result.audioPath,
+          metadata: result.metadata
+        }
+      }
+      
+      // 使用 yt-dlp 下载
       const downloadConfig = await platform.getDownloadConfig(normalizedUrl, options.downloadType)
       
       // 执行下载
@@ -382,6 +414,22 @@ class ContentDownloader {
       }
     } catch (error) {
       Logger.error(`清理文件失败: ${error}`)
+    }
+  }
+  
+  /**
+   * 将元数据转换为 ContentInfo
+   */
+  private convertMetadataToContentInfo(metadata: ContentMetadata, platformName: string): ContentInfo {
+    return {
+      id: Date.now().toString(),
+      title: metadata.title,
+      duration: metadata.duration || 0,
+      contentType: metadata.platform === 'xiaoyuzhou' ? 'podcast' : 'video',
+      platform: metadata.platform,
+      thumbnail: metadata.coverUrl,
+      uploader: platformName,
+      description: metadata.description
     }
   }
 }

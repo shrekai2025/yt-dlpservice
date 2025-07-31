@@ -46,6 +46,8 @@ model Task {
   // 元数据
   duration      Int?       // 视频时长（秒）
   fileSize      Int?       // 文件大小（字节）
+  thumbnail     String?    // 缩略图URL
+  description   String?    // 内容描述
   
   // 重试和错误处理
   retryCount    Int        @default(0)
