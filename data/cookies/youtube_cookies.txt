@@ -1,3 +1,7 @@
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
 .youtube.com	TRUE	/	FALSE	0	wide	1
 .youtube.com	TRUE	/	TRUE	1788964700	PREF	tz=Asia.Singapore&f4=4000000&f6=40000000&f5=30000&f7=18100
 .youtube.com	TRUE	/	FALSE	1754411967	GOOGLE_ABUSE_EXEMPTION	ID=bb3b91cf089c13a5:TM=1754401167:C=r:IP=139.162.12.191-:S=4fnoSLnflMAyMFJ7tvy7fA4
