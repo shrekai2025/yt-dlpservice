@@ -39,10 +39,21 @@ next-env.d.ts
 /prisma/dev.db
 /prisma/dev.db-journal
 
-# Database
-/data/
+# 数据库文件
+/data/*.db
+/data/*.db-journal
 *.db
 *.db-journal
+
+# 浏览器数据（隐私相关）
+/data/browser_data/
+
+# 系统文件
+/data/.DS_Store
+
+# 但允许 cookies 配置目录
+!/data/cookies/
+
 
 # Logs
 /logs/
