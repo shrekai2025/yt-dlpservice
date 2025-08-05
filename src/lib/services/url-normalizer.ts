@@ -21,34 +21,40 @@ export class UrlNormalizer {
    * 标准化URL - 主入口方法
    */
   async normalizeUrl(inputUrl: string): Promise<string> {
+    // 首先检查是否是B站URL，如果不是则直接返回原始URL
+    if (!this.isBilibiliUrl(inputUrl)) {
+      Logger.info(`⏭️ 非B站URL，跳过标准化: ${inputUrl}`);
+      return inputUrl;
+    }
+
     try {
-      Logger.info(`🔗 开始标准化URL: ${inputUrl}`)
+      Logger.info(`🔗 开始标准化B站URL: ${inputUrl}`);
       
       // 1. 基础URL清理
-      let cleanUrl = this.cleanUrl(inputUrl)
-      Logger.info(`🧹 基础清理后: ${cleanUrl}`)
+      let cleanUrl = this.cleanUrl(inputUrl);
+      Logger.info(`🧹 基础清理后: ${cleanUrl}`);
       
       // 2. 检测并处理短链接
       if (this.isShortUrl(cleanUrl)) {
-        cleanUrl = await this.resolveShortUrl(cleanUrl)
-        Logger.info(`🔄 短链接解析后: ${cleanUrl}`)
+        cleanUrl = await this.resolveShortUrl(cleanUrl);
+        Logger.info(`🔄 短链接解析后: ${cleanUrl}`);
       }
       
       // 3. 提取BV号并构造标准URL
-      const bvId = this.extractBvId(cleanUrl)
+      const bvId = this.extractBvId(cleanUrl);
       if (!bvId) {
-        throw new Error('无法从URL中提取BV号')
+        throw new Error('无法从URL中提取BV号');
       }
       
-      const standardUrl = this.buildStandardUrl(bvId, cleanUrl)
-      Logger.info(`✅ 标准化完成: ${standardUrl}`)
+      const standardUrl = this.buildStandardUrl(bvId, cleanUrl);
+      Logger.info(`✅ 标准化完成: ${standardUrl}`);
       
-      return standardUrl
+      return standardUrl;
       
     } catch (error) {
-      Logger.error(`URL标准化失败: ${error instanceof Error ? error.message : String(error)}`)
+      Logger.error(`URL标准化失败: ${error instanceof Error ? error.message : String(error)}`);
       // 如果标准化失败，返回原始URL作为兜底
-      return inputUrl
+      return inputUrl;
     }
   }
   
