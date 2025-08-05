@@ -273,6 +273,13 @@ npm run build
 pm2 restart yt-dlpservice
 带日志启动
 pm2 start ecosystem.config.cjs && pm2 logs yt-dlpservice --lines 50
+
+# 方法1：强制重置到远程分支（推荐）
+git fetch origin
+git reset --hard origin/main
+git clean -fd
+
+
 ```
 
 ### 强制重装依赖（解决依赖冲突时）
