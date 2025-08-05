@@ -4,6 +4,7 @@ import type { ContentInfo, DownloadConfig, PlatformValidation, ContentType } fro
 import { ContentInfoError, AuthenticationError } from '~/lib/utils/errors'
 import { exec } from 'child_process'
 import { promisify } from 'util'
+import { existsSync } from 'fs'
 
 const execAsync = promisify(exec)
 
@@ -94,8 +95,18 @@ export class YouTubePlatform extends AbstractPlatform {
     this.log('info', `获取视频信息: ${url}`)
     
     try {
-      const command = this.buildYtDlpCommand('--no-warnings --dump-json --no-check-certificate --quiet')
-      const { stdout } = await execAsync(`${command} "${url}"`)
+      const cookiePath = './data/cookies/youtube_cookies.txt';
+      let cookieArg = '';
+      
+      if (existsSync(cookiePath)) {
+        this.log('info', `✅ 使用YouTube Cookie文件获取视频信息`);
+        cookieArg = `--cookies "${cookiePath}"`;
+      } else {
+        this.log('warn', `⚠️ YouTube Cookie文件不存在，将尝试无认证获取视频信息`);
+      }
+      
+      const command = this.buildYtDlpCommand(`--no-warnings --dump-json --no-check-certificate --quiet ${cookieArg}`);
+      const { stdout } = await execAsync(`${command} "${url}"`);
       
       // 清理输出，提取JSON部分
       let cleanedOutput = stdout.trim()
@@ -148,11 +159,25 @@ export class YouTubePlatform extends AbstractPlatform {
    * 添加YouTube特定的yt-dlp参数
    */
   async addPlatformSpecificArgs(command: string, url: string, useBrowserCookies: boolean = true): Promise<string> {
-    let enhancedCommand = this.addCommonArgs(command)
-    
-    // 注意：浏览器Cookie功能已移除，如需要可以手动配置cookies文件
-    
-    return enhancedCommand
+    let enhancedCommand = this.addCommonArgs(command);
+
+    if (useBrowserCookies) {
+      const cookiePath = './data/cookies/youtube_cookies.txt';
+      
+      if (existsSync(cookiePath)) {
+        this.log('info', `✅ 使用YouTube Cookie文件进行认证，路径: ${cookiePath}`);
+        // 添加从项目内Cookie文件获取Cookie的参数
+        enhancedCommand += ` --cookies "${cookiePath}"`;
+      } else {
+        this.log('warn', `⚠️ YouTube Cookie文件不存在: ${cookiePath}`);
+        this.log('warn', '请按照 data/cookies/README.md 中的说明配置Cookie文件');
+        this.log('info', '将继续尝试下载，但可能会遇到认证问题');
+      }
+    } else {
+      this.log('info', '未启用浏览器Cookie，可能无法下载需要登录的视频');
+    }
+
+    return enhancedCommand;
   }
 
   /**
