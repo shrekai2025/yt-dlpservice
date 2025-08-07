@@ -728,11 +728,11 @@ export class TaskProcessor {
               platformData: {
                 ...existingPlatformData, // 保留yt-dlp的播放量、点赞数等
                 // 只补充爬虫独有的数据，并且只有在爬虫成功获取到时才覆盖
-                ...(scrapedPlatformData.coinCount && { coinCount: scrapedPlatformData.coinCount }),
-                ...(scrapedPlatformData.shareCount && { shareCount: scrapedPlatformData.shareCount }),
-                ...(scrapedPlatformData.favoriteCount && { favoriteCount: scrapedPlatformData.favoriteCount }),
+                ...((scrapedPlatformData as any).coinCount && { coinCount: (scrapedPlatformData as any).coinCount }),
+                ...((scrapedPlatformData as any).shareCount && { shareCount: (scrapedPlatformData as any).shareCount }),
+                ...((scrapedPlatformData as any).favoriteCount && { favoriteCount: (scrapedPlatformData as any).favoriteCount }),
                 // 更新评论数
-                commentCount: result.data.comments?.length || existingPlatformData.commentCount || 0,
+                commentCount: result.data.comments?.length || (existingPlatformData as any).commentCount || 0,
               },
             }
             Logger.info(`🔄 合并元数据: 保留yt-dlp数据，补充评论 ${result.data.comments?.length || 0} 条`)

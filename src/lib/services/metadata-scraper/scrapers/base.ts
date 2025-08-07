@@ -110,8 +110,8 @@ export abstract class BasePlatformScraper implements IPlatformScraper {
   protected async safeWaitForTimeout(page: Page, timeout: number): Promise<void> {
     try {
       // 尝试使用新版本的方法
-      if (typeof page.waitForTimeout === 'function') {
-        await page.waitForTimeout(timeout)
+      if (typeof (page as any).waitForTimeout === 'function') {
+        await (page as any).waitForTimeout(timeout)
       } else {
         // 使用Promise.delay作为备用方案
         await new Promise(resolve => setTimeout(resolve, timeout))

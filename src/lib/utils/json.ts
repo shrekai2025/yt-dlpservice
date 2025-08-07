@@ -40,7 +40,7 @@ export function parseTaskExtraMetadata<T extends { extraMetadata?: string | null
 ): Omit<T, 'extraMetadata'> & { extraMetadata: PlatformExtraMetadata | null } {
   return {
     ...task,
-    extraMetadata: safeParseExtraMetadata(task.extraMetadata)
+    extraMetadata: safeParseExtraMetadata(task.extraMetadata || null)
   }
 }
 

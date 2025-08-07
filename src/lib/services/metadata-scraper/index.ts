@@ -144,7 +144,7 @@ export class MetadataScraperService {
   /**
    * 整合yt-dlp基础数据到爬虫结果中
    */
-  private enrichMetadataWithBaseData(scrapedData: PlatformExtraMetadata, baseMetadata: any): PlatformExtraMetadata {
+  private enrichMetadataWithBaseData(scrapedData: any, baseMetadata: any): any {
     // 优先使用yt-dlp的数据，如果爬虫没有获取到相应数据
     const enriched = { ...scrapedData }
     
