@@ -9,7 +9,7 @@ export default function TaskManagementPage() {
   const [compressionPreset, setCompressionPreset] = useState<"none" | "light" | "standard" | "heavy">("none")
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false)
   const [selectedTranscription, setSelectedTranscription] = useState<{taskId: string, text: string} | null>(null)
-  const [cookieStatus, setCookieStatus] = useState<{valid: boolean, refreshing: boolean, lastCheck?: string} | null>(null)
+
 
   // 数据查询
   const { data: tasks, refetch: refetchTasks } = api.task.list.useQuery({})
@@ -54,47 +54,7 @@ export default function TaskManagementPage() {
     }
   }
 
-  // Cookie管理功能
-  const handleCheckCookieStatus = async () => {
-    try {
-      setCookieStatus(prev => prev ? {...prev, refreshing: true} : {valid: false, refreshing: true})
-      const response = await fetch('/api/admin/refresh-cookies', {method: 'GET'})
-      const data = await response.json()
-      
-      setCookieStatus({
-        valid: data.cookiesValid,
-        refreshing: false,
-        lastCheck: new Date().toLocaleString()
-      })
-    } catch (error) {
-      console.error('检查cookie状态失败:', error)
-      setCookieStatus({valid: false, refreshing: false, lastCheck: new Date().toLocaleString()})
-    }
-  }
-
-  const handleRefreshCookies = async () => {
-    try {
-      setCookieStatus(prev => prev ? {...prev, refreshing: true} : {valid: false, refreshing: true})
-      const response = await fetch('/api/admin/refresh-cookies', {method: 'POST'})
-      const data = await response.json()
-      
-      setCookieStatus({
-        valid: data.cookiesValid,
-        refreshing: false,
-        lastCheck: new Date().toLocaleString()
-      })
-
-      if (data.success) {
-        alert('✅ YouTube cookies已成功刷新!')
-      } else {
-        alert('❌ 刷新cookies失败: ' + data.error)
-      }
-    } catch (error) {
-      console.error('刷新cookies失败:', error)
-      setCookieStatus({valid: false, refreshing: false, lastCheck: new Date().toLocaleString()})
-      alert('❌ 刷新cookies失败: ' + error)
-    }
-  }
+  
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -257,50 +217,33 @@ export default function TaskManagementPage() {
 
       {/* YouTube Cookie管理 */}
       <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">YouTube Cookie管理</h2>
-        <div className="grid md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <p className="text-sm text-gray-600">当前状态:</p>
-            {cookieStatus ? (
-              <div className="flex items-center gap-2">
-                <span className={`inline-block w-3 h-3 rounded-full ${cookieStatus.valid ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                <span className={cookieStatus.valid ? 'text-green-600' : 'text-red-600'}>
-                  {cookieStatus.valid ? 'Cookies有效' : 'Cookies失效'}
-                </span>
-                {cookieStatus.lastCheck && (
-                  <span className="text-xs text-gray-500">
-                    (检查时间: {cookieStatus.lastCheck})
-                  </span>
-                )}
-              </div>
-            ) : (
-              <span className="text-gray-500">未检查</span>
-            )}
-            <p className="text-xs text-gray-500 mt-2">
-              💡 Cookie失效是导致"Sign in to confirm you're not a bot"错误的主要原因
-            </p>
+        <h2 className="text-xl font-semibold mb-4">🍪 YouTube Cookie管理</h2>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-blue-800 font-medium">遇到"Sign in to confirm you're not a bot"错误？</span>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleCheckCookieStatus}
-              disabled={cookieStatus?.refreshing}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+          <p className="text-sm text-blue-700 mb-3">
+            这是YouTube的反机器人验证，需要设置有效的Cookie来解决。
+          </p>
+          <div className="flex gap-3">
+            <a
+              href="/admin/youtube-auth"
+              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
             >
-              {cookieStatus?.refreshing ? "检查中..." : "检查状态"}
-            </button>
+              🔧 设置YouTube Cookie
+            </a>
             <button
-              onClick={handleRefreshCookies}
-              disabled={cookieStatus?.refreshing}
-              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 text-sm"
+              onClick={() => window.open('/admin/youtube-auth', '_blank')}
+              className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
             >
-              {cookieStatus?.refreshing ? "刷新中..." : "刷新Cookies"}
+              📋 查看设置指南
             </button>
           </div>
         </div>
-        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-          <p className="text-sm text-yellow-800">
-            <strong>说明：</strong> 当YouTube下载失败时，系统会自动尝试刷新cookies。你也可以手动触发刷新。
-          </p>
+        <div className="text-xs text-gray-600 space-y-1">
+          <p>• Cookie通常24-48小时后过期，需要定期更新</p>
+          <p>• 设置后立即生效，无需重启服务</p>
+          <p>• 支持从浏览器直接复制Cookie字符串</p>
         </div>
       </div>
 
