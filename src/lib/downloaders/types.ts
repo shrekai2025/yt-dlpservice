@@ -1,9 +1,13 @@
+import type { PlatformExtraMetadata } from '~/types/task'
+
 export interface ContentMetadata {
   title: string
   description?: string
   duration?: number  // 秒
   coverUrl?: string
   platform: 'youtube' | 'bilibili' | 'xiaoyuzhou' | string
+  // 额外元数据（通过爬虫获取）
+  extraMetadata?: PlatformExtraMetadata
   [key: string]: any  // 允许平台特定的额外字段
 }
 

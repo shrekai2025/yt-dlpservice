@@ -576,6 +576,30 @@ export default function ApiDocPage() {
       "transcription": "转录文本内容...",
       "duration": 300,
       "fileSize": 25452000,
+      "extraMetadata": {
+        "title": "视频标题",
+        "author": "作者名称",
+        "authorAvatar": "https://example.com/avatar.jpg",
+        "duration": 300,
+        "publishDate": "2024-01-01",
+        "description": "视频描述内容...",
+        "platformData": {
+          "viewCount": 50000,
+          "likeCount": 1200
+        },
+        "comments": [
+          {
+            "author": "观众A",
+            "content": "很棒的视频！",
+            "replies": [
+              {
+                "author": "作者",
+                "content": "谢谢支持！"
+              }
+            ]
+          }
+        ]
+      },
       "createdAt": "2024-01-01T00:00:00.000Z",
       "updatedAt": "2024-01-01T00:01:00.000Z"
     }
@@ -625,12 +649,153 @@ export default function ApiDocPage() {
     "fileSize": 25452000,
     "retryCount": 0,
     "errorMessage": null,
+    "extraMetadata": {
+      "title": "视频标题",
+      "author": "作者名称",
+      "authorAvatar": "https://example.com/avatar.jpg",
+      "duration": 300,
+      "publishDate": "2024-01-01",
+      "description": "视频描述内容...",
+      "platformData": {
+        "viewCount": 50000,
+        "likeCount": 1200
+      },
+      "comments": [
+        {
+          "author": "观众A",
+          "content": "很棒的视频！",
+          "replies": [
+            {
+              "author": "作者",
+              "content": "谢谢支持！"
+            }
+          ]
+        }
+      ]
+    },
     "createdAt": "2024-01-01T00:00:00.000Z",
     "updatedAt": "2024-01-01T00:01:00.000Z"
   }
 }`}</code></pre>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 元数据增强功能 */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">🕷️ 元数据增强功能</h2>
+              <div className="mb-4">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  智能爬取
+                </span>
+              </div>
+              
+              <div className="space-y-6">
+                {/* 功能概述 */}
+                <div>
+                  <h3 className="font-medium mb-3">功能概述</h3>
+                  <p className="text-sm text-gray-600 mb-3">
+                    系统会自动为每个任务爬取平台特定的元数据信息，包括播放量、点赞数、评论等。
+                    优先使用yt-dlp获取基础信息，然后通过Puppeteer爬取额外数据。
+                  </p>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-red-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-red-900">Bilibili</h4>
+                      <p className="text-xs text-red-700 mt-1">播放量、点赞、硬币、转发、收藏、评论</p>
+                    </div>
+                    <div className="bg-green-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-green-900">YouTube</h4>
+                      <p className="text-xs text-green-700 mt-1">播放量、点赞数、评论</p>
+                    </div>
+                    <div className="bg-purple-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-purple-900">小宇宙</h4>
+                      <p className="text-xs text-purple-700 mt-1">播放量、评论数、评论</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* extraMetadata字段结构 */}
+                <div>
+                  <h3 className="font-medium mb-3">extraMetadata 字段结构</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <pre className="text-sm overflow-x-auto"><code>{`{
+  "extraMetadata": {
+    // 公共字段（所有平台）
+    "title": "内容标题",
+    "author": "作者名称", 
+    "authorAvatar": "作者头像URL",
+    "duration": 1800,
+    "publishDate": "2024-01-01",
+    "description": "内容描述",
+    
+    // 平台特定数据
+    "platformData": {
+      // Bilibili示例
+      "playCount": 10000,
+      "likeCount": 500,
+      "coinCount": 100,
+      "shareCount": 50,
+      "favoriteCount": 200,
+      "commentCount": 80
+    },
+    
+    // 评论数据（一级评论 + 回复）
+    "comments": [
+      {
+        "author": "评论者",
+        "content": "评论内容", 
+        "replies": [
+          {
+            "author": "回复者",
+            "content": "回复内容"
+          }
+        ]
+      }
+    ]
+  }
+}`}</code></pre>
+                  </div>
+                </div>
+
+                {/* 获取策略 */}
+                <div>
+                  <h3 className="font-medium mb-3">数据获取策略</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-green-500 rounded-full mt-1.5 shrink-0"></div>
+                      <span className="text-sm"><strong>yt-dlp优先:</strong> 优先使用yt-dlp获取准确的核心元数据（如标题、时长、播放量、点赞数），并立即存入数据库。</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full mt-1.5 shrink-0"></div>
+                      <span className="text-sm"><strong>爬虫补充:</strong> 异步使用Puppeteer爬虫补充yt-dlp无法获取的数据（如Bilibili的硬币数、转发数、收藏数以及各平台的评论）。</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-yellow-500 rounded-full mt-1.5 shrink-0"></div>
+                      <span className="text-sm"><strong>数据合并:</strong> 将爬虫数据合并到现有数据中，但不覆盖yt-dlp提供的更准确的核心字段。</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-orange-500 rounded-full mt-1.5 shrink-0"></div>
+                      <span className="text-sm"><strong>容错处理:</strong> 爬虫失败不影响任务的 `COMPLETED` 状态。</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 bg-purple-500 rounded-full mt-1.5 shrink-0"></div>
+                      <span className="text-sm"><strong>评论限制:</strong> 一级评论最多100条，总评论数（含回复）最多300条。</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 注意事项 */}
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <h4 className="text-sm font-medium text-yellow-900 mb-2">⚠️ 注意事项</h4>
+                  <ul className="text-sm text-yellow-800 space-y-1">
+                    <li>• extraMetadata 可能为 null（爬虫未执行或失败）</li>
+                    <li>• 新创建的任务可能暂时没有 extraMetadata 数据</li>
+                    <li>• 不同平台的 platformData 结构不同</li>
+                    <li>• 爬虫超时时间为120秒</li>
+                  </ul>
                 </div>
               </div>
             </div>

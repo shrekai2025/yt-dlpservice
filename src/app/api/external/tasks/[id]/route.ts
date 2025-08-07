@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateExternalApiKey, createAuthErrorResponse } from '~/lib/utils/auth'
+import { parseTaskExtraMetadata } from '~/lib/utils/json'
 import { db } from '~/server/db'
 import { Logger } from '~/lib/utils/logger'
 
@@ -38,6 +39,7 @@ export async function GET(
         fileSize: true,
         retryCount: true,
         errorMessage: true,
+        extraMetadata: true,
         createdAt: true,
         updatedAt: true
       }
@@ -51,9 +53,12 @@ export async function GET(
       }, { status: 404 })
     }
 
+    // 安全解析extraMetadata JSON字符串
+    const taskWithParsedMetadata = parseTaskExtraMetadata(task)
+
     return NextResponse.json({
       success: true,
-      data: task
+      data: taskWithParsedMetadata
     })
 
   } catch (error) {

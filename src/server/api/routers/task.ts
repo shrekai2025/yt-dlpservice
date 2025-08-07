@@ -10,6 +10,7 @@ import {
   validateVideoUrl,
   getDownloadTypeDisplayName
 } from '~/lib/utils/validation'
+import { parseTasksExtraMetadata, parseTaskExtraMetadata } from '~/lib/utils/json'
 import { contentDownloader } from '~/lib/services/content-downloader'
 import { Logger } from '~/lib/utils/logger'
 // 导入全局TaskProcessor实例并确保应用服务已初始化
@@ -87,8 +88,11 @@ export const taskRouter = createTRPCRouter({
         db.task.count({ where })
       ])
       
+      // 安全解析extraMetadata JSON字符串
+      const tasksWithParsedMetadata = parseTasksExtraMetadata(tasks)
+      
       return {
-        data: tasks,
+        data: tasksWithParsedMetadata,
         total
       }
     }),
@@ -106,7 +110,9 @@ export const taskRouter = createTRPCRouter({
           message: '任务未找到'
         })
       }
-      return task
+      
+      // 安全解析extraMetadata JSON字符串
+      return parseTaskExtraMetadata(task)
     }),
 
   // 更新任务（内部使用）

@@ -60,6 +60,9 @@ model Task {
   retryCount    Int        @default(0)
   errorMessage  String?    // 错误信息
   
+  // 额外元数据（JSON格式存储平台特定数据和评论等）
+  extraMetadata String?    // JSON格式存储额外元数据
+  
   // 时间戳
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt

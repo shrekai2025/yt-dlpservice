@@ -2,6 +2,7 @@ import { platformRegistry } from '~/lib/platforms'
 import { Logger } from '~/lib/utils/logger'
 import { ConfigManager } from '~/lib/utils/config'
 import { GlobalInit } from '~/lib/utils/global-init'
+import { youtubeAuthService } from './youtube-auth'
 import { 
   PlatformError,
   PlatformNotSupportedError, 
@@ -235,6 +236,16 @@ class ContentDownloader {
       command += ` --ffmpeg-location "${this.ffmpegPath}"`
     }
     
+    // 如果是YouTube URL，添加Cookie支持
+    if (platform.name === 'youtube') {
+      const hasCookies = await youtubeAuthService.ensureValidCookies()
+      if (hasCookies) {
+        const cookieFilePath = youtubeAuthService.getCookieFilePath()
+        command += ` --cookies "${cookieFilePath}"`
+        Logger.info(`🍪 使用YouTube Cookie进行下载: ${cookieFilePath}`)
+      }
+    }
+    
     // 添加平台特定参数
     command = await platform.addPlatformSpecificArgs(command, url, true)
     
@@ -309,7 +320,7 @@ class ContentDownloader {
   }
 
   /**
-   * 构建yt-dlp命令
+   * 构建yt-dlp命令的基础部分
    */
   private buildYtDlpCommand(args: string): string {
     if (this.ytDlpPath.includes('python3 -m')) {

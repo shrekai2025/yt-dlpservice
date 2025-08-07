@@ -204,7 +204,7 @@ manage_service() {
         pm2 restart $APP_NAME
     else
         log_info "启动新服务..."
-        pm2 start ecosystem.config.js --env production
+        pm2 start ecosystem.config.cjs
     fi
     
     # 保存 PM2 配置
