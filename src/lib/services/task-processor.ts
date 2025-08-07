@@ -92,7 +92,9 @@ export class TaskProcessor {
         const ytdlpExtraMetadata = this.createExtraMetadataFromYtdlp(downloadResult.metadata, updateData.platform)
         if (ytdlpExtraMetadata) {
           updateData.extraMetadata = JSON.stringify(ytdlpExtraMetadata)
-          Logger.info(`📋 存储yt-dlp元数据: ${taskId} - 时长:${ytdlpExtraMetadata.duration}s, 播放量:${ytdlpExtraMetadata.platformData?.viewCount || ytdlpExtraMetadata.platformData?.playCount || 0}`)
+          const platformData = ytdlpExtraMetadata.platformData as any
+          const viewCount = platformData?.viewCount || platformData?.playCount || 0
+          Logger.info(`📋 存储yt-dlp元数据: ${taskId} - 时长:${ytdlpExtraMetadata.duration}s, 播放量:${viewCount}`)
         }
       }
       

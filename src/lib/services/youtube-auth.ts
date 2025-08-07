@@ -65,7 +65,9 @@ export class YouTubeAuthService {
             const [name, ...valueParts] = cookie.split('=')
             const value = valueParts.join('=')
             // 为主要YouTube域名创建条目
-            netscapeLines.push(`.youtube.com\tTRUE\t/\tTRUE\t${Math.floor(Date.now() / 1000) + 31536000}\t${name.trim()}\t${value.trim()}`)
+            if (name && name.trim()) {
+              netscapeLines.push(`.youtube.com\tTRUE\t/\tTRUE\t${Math.floor(Date.now() / 1000) + 31536000}\t${name.trim()}\t${value.trim()}`)
+            }
           }
         }
         cookieContent = netscapeLines.join('\n')
@@ -108,6 +110,13 @@ export class YouTubeAuthService {
       Logger.warn('⚠️ 未找到YouTube Cookie文件，部分视频可能无法访问')
     }
     return exists
+  }
+
+  /**
+   * 获取Cookie文件路径
+   */
+  getCookieFilePath(): string {
+    return this.cookieFilePath
   }
 
   /**
