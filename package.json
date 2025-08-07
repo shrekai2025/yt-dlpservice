@@ -32,6 +32,7 @@
     "youtube:auth": "node scripts/youtube-auth-cli.js",
     "youtube:test": "node scripts/test-youtube-cookie.js",
     "youtube:status": "node scripts/youtube-auth-cli.js --status",
+    "youtube:setup": "node scripts/youtube-auth-cli.js --set-cookie",
     "lint": "next lint",
     "clean": "rm -rf .next tsconfig.tsbuildinfo",
     "postinstall": "prisma generate"

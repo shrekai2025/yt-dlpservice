@@ -70,7 +70,7 @@ async function testYouTubeConnection(testUrl = 'https://www.youtube.com/watch?v=
     colorLog('blue', '1. 测试无Cookie访问...')
     try {
       const { stdout: noCookieResult } = await execAsync(
-        `python3 -m yt_dlp --no-warnings --dump-json --quiet "${testUrl}" 2>/dev/null | head -1`,
+        `yt-dlp --no-warnings --dump-json --quiet "${testUrl}" 2>/dev/null | head -1`,
         { timeout: 30000 }
       )
       
@@ -87,7 +87,7 @@ async function testYouTubeConnection(testUrl = 'https://www.youtube.com/watch?v=
       colorLog('blue', '2. 测试使用Cookie访问...')
       try {
         const { stdout: cookieResult } = await execAsync(
-          `python3 -m yt_dlp --no-warnings --dump-json --cookies "${cookieFile}" --quiet "${testUrl}" 2>/dev/null | head -1`,
+          `yt-dlp --no-warnings --dump-json --cookies "${cookieFile}" --quiet "${testUrl}" 2>/dev/null | head -1`,
           { timeout: 30000 }
         )
         
