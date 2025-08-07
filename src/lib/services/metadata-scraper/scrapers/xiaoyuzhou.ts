@@ -67,7 +67,7 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
             let match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/) ||
                        content.match(/window\.__DATA__\s*=\s*({.+?});/)
             if (match) {
-              const data = JSON.parse(match[1])
+              const data = JSON.parse(match[1]!)
               const episode = data?.episode || data?.episodeDetail
               
               return {
@@ -153,7 +153,7 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
             let match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/) ||
                        content.match(/window\.__DATA__\s*=\s*({.+?});/)
             if (match) {
-              const data = JSON.parse(match[1])
+              const data = JSON.parse(match[1]!)
               const episode = data?.episode || data?.episodeDetail
               const stats = episode?.stat || {}
               

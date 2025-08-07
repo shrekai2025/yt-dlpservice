@@ -64,7 +64,7 @@ export class YouTubeScraper extends BasePlatformScraper {
           try {
             const match = content.match(/var ytInitialData\s*=\s*({.+?});/)
             if (match) {
-              const data = JSON.parse(match[1])
+              const data = JSON.parse(match[1]!)
               const videoDetails = data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[0]?.videoPrimaryInfoRenderer
               const videoSecondaryInfo = data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[1]?.videoSecondaryInfoRenderer
               
@@ -114,7 +114,7 @@ export class YouTubeScraper extends BasePlatformScraper {
           try {
             const match = content.match(/var ytInitialData\s*=\s*({.+?});/)
             if (match) {
-              const data = JSON.parse(match[1])
+              const data = JSON.parse(match[1]!)
               const videoDetails = data?.contents?.twoColumnWatchNextResults?.results?.results?.contents?.[0]?.videoPrimaryInfoRenderer
               
               const viewCountText = videoDetails?.viewCount?.videoViewCountRenderer?.viewCount?.simpleText || ''

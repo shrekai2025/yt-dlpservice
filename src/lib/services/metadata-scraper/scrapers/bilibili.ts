@@ -22,7 +22,14 @@ export class BilibiliScraper extends BasePlatformScraper {
     try {
       Logger.info(`[${this.platform}] 开始爬取元数据: ${url}`)
       
-      const mergedOptions = this.mergeOptions(options)
+      const mergedOptions = {
+        timeout: 120000,
+        headless: true,
+        waitTime: 30000,
+        maxTopLevelComments: 100,
+        maxTotalComments: 300,
+        ...options
+      }
       
       page = await browserManager.getPage({ 
         headless: mergedOptions.headless, 
@@ -57,8 +64,9 @@ export class BilibiliScraper extends BasePlatformScraper {
       }
       
       // 等待指定时间让页面完全加载
-      Logger.info(`[${this.platform}] 等待 ${mergedOptions.waitTime / 1000} 秒页面加载...`)
-      await this.safeWaitForTimeout(page, mergedOptions.waitTime)
+      const waitTime = mergedOptions.waitTime
+      Logger.info(`[${this.platform}] 等待 ${waitTime / 1000} 秒页面加载...`)
+      await this.safeWaitForTimeout(page, waitTime)
       
       // 提取数据
       const data = await this.extractFromPage(page, url, mergedOptions)
@@ -144,7 +152,7 @@ export class BilibiliScraper extends BasePlatformScraper {
           try {
             const match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/)
             if (match) {
-              const data = JSON.parse(match[1])
+              const data = JSON.parse(match[1]!)
               const videoData = data?.videoData || data?.playInfo
               
               return {
@@ -193,7 +201,7 @@ export class BilibiliScraper extends BasePlatformScraper {
           try {
             const match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/)
             if (match) {
-              const data = JSON.parse(match[1])
+              const data = JSON.parse(match[1]!)
               const videoData = data?.videoData
               const stat = videoData?.stat || {}
               
