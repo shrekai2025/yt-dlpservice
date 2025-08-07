@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { validateExternalApiKey, createAuthErrorResponse } from '~/lib/utils/auth'
+import { parseTasksExtraMetadata } from '~/lib/utils/json'
 import { db } from '~/server/db'
 import { TaskProcessor } from '~/lib/services/task-processor'
 import { validateVideoUrl, getPlatformFromUrl, getDownloadTypeDisplayName, createTaskSchema } from '~/lib/utils/validation'
@@ -156,6 +157,7 @@ export async function GET(request: NextRequest) {
           duration: true,
           fileSize: true,
           errorMessage: true,
+          extraMetadata: true,
           createdAt: true,
           updatedAt: true
         }
@@ -163,9 +165,12 @@ export async function GET(request: NextRequest) {
       db.task.count({ where })
     ])
 
+    // 安全解析extraMetadata JSON字符串
+    const tasksWithParsedMetadata = parseTasksExtraMetadata(tasks)
+
     return NextResponse.json({
       success: true,
-      data: tasks,
+      data: tasksWithParsedMetadata,
       pagination: {
         total,
         page: Math.floor(offset / limit) + 1,

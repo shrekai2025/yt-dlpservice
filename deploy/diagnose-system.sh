@@ -50,7 +50,7 @@ if command -v yt-dlp &> /dev/null; then
     echo "  ✅ yt-dlp: $(yt-dlp --version)"
 else
     echo "  ❌ yt-dlp 未安装"
-    echo "  💡 安装命令: sudo pip3 install yt-dlp"
+    echo "  💡 安装命令: sudo pip3 install --user yt-dlp"
 fi
 echo ""
 

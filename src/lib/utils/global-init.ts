@@ -24,6 +24,10 @@ interface GlobalServiceState {
     initialized: boolean
     initializing: boolean
   }
+  metadataScraper: {
+    initialized: boolean
+    initializing: boolean
+  }
   app: {
     initialized: boolean
     initializing: boolean
@@ -43,6 +47,7 @@ function getGlobalState(): GlobalServiceState {
       doubaoVoice: { initialized: false, initializing: false },
       contentDownloader: { initialized: false, initializing: false },
       taskProcessor: { initialized: false, initializing: false },
+      metadataScraper: { initialized: false, initializing: false },
       app: { initialized: false, initializing: false }
     }
   }
@@ -151,6 +156,13 @@ export const GlobalInit = {
   setTaskProcessorInitializationFailed: () => setInitializationFailed('taskProcessor'),
   isTaskProcessorInitialized: () => isInitialized('taskProcessor'),
   waitForTaskProcessor: (timeout?: number) => waitForInitialization('taskProcessor', timeout),
+  
+  // MetadataScraper相关
+  tryInitializeMetadataScraper: () => trySetInitializing('metadataScraper'),
+  setMetadataScraperInitialized: () => setInitialized('metadataScraper'),
+  setMetadataScraperInitializationFailed: () => setInitializationFailed('metadataScraper'),
+  isMetadataScraperInitialized: () => isInitialized('metadataScraper'),
+  waitForMetadataScraper: (timeout?: number) => waitForInitialization('metadataScraper', timeout),
   
   // App相关
   tryInitializeApp: () => trySetInitializing('app'),

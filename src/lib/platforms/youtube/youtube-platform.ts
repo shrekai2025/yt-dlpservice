@@ -1,5 +1,6 @@
 import { AbstractPlatform } from '../base/abstract-platform'
 import { browserManager } from '~/lib/services/browser-manager'
+import { youtubeCookieManager } from '~/lib/services/youtube-cookie-manager'
 import type { ContentInfo, DownloadConfig, PlatformValidation, ContentType } from '../base/platform-interface'
 import { ContentInfoError, AuthenticationError } from '~/lib/utils/errors'
 import { exec } from 'child_process'
@@ -95,14 +96,15 @@ export class YouTubePlatform extends AbstractPlatform {
     this.log('info', `获取视频信息: ${url}`)
     
     try {
-      const cookiePath = './data/cookies/youtube_cookies.txt';
+      // 使用新的cookie管理器获取有效cookies
+      const cookiePath = await youtubeCookieManager.getValidCookies();
       let cookieArg = '';
       
-      if (existsSync(cookiePath)) {
+      if (cookiePath) {
         this.log('info', `✅ 使用YouTube Cookie文件获取视频信息`);
         cookieArg = `--cookies "${cookiePath}"`;
       } else {
-        this.log('warn', `⚠️ YouTube Cookie文件不存在，将尝试无认证获取视频信息`);
+        this.log('warn', `⚠️ 无法获取有效的YouTube Cookie，将尝试无认证获取视频信息`);
       }
       
       const command = this.buildYtDlpCommand(`--no-warnings --dump-json --no-check-certificate --quiet ${cookieArg}`);
@@ -148,6 +150,57 @@ export class YouTubePlatform extends AbstractPlatform {
       
       // 检查是否为YouTube认证错误
       if (this.isYouTubeAuthError(error.message)) {
+        this.log('warn', '检测到YouTube认证错误，尝试刷新cookies并重试...')
+        
+        try {
+          // 强制刷新cookies
+          await youtubeCookieManager.forceRefresh()
+          
+          // 重新获取cookies路径并重试一次
+          const newCookiePath = await youtubeCookieManager.getValidCookies()
+          if (newCookiePath) {
+            this.log('info', '✅ cookies刷新成功，重新尝试获取视频信息...')
+            const newCookieArg = `--cookies "${newCookiePath}"`
+            const retryCommand = this.buildYtDlpCommand(`--no-warnings --dump-json --no-check-certificate --quiet ${newCookieArg}`)
+            const { stdout: retryStdout } = await execAsync(`${retryCommand} "${url}"`)
+            
+            // 处理重试结果（复用相同的解析逻辑）
+            let cleanedOutput = retryStdout.trim()
+            if (cleanedOutput.includes('\n')) {
+              const lines = cleanedOutput.split('\n')
+              const jsonLine = lines.find(line => line.trim().startsWith('{'))
+              if (jsonLine) {
+                cleanedOutput = jsonLine.trim()
+              }
+            }
+            
+            if (!cleanedOutput.startsWith('{') || !cleanedOutput.endsWith('}')) {
+              this.log('error', `重试后yt-dlp输出格式仍异常: ${cleanedOutput.substring(0, 200)}...`)
+              throw new ContentInfoError('重试后仍无法获取有效的视频信息')
+            }
+            
+            const videoInfo = JSON.parse(cleanedOutput)
+            this.log('info', '🎉 cookies刷新后成功获取视频信息')
+            
+            return {
+              id: videoInfo.id || '',
+              title: videoInfo.title || '',
+              duration: videoInfo.duration || 0,
+              contentType: 'video',
+              platform: this.name,
+              thumbnail: videoInfo.thumbnail || '',
+              uploader: videoInfo.uploader || '',
+              upload_date: videoInfo.upload_date || '',
+              view_count: videoInfo.view_count || 0,
+              like_count: videoInfo.like_count || 0,
+              description: videoInfo.description || '',
+              formats: videoInfo.formats || []
+            }
+          }
+        } catch (refreshError) {
+          this.log('error', `cookies刷新失败: ${refreshError}`)
+        }
+        
         throw new AuthenticationError('youtube')
       }
       
@@ -162,15 +215,15 @@ export class YouTubePlatform extends AbstractPlatform {
     let enhancedCommand = this.addCommonArgs(command);
 
     if (useBrowserCookies) {
-      const cookiePath = './data/cookies/youtube_cookies.txt';
+      const cookiePath = await youtubeCookieManager.getValidCookies();
       
-      if (existsSync(cookiePath)) {
+      if (cookiePath) {
         this.log('info', `✅ 使用YouTube Cookie文件进行认证，路径: ${cookiePath}`);
         // 添加从项目内Cookie文件获取Cookie的参数
         enhancedCommand += ` --cookies "${cookiePath}"`;
       } else {
-        this.log('warn', `⚠️ YouTube Cookie文件不存在: ${cookiePath}`);
-        this.log('warn', '请按照 data/cookies/README.md 中的说明配置Cookie文件');
+        this.log('warn', `⚠️ 无法获取有效的YouTube Cookie文件`);
+        this.log('warn', '正在尝试自动获取新的cookies...');
         this.log('info', '将继续尝试下载，但可能会遇到认证问题');
       }
     } else {
@@ -182,11 +235,26 @@ export class YouTubePlatform extends AbstractPlatform {
 
   /**
    * 处理YouTube认证需求
-   * 注意：自动登录功能已移除，请手动配置cookies文件或使用其他认证方式
+   * 使用自动cookie刷新机制
    */
   async handleAuthRequired(): Promise<boolean> {
-    this.log('warn', 'YouTube认证功能已简化，请手动配置cookies文件或使用其他认证方式')
-    return false
+    this.log('info', 'YouTube需要认证，开始自动刷新cookies...')
+    
+    try {
+      await youtubeCookieManager.forceRefresh()
+      const isValid = await youtubeCookieManager.validateCookies()
+      
+      if (isValid) {
+        this.log('info', '✅ YouTube认证处理成功')
+        return true
+      } else {
+        this.log('warn', '❌ 无法获取有效的YouTube认证cookies')
+        return false
+      }
+    } catch (error) {
+      this.log('error', `YouTube认证处理失败: ${error}`)
+      return false
+    }
   }
 
 

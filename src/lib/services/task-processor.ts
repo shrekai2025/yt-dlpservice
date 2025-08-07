@@ -4,16 +4,20 @@ import { contentDownloader } from './content-downloader'
 import { doubaoVoiceService } from './doubao-voice'
 import { cleanupManager } from './cleanup-manager'
 import { audioCompressor } from './audio-compressor'
+import { metadataScraperService } from './metadata-scraper'
+import { initializeScrapers } from './metadata-scraper/scrapers'
 import { env } from '~/env'
 import { ConfigManager } from '~/lib/utils/config'
 import { GlobalInit } from '~/lib/utils/global-init'
-import type { TaskStatus, DownloadType, CompressionPreset } from '~/types/task'
+import type { TaskStatus, DownloadType, CompressionPreset, PlatformExtraMetadata } from '~/types/task'
 import type { CompressionOptions } from '~/types/compression'
 import { formatFileSize, bytesToMB } from './audio-utils'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 
 export class TaskProcessor {
+  // 存储任务的yt-dlp元数据，用于后续爬虫整合
+  private taskMetadataCache = new Map<string, any>()
 
   /**
    * 处理单个任务
@@ -79,6 +83,16 @@ export class TaskProcessor {
         }
         if (downloadResult.metadata.coverUrl) {
           updateData.thumbnail = downloadResult.metadata.coverUrl
+        }
+        
+        // 存储yt-dlp元数据到内存中，供后续爬虫使用
+        this.taskMetadataCache.set(taskId, downloadResult.metadata)
+        
+        // 立即将yt-dlp数据存储到extraMetadata字段（优先存储策略）
+        const ytdlpExtraMetadata = this.createExtraMetadataFromYtdlp(downloadResult.metadata, updateData.platform)
+        if (ytdlpExtraMetadata) {
+          updateData.extraMetadata = JSON.stringify(ytdlpExtraMetadata)
+          Logger.info(`📋 存储yt-dlp元数据: ${taskId} - 时长:${ytdlpExtraMetadata.duration}s, 播放量:${ytdlpExtraMetadata.platformData?.viewCount || ytdlpExtraMetadata.platformData?.playCount || 0}`)
         }
       }
       
@@ -331,6 +345,22 @@ export class TaskProcessor {
       
       Logger.info(`✅ 语音转录成功: ${taskId} - 文本长度: ${transcription.length}字符`)
       
+      // 异步获取额外元数据（不阻塞主流程）
+      // 从数据库重新获取任务信息以获取URL
+      db.task.findUnique({ where: { id: taskId } }).then(taskData => {
+        if (taskData?.url) {
+          // 获取缓存的yt-dlp元数据
+          const ytdlpMetadata = this.taskMetadataCache.get(taskId)
+          
+          this.scrapeExtraMetadataAsync(taskId, taskData.url, ytdlpMetadata).catch(error => {
+            Logger.warn(`元数据爬取失败: ${taskId} - ${error.message}`)
+          }).finally(() => {
+            // 清理缓存
+            this.taskMetadataCache.delete(taskId)
+          })
+        }
+      })
+      
       // 豆包API成功返回，更新任务转录结果并标记为完成
       await db.task.update({
         where: { id: taskId },
@@ -570,5 +600,188 @@ export class TaskProcessor {
     // 4. 可选：删除原视频文件以节省空间
     
     throw new Error('视频转音频功能尚未实现')
+  }
+
+  /**
+   * 从yt-dlp数据创建extraMetadata
+   */
+  private createExtraMetadataFromYtdlp(ytdlpData: any, platform: string): PlatformExtraMetadata | null {
+    try {
+      const baseMetadata: Partial<PlatformExtraMetadata> = {
+        title: ytdlpData.title || '',
+        author: ytdlpData.uploader || '',
+        duration: ytdlpData.duration || 0,
+        description: ytdlpData.description || '',
+        authorAvatar: ytdlpData.thumbnail || ''
+      }
+
+      // 格式化发布日期
+      if (ytdlpData.upload_date) {
+        const dateStr = ytdlpData.upload_date.toString()
+        if (dateStr.length === 8) {
+          const year = dateStr.substring(0, 4)
+          const month = dateStr.substring(4, 6)
+          const day = dateStr.substring(6, 8)
+          baseMetadata.publishDate = `${year}-${month}-${day}`
+        } else {
+          baseMetadata.publishDate = ytdlpData.upload_date
+        }
+      }
+
+      // 根据平台创建特定数据结构
+      let platformData: any = {}
+      let comments: any[] = [] // yt-dlp不提供评论，等待爬虫补充
+
+      if (platform === 'youtube') {
+        platformData = {
+          viewCount: ytdlpData.view_count || 0,
+          likeCount: ytdlpData.like_count || 0
+        }
+      } else if (platform === 'bilibili') {
+        platformData = {
+          playCount: ytdlpData.view_count || 0,
+          likeCount: ytdlpData.like_count || 0,
+          coinCount: 0, // yt-dlp无法获取，等待爬虫补充
+          shareCount: 0,
+          favoriteCount: 0,
+          commentCount: 0
+        }
+      } else if (platform === 'xiaoyuzhou') {
+        platformData = {
+          playCount: ytdlpData.view_count || 0,
+          commentCount: 0 // 等待爬虫补充
+        }
+      }
+
+      return {
+        ...baseMetadata,
+        platformData,
+        comments
+      } as PlatformExtraMetadata
+
+    } catch (error: any) {
+      Logger.error(`创建yt-dlp元数据失败: ${error.message}`)
+      return null
+    }
+  }
+
+  /**
+   * 异步爬取额外元数据
+   */
+  private async scrapeExtraMetadataAsync(taskId: string, url: string, downloadMetadata?: any): Promise<void> {
+    try {
+      Logger.info(`🕷️ 开始异步爬取元数据: ${taskId}`)
+      
+      // 确保元数据爬虫服务已初始化
+      await this.ensureMetadataScraperInitialized()
+      
+      // 检查是否支持该URL
+      if (!metadataScraperService.isSupported(url)) {
+        Logger.info(`⏭️ URL不支持元数据爬取: ${taskId} - ${url}`)
+        return
+      }
+      
+      let result
+      
+      // 如果有yt-dlp的元数据，使用整合方法
+      if (downloadMetadata) {
+        Logger.info(`🔗 整合yt-dlp元数据: ${taskId} - 标题: ${downloadMetadata.title}, 时长: ${downloadMetadata.duration}s`)
+        result = await metadataScraperService.scrapeMetadataWithBaseData(url, downloadMetadata, {
+          timeout: 120000, // 120秒超时
+          waitTime: 30000, // 等待30秒
+          maxTopLevelComments: 100,
+          maxTotalComments: 300
+        })
+      } else {
+        // 否则使用普通爬取
+        result = await metadataScraperService.scrapeMetadata(url, {
+          timeout: 120000, // 120秒超时
+          waitTime: 30000, // 等待30秒
+          maxTopLevelComments: 100,
+          maxTotalComments: 300
+        })
+      }
+      
+      if (result.success && result.data) {
+        // 获取现有的extraMetadata，只补充评论等爬虫独有的数据
+        const currentTask = await db.task.findUnique({ 
+          where: { id: taskId },
+          select: { extraMetadata: true }
+        })
+        
+        let mergedMetadata = result.data
+        
+        // 如果已有yt-dlp数据，则只补充评论相关数据，不覆盖基础字段
+        if (currentTask?.extraMetadata) {
+          try {
+            const existingMetadata = JSON.parse(currentTask.extraMetadata) as PlatformExtraMetadata
+            
+            // 补充爬虫独有数据
+            const scrapedPlatformData = result.data.platformData || {}
+            const existingPlatformData = existingMetadata.platformData || {}
+            
+            mergedMetadata = {
+              ...existingMetadata, // 保留yt-dlp的准确数据
+              comments: result.data.comments || [], // 补充评论数据
+              platformData: {
+                ...existingPlatformData, // 保留yt-dlp的播放量、点赞数等
+                // 只补充爬虫独有的数据，并且只有在爬虫成功获取到时才覆盖
+                ...(scrapedPlatformData.coinCount && { coinCount: scrapedPlatformData.coinCount }),
+                ...(scrapedPlatformData.shareCount && { shareCount: scrapedPlatformData.shareCount }),
+                ...(scrapedPlatformData.favoriteCount && { favoriteCount: scrapedPlatformData.favoriteCount }),
+                // 更新评论数
+                commentCount: result.data.comments?.length || existingPlatformData.commentCount || 0,
+              },
+            }
+            Logger.info(`🔄 合并元数据: 保留yt-dlp数据，补充评论 ${result.data.comments?.length || 0} 条`)
+          } catch (error) {
+            Logger.warn(`解析现有元数据失败，使用新数据: ${error}`)
+          }
+        }
+        
+        // 更新数据库中的额外元数据
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            extraMetadata: JSON.stringify(mergedMetadata)
+          } as any
+        })
+        
+        Logger.info(`✅ 元数据爬取成功: ${taskId} - 评论数: ${result.commentCount || 0}, 时长: ${mergedMetadata.duration}s`)
+      } else {
+        Logger.warn(`⚠️ 元数据爬取失败: ${taskId} - ${result.error}`)
+      }
+      
+    } catch (error: any) {
+      Logger.error(`❌ 元数据爬取异常: ${taskId} - ${error.message}`)
+      // 不抛出错误，避免影响主任务流程
+    }
+  }
+
+  /**
+   * 确保元数据爬虫服务已初始化
+   */
+  private async ensureMetadataScraperInitialized(): Promise<void> {
+    if (GlobalInit.isMetadataScraperInitialized()) {
+      return
+    }
+    
+    if (GlobalInit.tryInitializeMetadataScraper()) {
+      try {
+        Logger.info('🔧 初始化元数据爬虫服务...')
+        initializeScrapers()
+        GlobalInit.setMetadataScraperInitialized()
+        Logger.info('✅ 元数据爬虫服务初始化完成')
+      } catch (error: any) {
+        GlobalInit.setMetadataScraperInitializationFailed()
+        throw new Error(`元数据爬虫服务初始化失败: ${error.message}`)
+      }
+    } else {
+      // 等待其他进程完成初始化
+      await GlobalInit.waitForMetadataScraper(30000)
+      if (!GlobalInit.isMetadataScraperInitialized()) {
+        throw new Error('元数据爬虫服务初始化超时')
+      }
+    }
   }
 } 

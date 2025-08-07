@@ -28,6 +28,10 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:reset": "prisma db push --force-reset",
+    "test:scraper": "npx tsx scripts/test-metadata-scraper.ts",
+    "youtube:auth": "node scripts/youtube-auth-cli.js",
+    "youtube:test": "node scripts/test-youtube-cookie.js",
+    "youtube:status": "node scripts/youtube-auth-cli.js --status",
     "lint": "next lint",
     "clean": "rm -rf .next tsconfig.tsbuildinfo",
     "postinstall": "prisma generate"

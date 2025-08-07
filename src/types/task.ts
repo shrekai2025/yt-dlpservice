@@ -50,6 +50,8 @@ export interface UpdateTaskInput {
   compressedFileSize?: number
   compressionRatio?: number
   compressionDuration?: number
+  // 额外元数据字段
+  extraMetadata?: PlatformExtraMetadata
 }
 
 // 任务查询选项接口
@@ -67,6 +69,50 @@ export interface TaskQueryOptions {
 export interface ConfigInput {
   key: string
   value: string
+}
+
+// 评论接口
+export interface Comment {
+  author: string
+  content: string
+  replies?: Comment[] // 二级回复
+}
+
+// 平台特定数据接口
+export interface BilibiliData {
+  playCount: number
+  likeCount: number
+  coinCount: number
+  shareCount: number
+  favoriteCount: number
+  commentCount: number
+}
+
+export interface YouTubeData {
+  viewCount: number
+  likeCount: number
+}
+
+export interface XiaoyuzhouData {
+  playCount: number
+  commentCount: number
+}
+
+// 平台额外元数据接口
+export interface PlatformExtraMetadata {
+  // 公共字段
+  title: string
+  author: string
+  authorAvatar?: string
+  duration: number // 秒
+  publishDate?: string
+  description?: string
+  
+  // 平台特定字段
+  platformData?: BilibiliData | YouTubeData | XiaoyuzhouData
+  
+  // 评论数据
+  comments?: Comment[]
 }
 
 // 下载选项接口

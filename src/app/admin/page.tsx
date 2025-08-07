@@ -9,6 +9,7 @@ export default function TaskManagementPage() {
   const [compressionPreset, setCompressionPreset] = useState<"none" | "light" | "standard" | "heavy">("none")
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false)
   const [selectedTranscription, setSelectedTranscription] = useState<{taskId: string, text: string} | null>(null)
+  const [cookieStatus, setCookieStatus] = useState<{valid: boolean, refreshing: boolean, lastCheck?: string} | null>(null)
 
   // 数据查询
   const { data: tasks, refetch: refetchTasks } = api.task.list.useQuery({})
@@ -53,6 +54,48 @@ export default function TaskManagementPage() {
     }
   }
 
+  // Cookie管理功能
+  const handleCheckCookieStatus = async () => {
+    try {
+      setCookieStatus(prev => prev ? {...prev, refreshing: true} : {valid: false, refreshing: true})
+      const response = await fetch('/api/admin/refresh-cookies', {method: 'GET'})
+      const data = await response.json()
+      
+      setCookieStatus({
+        valid: data.cookiesValid,
+        refreshing: false,
+        lastCheck: new Date().toLocaleString()
+      })
+    } catch (error) {
+      console.error('检查cookie状态失败:', error)
+      setCookieStatus({valid: false, refreshing: false, lastCheck: new Date().toLocaleString()})
+    }
+  }
+
+  const handleRefreshCookies = async () => {
+    try {
+      setCookieStatus(prev => prev ? {...prev, refreshing: true} : {valid: false, refreshing: true})
+      const response = await fetch('/api/admin/refresh-cookies', {method: 'POST'})
+      const data = await response.json()
+      
+      setCookieStatus({
+        valid: data.cookiesValid,
+        refreshing: false,
+        lastCheck: new Date().toLocaleString()
+      })
+
+      if (data.success) {
+        alert('✅ YouTube cookies已成功刷新!')
+      } else {
+        alert('❌ 刷新cookies失败: ' + data.error)
+      }
+    } catch (error) {
+      console.error('刷新cookies失败:', error)
+      setCookieStatus({valid: false, refreshing: false, lastCheck: new Date().toLocaleString()})
+      alert('❌ 刷新cookies失败: ' + error)
+    }
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold text-center mb-8">任务管理</h1>
@@ -70,6 +113,43 @@ export default function TaskManagementPage() {
               <div className="text-xs text-gray-500">版本: {downloaderStatus.version}</div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* 快速导航 */}
+      <div className="mb-6 bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4">工具和测试</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <a 
+            href="/admin/test-scraper" 
+            className="flex items-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+          >
+            <div className="text-2xl mr-3">🕷️</div>
+            <div>
+              <div className="font-medium text-blue-900">元数据爬虫测试</div>
+              <div className="text-sm text-blue-700">测试各平台元数据抓取功能</div>
+            </div>
+          </a>
+          <a 
+            href="/admin/platforms" 
+            className="flex items-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+          >
+            <div className="text-2xl mr-3">🎯</div>
+            <div>
+              <div className="font-medium text-green-900">平台管理</div>
+              <div className="text-sm text-green-700">管理支持的平台</div>
+            </div>
+          </a>
+          <a 
+            href="/admin/api-doc" 
+            className="flex items-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+          >
+            <div className="text-2xl mr-3">📚</div>
+            <div>
+              <div className="font-medium text-purple-900">API文档</div>
+              <div className="text-sm text-purple-700">查看接口文档</div>
+            </div>
+          </a>
         </div>
       </div>
 
@@ -173,6 +253,55 @@ export default function TaskManagementPage() {
             {createTask.isPending ? "创建中..." : `创建任务 (${downloadType === 'AUDIO_ONLY' ? '仅音频' : downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频+音频'})`}
           </button>
         </form>
+      </div>
+
+      {/* YouTube Cookie管理 */}
+      <div className="mb-6 bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4">YouTube Cookie管理</h2>
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <p className="text-sm text-gray-600">当前状态:</p>
+            {cookieStatus ? (
+              <div className="flex items-center gap-2">
+                <span className={`inline-block w-3 h-3 rounded-full ${cookieStatus.valid ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                <span className={cookieStatus.valid ? 'text-green-600' : 'text-red-600'}>
+                  {cookieStatus.valid ? 'Cookies有效' : 'Cookies失效'}
+                </span>
+                {cookieStatus.lastCheck && (
+                  <span className="text-xs text-gray-500">
+                    (检查时间: {cookieStatus.lastCheck})
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="text-gray-500">未检查</span>
+            )}
+            <p className="text-xs text-gray-500 mt-2">
+              💡 Cookie失效是导致"Sign in to confirm you're not a bot"错误的主要原因
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCheckCookieStatus}
+              disabled={cookieStatus?.refreshing}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+            >
+              {cookieStatus?.refreshing ? "检查中..." : "检查状态"}
+            </button>
+            <button
+              onClick={handleRefreshCookies}
+              disabled={cookieStatus?.refreshing}
+              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50 text-sm"
+            >
+              {cookieStatus?.refreshing ? "刷新中..." : "刷新Cookies"}
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+          <p className="text-sm text-yellow-800">
+            <strong>说明：</strong> 当YouTube下载失败时，系统会自动尝试刷新cookies。你也可以手动触发刷新。
+          </p>
+        </div>
       </div>
 
       {/* 批量操作 */}
