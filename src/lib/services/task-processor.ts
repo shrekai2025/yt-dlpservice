@@ -371,6 +371,24 @@ export class TaskProcessor {
         }
       })
       
+      // 使用音频文件时长回填视频时长（若数据库未有时长或为0）
+      try {
+        if (audioPath) {
+          const au = await import('./audio-utils')
+          const info = await au.getAudioFileInfo(audioPath)
+          const audioDuration = info.duration || 0
+          if (audioDuration && audioDuration > 0) {
+            const taskRow = await db.task.findUnique({ where: { id: taskId }, select: { duration: true } })
+            if (!taskRow?.duration || taskRow.duration === 0) {
+              await db.task.update({ where: { id: taskId }, data: { duration: Math.round(audioDuration) } })
+              Logger.info(`⏱️ 以音频时长回填任务时长: ${taskId} = ${Math.round(audioDuration)}s`)
+            }
+          }
+        }
+      } catch (e) {
+        Logger.warn(`音频时长回填失败: ${taskId} - ${e}`)
+      }
+
       // 豆包API成功返回，更新任务转录结果并标记为完成
       await db.task.update({
         where: { id: taskId },
