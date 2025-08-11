@@ -21,17 +21,16 @@ export class YouTubeScraper extends BasePlatformScraper {
       Logger.warn('[YouTube] 未找到标题元素，继续尝试其他选择器')
     }
     
-    // 提取基本信息和平台数据
-    const [basicInfo, platformData, comments] = await Promise.all([
+    // 提取基本信息和平台数据（禁用评论获取）
+    const [basicInfo, platformData] = await Promise.all([
       this.extractBasicInfo(page),
-      this.extractPlatformData(page),
-      this.extractComments(page, options)
+      this.extractPlatformData(page)
     ])
     
     return {
       ...basicInfo,
       platformData,
-      comments
+      comments: []
     }
   }
   
@@ -192,14 +191,15 @@ export class YouTubeScraper extends BasePlatformScraper {
         likeCountText = likeNumberEl.textContent.trim()
       }
       
-      // 如果没有找到数字，尝试从aria-label获取
+      // 如果没有找到数字，尝试从aria-label获取（提取数字部分）
       if (!likeCountText) {
         for (const selector of likeSelectors.slice(1)) { // 跳过第一个，因为已经尝试过了
           const el = document.querySelector(selector)
           if (el) {
             const ariaLabel = el.getAttribute('aria-label') || ''
-            if (ariaLabel && (ariaLabel.includes('赞') || ariaLabel.includes('like'))) {
-              likeCountText = ariaLabel
+            if (ariaLabel && (ariaLabel.includes('赞') || ariaLabel.toLowerCase().includes('like'))) {
+              const m = ariaLabel.match(/[0-9][0-9,\.\s]*/)
+              likeCountText = m ? (m[0] || '').trim() : ''
               break
             }
           }
