@@ -394,6 +394,31 @@ export default function TaskManagementPage() {
                         获取文本
                       </button>
                     )}
+                    {task.status === "COMPLETED" && (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/external/tasks/${task.id}`)
+                            const data = await res.json()
+                            if (data && typeof window !== 'undefined') {
+                              const w = window.open('', '_blank', 'width=800,height=600')
+                              if (w) {
+                                w.document.write('<pre style="white-space:pre-wrap;word-break:break-all;padding:12px;">' + 
+                                  JSON.stringify(data, null, 2).replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>')
+                                w.document.title = `任务返回 - ${task.id}`
+                              } else {
+                                alert('弹窗被浏览器拦截，请允许弹窗')
+                              }
+                            }
+                          } catch (e) {
+                            alert('获取返回数据失败')
+                          }
+                        }}
+                        className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-xs font-medium transition-colors"
+                      >
+                        查看返回数据
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         if (window.confirm(`确定要删除任务 ${task.id.slice(0,8)} 吗？`)) {
