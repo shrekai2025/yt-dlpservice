@@ -40,19 +40,23 @@ export class YouTubeScraper extends BasePlatformScraper {
    */
   private async extractBasicInfo(page: Page) {
     const title = await this.safeGetText(page, 'h1.ytd-video-primary-info-renderer, h1.style-scope.ytd-video-primary-info-renderer')
+    Logger.info(`[YouTube] 基本信息: title=${title ? 'ok' : 'empty'}`)
     
     const author = await this.safeGetText(page, 
       '#owner-text a, #channel-name a, .ytd-channel-name a'
     )
+    Logger.info(`[YouTube] 基本信息: author=${author ? 'ok' : 'empty'}`)
     
     const authorAvatar = await this.safeGetAttribute(page, 
       '#avatar img, .ytd-video-owner-renderer img',
       'src'
     )
+    Logger.info(`[YouTube] 基本信息: authorAvatar=${authorAvatar ? 'ok' : 'empty'}`)
     
     const description = await this.safeGetText(page, 
       '#description-text, .ytd-video-secondary-info-renderer #description'
     )
+    Logger.info(`[YouTube] 基本信息: description=${description ? 'ok' : 'empty'}`)
     
     // 从页面数据中提取时长和发布时间
     const pageData = await page.evaluate(() => {
@@ -90,8 +94,9 @@ export class YouTubeScraper extends BasePlatformScraper {
     })
     
     const duration = this.parseDuration(pageData.duration)
+    Logger.info(`[YouTube] 基本信息: rawDuration="${pageData.duration}", parsed=${duration}`)
     
-    return {
+    const basic = {
       title: title || 'Unknown Title',
       author: author || 'Unknown Author',
       authorAvatar: authorAvatar || undefined,
@@ -99,6 +104,8 @@ export class YouTubeScraper extends BasePlatformScraper {
       publishDate: pageData.publishDate || undefined,
       description: description || undefined
     }
+    Logger.info(`[YouTube] 基本信息汇总: ${JSON.stringify({ t: !!basic.title, a: !!basic.author, d: basic.duration, p: basic.publishDate ? 1 : 0 })}`)
+    return basic
   }
   
   /**
@@ -207,11 +214,14 @@ export class YouTubeScraper extends BasePlatformScraper {
     
     const viewCount = this.parseCount(data.viewCountText)
     const likeCount = this.parseCount(data.likeCountText)
+    Logger.info(`[YouTube] 平台数据: rawViews="${data.viewCountText}", rawLikes="${data.likeCountText}", parsedViews=${viewCount}, parsedLikes=${likeCount}`)
     
-    return {
+    const pd = {
       viewCount,
       likeCount
     }
+    Logger.info(`[YouTube] 平台数据汇总: ${JSON.stringify(pd)}`)
+    return pd
   }
   
   /**

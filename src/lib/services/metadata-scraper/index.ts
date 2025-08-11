@@ -147,6 +147,14 @@ export class MetadataScraperService {
   private enrichMetadataWithBaseData(scrapedData: any, baseMetadata: any): any {
     // 优先使用yt-dlp的数据，如果爬虫没有获取到相应数据
     const enriched = { ...scrapedData }
+    try {
+      Logger.info(
+        `🧯 合并前: scraped.title="${scrapedData?.title}", scraped.duration=${scrapedData?.duration || 0}, scraped.platformData=${JSON.stringify(scrapedData?.platformData || {})}`
+      )
+      Logger.info(
+        `🧯 yt-dlp基线: title="${baseMetadata?.title}", uploader="${baseMetadata?.uploader}", duration=${baseMetadata?.duration || 0}, view_count=${baseMetadata?.view_count || 0}, like_count=${baseMetadata?.like_count || 0}`
+      )
+    } catch {}
     
     // 更新基础信息（优先使用yt-dlp的精确数据）
     if (baseMetadata.title && (!enriched.title || enriched.title === 'Unknown Title')) {
@@ -204,6 +212,11 @@ export class MetadataScraperService {
       }
     }
     
+    try {
+      Logger.info(
+        `🧯 合并后: title="${enriched.title}", duration=${enriched.duration || 0}, platformData=${JSON.stringify(enriched.platformData || {})}`
+      )
+    } catch {}
     Logger.info(`MetadataScraperService: 已整合yt-dlp数据 - 标题: ${enriched.title}, 时长: ${enriched.duration}s`)
     
     return enriched
