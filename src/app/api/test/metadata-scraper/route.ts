@@ -7,10 +7,10 @@ import { z } from 'zod'
 // 请求参数验证
 const testRequestSchema = z.object({
   url: z.string().url('请提供有效的URL'),
-  timeout: z.number().optional().default(30000),
-  waitTime: z.number().optional().default(10000),
-  maxTopLevelComments: z.number().optional().default(5),
-  maxTotalComments: z.number().optional().default(10)
+  timeout: z.number().optional().default(120000),
+  waitTime: z.number().optional().default(30000),
+  maxTopLevelComments: z.number().optional().default(100),
+  maxTotalComments: z.number().optional().default(300)
 })
 
 /**
@@ -99,10 +99,10 @@ export async function GET() {
       supportedPlatforms,
       testUrls,
       defaultOptions: {
-        timeout: 30000,
-        waitTime: 10000,
-        maxTopLevelComments: 5,
-        maxTotalComments: 10
+        timeout: 120000,
+        waitTime: 30000,
+        maxTopLevelComments: 100,
+        maxTotalComments: 300
       }
     },
     usage: {
