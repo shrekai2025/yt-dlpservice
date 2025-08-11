@@ -1044,7 +1044,9 @@ class DoubaoVoiceService {
           
           // 显示音频信息（如果存在）
           if (response.audio_info) {
-            Logger.info(`  - 音频信息: 时长=${response.audio_info.duration || 'N/A'}s, 采样率=${response.audio_info.sample_rate || 'N/A'}Hz`);
+            const dur = Number(response.audio_info.duration)
+            const durSec = Number.isFinite(dur) ? Math.round(dur / 1000) : 'N/A'
+            Logger.info(`  - 音频信息: 时长=${durSec}${durSec === 'N/A' ? '' : 's'}, 采样率=${response.audio_info.sample_rate || 'N/A'}Hz`)
           }
           
           return transcriptionText;

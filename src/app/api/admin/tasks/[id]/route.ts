@@ -1,27 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { validateExternalApiKey, createAuthErrorResponse } from '~/lib/utils/auth'
-import { parseTaskExtraMetadata } from '~/lib/utils/json'
 import { db } from '~/server/db'
 import { Logger } from '~/lib/utils/logger'
+import { parseTaskExtraMetadata } from '~/lib/utils/json'
 
 /**
- * GET /api/external/tasks/[id]
- * 获取任务详情（包含转录文本）
+ * GET /api/admin/tasks/[id]
+ * 内部管理用：获取任务详情（无需外部API鉴权）
  */
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // 验证API Key
-    const authResult = validateExternalApiKey(request)
-    if (!authResult.success) {
-      return createAuthErrorResponse(authResult.error || 'Authentication failed')
-    }
-
     const { id } = await params
 
-    // 查询任务详情
     const task = await db.task.findUnique({
       where: { id },
       select: {
@@ -53,20 +45,16 @@ export async function GET(
       }, { status: 404 })
     }
 
-    // 安全解析extraMetadata JSON字符串
     const payload = parseTaskExtraMetadata(task)
 
-    return NextResponse.json({
-      success: true,
-      data: payload
-    })
-
+    return NextResponse.json({ success: true, data: payload })
   } catch (error) {
-    Logger.error(`外部API获取任务详情失败: ${error}`)
+    Logger.error(`Admin获取任务详情失败: ${error}`)
     return NextResponse.json({
       success: false,
       error: 'Internal server error',
       message: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
-} 
+}
+
