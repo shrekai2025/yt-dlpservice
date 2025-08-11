@@ -73,6 +73,12 @@ export class TaskProcessor {
       
       // 如果有元数据，更新额外信息
       if (downloadResult.metadata) {
+        try {
+          const md = downloadResult.metadata as any
+          Logger.info(
+            `🧩 yt-dlp元数据: title="${md.title}", uploader="${md.uploader || md.author}", duration=${md.duration || 0}, view_count=${md.view_count || 0}, like_count=${md.like_count || 0}`
+          )
+        } catch {}
         updateData.title = downloadResult.metadata.title
         updateData.platform = downloadResult.metadata.platform
         if (downloadResult.metadata.duration) {
@@ -94,7 +100,9 @@ export class TaskProcessor {
           updateData.extraMetadata = JSON.stringify(ytdlpExtraMetadata)
           const platformData = ytdlpExtraMetadata.platformData as any
           const viewCount = platformData?.viewCount || platformData?.playCount || 0
-          Logger.info(`📋 存储yt-dlp元数据: ${taskId} - 时长:${ytdlpExtraMetadata.duration}s, 播放量:${viewCount}`)
+          Logger.info(
+            `📋 存储yt-dlp元数据: task=${taskId}, title="${ytdlpExtraMetadata.title}", author="${ytdlpExtraMetadata.author}", duration=${ytdlpExtraMetadata.duration}s, view/play=${viewCount}, like=${platformData?.likeCount ?? 'n/a'}`
+          )
         }
       }
       
@@ -609,6 +617,9 @@ export class TaskProcessor {
    */
   private createExtraMetadataFromYtdlp(ytdlpData: any, platform: string): PlatformExtraMetadata | null {
     try {
+      Logger.info(
+        `🧮 映射yt-dlp→extraMetadata: platform=${platform}, duration=${ytdlpData?.duration || 0}, view_count=${ytdlpData?.view_count || 0}, like_count=${ytdlpData?.like_count || 0}`
+      )
       const baseMetadata: Partial<PlatformExtraMetadata> = {
         title: ytdlpData.title || '',
         author: ytdlpData.uploader || '',
@@ -672,7 +683,7 @@ export class TaskProcessor {
    */
   private async scrapeExtraMetadataAsync(taskId: string, url: string, downloadMetadata?: any): Promise<void> {
     try {
-      Logger.info(`🕷️ 开始异步爬取元数据: ${taskId}`)
+      Logger.info(`🕷️ 开始异步爬取元数据: task=${taskId}, url=${url}`)
       
       // 确保元数据爬虫服务已初始化
       await this.ensureMetadataScraperInitialized()
@@ -687,7 +698,7 @@ export class TaskProcessor {
       
       // 如果有yt-dlp的元数据，使用整合方法
       if (downloadMetadata) {
-        Logger.info(`🔗 整合yt-dlp元数据: ${taskId} - 标题: ${downloadMetadata.title}, 时长: ${downloadMetadata.duration}s`)
+        Logger.info(`🔗 整合yt-dlp元数据: task=${taskId}, title="${downloadMetadata.title}", duration=${downloadMetadata.duration || 0}`)
         result = await metadataScraperService.scrapeMetadataWithBaseData(url, downloadMetadata, {
           timeout: 120000, // 120秒超时
           waitTime: 30000, // 等待30秒
@@ -705,6 +716,9 @@ export class TaskProcessor {
       }
       
       if (result.success && result.data) {
+        Logger.info(
+          `🧾 爬虫返回: task=${taskId}, scraped.title="${result.data.title}", scraped.duration=${result.data.duration || 0}, scraped.view/like=${JSON.stringify(result.data.platformData || {})}, scraped.comments=${(result.data.comments || []).length}`
+        )
         // 获取现有的extraMetadata，只补充评论等爬虫独有的数据
         const currentTask = await db.task.findUnique({ 
           where: { id: taskId },
@@ -722,6 +736,11 @@ export class TaskProcessor {
             const scrapedPlatformData = result.data.platformData || {}
             const existingPlatformData = existingMetadata.platformData || {}
             
+            const before = {
+              duration: existingMetadata.duration || 0,
+              viewLike: existingPlatformData,
+              comments: (existingMetadata.comments || []).length
+            }
             mergedMetadata = {
               ...existingMetadata, // 保留yt-dlp的准确数据
               comments: result.data.comments || [], // 补充评论数据
@@ -735,7 +754,12 @@ export class TaskProcessor {
                 commentCount: result.data.comments?.length || (existingPlatformData as any).commentCount || 0,
               },
             }
-            Logger.info(`🔄 合并元数据: 保留yt-dlp数据，补充评论 ${result.data.comments?.length || 0} 条`)
+            const after = {
+              duration: (mergedMetadata as any).duration || 0,
+              viewLike: (mergedMetadata as any).platformData,
+              comments: (mergedMetadata as any).comments?.length || 0
+            }
+            Logger.info(`🔄 合并元数据: task=${taskId}, comments ${before.comments} -> ${after.comments}`)
           } catch (error) {
             Logger.warn(`解析现有元数据失败，使用新数据: ${error}`)
           }
@@ -749,7 +773,7 @@ export class TaskProcessor {
           } as any
         })
         
-        Logger.info(`✅ 元数据爬取成功: ${taskId} - 评论数: ${result.commentCount || 0}, 时长: ${mergedMetadata.duration}s`)
+        Logger.info(`✅ 元数据爬取成功: task=${taskId}, comments=${result.commentCount || 0}, duration=${(mergedMetadata as any).duration || 0}`)
       } else {
         Logger.warn(`⚠️ 元数据爬取失败: ${taskId} - ${result.error}`)
       }

@@ -42,19 +42,23 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
     const title = await this.safeGetText(page, 
       'h1, .episode-title, [class*="title"]'
     )
+    Logger.info(`[Xiaoyuzhou] 基本信息: title=${title ? 'ok' : 'empty'}`)
     
     const author = await this.safeGetText(page, 
       '.podcast-title, [class*="podcast-name"], .show-title'
     )
+    Logger.info(`[Xiaoyuzhou] 基本信息: author=${author ? 'ok' : 'empty'}`)
     
     const authorAvatar = await this.safeGetAttribute(page, 
       '.podcast-cover img, [class*="cover"] img, .show-cover img',
       'src'
     )
+    Logger.info(`[Xiaoyuzhou] 基本信息: authorAvatar=${authorAvatar ? 'ok' : 'empty'}`)
     
     const description = await this.safeGetText(page, 
       '.description, [class*="description"], .episode-description'
     )
+    Logger.info(`[Xiaoyuzhou] 基本信息: description=${description ? 'ok' : 'empty'}`)
     
     // 从页面数据中提取时长和发布时间
     const pageData = await page.evaluate(() => {
@@ -128,8 +132,9 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
     })
     
     const duration = typeof pageData.duration === 'number' ? pageData.duration : this.parseDuration(pageData.duration)
+    Logger.info(`[Xiaoyuzhou] 基本信息: rawDuration="${pageData.duration}", parsed=${duration}`)
     
-    return {
+    const basic = {
       title: title || 'Unknown Title',
       author: author || 'Unknown Author',
       authorAvatar: authorAvatar || undefined,
@@ -137,6 +142,8 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
       publishDate: pageData.publishDate || undefined,
       description: description || undefined
     }
+    Logger.info(`[Xiaoyuzhou] 基本信息汇总: ${JSON.stringify({ t: !!basic.title, a: !!basic.author, d: basic.duration, p: basic.publishDate ? 1 : 0 })}`)
+    return basic
   }
   
   /**
@@ -178,10 +185,12 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
       }
     })
     
-    return {
+    const pd = {
       playCount: typeof data.playCount === 'number' ? data.playCount : this.parseCount(data.playCount),
       commentCount: typeof data.commentCount === 'number' ? data.commentCount : this.parseCount(data.commentCount)
     }
+    Logger.info(`[Xiaoyuzhou] 平台数据汇总: ${JSON.stringify(pd)}`)
+    return pd
   }
   
   /**

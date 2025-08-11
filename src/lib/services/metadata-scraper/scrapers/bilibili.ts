@@ -128,19 +128,23 @@ export class BilibiliScraper extends BasePlatformScraper {
     const title = await this.safeGetText(page, 
       '.video-info-title h1, .video-title, h1[data-title], h1[title]'
     )
+    Logger.info(`[Bilibili] 基本信息: title=${title ? 'ok' : 'empty'}`)
     
     const author = await this.safeGetText(page, 
       '.up-name, .username, .up-info .name, .video-info-detail .name'
     )
+    Logger.info(`[Bilibili] 基本信息: author=${author ? 'ok' : 'empty'}`)
     
     const authorAvatar = await this.safeGetAttribute(page, 
       '.up-face img, .up-info img, .video-info-detail img',
       'src'
     )
+    Logger.info(`[Bilibili] 基本信息: authorAvatar=${authorAvatar ? 'ok' : 'empty'}`)
     
     const description = await this.safeGetText(page, 
       '.video-desc, .desc-info, .video-info-desc'
     )
+    Logger.info(`[Bilibili] 基本信息: description=${description ? 'ok' : 'empty'}`)
     
     // 从页面数据中提取时长和发布时间
     const pageData = await page.evaluate(() => {
@@ -177,8 +181,9 @@ export class BilibiliScraper extends BasePlatformScraper {
     })
     
     const duration = typeof pageData.duration === 'number' ? pageData.duration : this.parseDuration(pageData.duration)
+    Logger.info(`[Bilibili] 基本信息: rawDuration="${pageData.duration}", parsed=${duration}`)
     
-    return {
+    const basic = {
       title: title || 'Unknown Title',
       author: author || 'Unknown Author',
       authorAvatar: authorAvatar || undefined,
@@ -186,6 +191,8 @@ export class BilibiliScraper extends BasePlatformScraper {
       publishDate: pageData.publishDate || undefined,
       description: description || undefined
     }
+    Logger.info(`[Bilibili] 基本信息汇总: ${JSON.stringify({ t: !!basic.title, a: !!basic.author, d: basic.duration, p: basic.publishDate ? 1 : 0 })}`)
+    return basic
   }
   
   /**
@@ -238,7 +245,7 @@ export class BilibiliScraper extends BasePlatformScraper {
       }
     })
     
-    return {
+    const pd = {
       playCount: typeof data.playCount === 'number' ? data.playCount : this.parseCount(data.playCount),
       likeCount: typeof data.likeCount === 'number' ? data.likeCount : this.parseCount(data.likeCount),
       coinCount: typeof data.coinCount === 'number' ? data.coinCount : this.parseCount(data.coinCount),
@@ -246,6 +253,8 @@ export class BilibiliScraper extends BasePlatformScraper {
       favoriteCount: typeof data.favoriteCount === 'number' ? data.favoriteCount : this.parseCount(data.favoriteCount),
       commentCount: typeof data.commentCount === 'number' ? data.commentCount : this.parseCount(data.commentCount)
     }
+    Logger.info(`[Bilibili] 平台数据汇总: ${JSON.stringify(pd)}`)
+    return pd
   }
   
   /**
