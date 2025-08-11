@@ -255,7 +255,9 @@ class ContentDownloader {
     Logger.info(`执行下载命令: ${command}`)
     
     // 执行下载
-    const { stdout } = await execAsync(command)
+    // 对于某些URL，yt-dlp可能输出很长的JSON或日志，这里提高缓冲区并禁用playlist
+    const safeCommand = command + ' --no-playlist'
+    const { stdout } = await execAsync(safeCommand, { maxBuffer: 50 * 1024 * 1024 })
     Logger.info(`下载完成: ${stdout}`)
     
     // 解析下载结果
