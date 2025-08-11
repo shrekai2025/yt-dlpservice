@@ -107,8 +107,9 @@ export class YouTubePlatform extends AbstractPlatform {
         this.log('warn', `⚠️ 无法获取有效的YouTube Cookie，将尝试无认证获取视频信息`);
       }
       
-      const command = this.buildYtDlpCommand(`--no-warnings --dump-json --no-check-certificate --quiet ${cookieArg}`);
-      const { stdout } = await execAsync(`${command} "${url}"`);
+      // 使用 --no-playlist 避免播放列表导致输出超大；并增大stdout缓冲区
+      const command = this.buildYtDlpCommand(`--no-warnings --dump-json --no-check-certificate --no-playlist --quiet ${cookieArg}`);
+      const { stdout } = await execAsync(`${command} "${url}"`, { maxBuffer: 50 * 1024 * 1024 });
       
       // 清理输出，提取JSON部分
       let cleanedOutput = stdout.trim()
