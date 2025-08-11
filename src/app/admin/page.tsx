@@ -398,7 +398,7 @@ export default function TaskManagementPage() {
                       <button
                         onClick={async () => {
                           try {
-                            const res = await fetch(`/api/external/tasks/${task.id}`)
+                            const res = await fetch(`/api/admin/tasks/${task.id}`)
                             const data = await res.json()
                             if (data && typeof window !== 'undefined') {
                               const w = window.open('', '_blank', 'width=800,height=600')
