@@ -96,15 +96,21 @@ export class YouTubePlatform extends AbstractPlatform {
     this.log('info', `获取视频信息: ${url}`)
     
     try {
-      // 使用新的cookie管理器获取有效cookies
-      const cookiePath = youtubeAuthService.getCookieFilePath();
-      let cookieArg = '';
-      
-      if (cookiePath) {
-        this.log('info', `✅ 使用YouTube Cookie文件获取视频信息`);
-        cookieArg = `--cookies "${cookiePath}"`;
+      // 优先使用Chromium Profile，其次回退到Cookie文件
+      let cookieArg = ''
+      const hasProfile = await youtubeAuthService.hasBrowserProfile()
+      if (hasProfile) {
+        const profilePath = youtubeAuthService.getDefaultBrowserProfilePath()
+        this.log('info', `✅ 使用Chromium Profile登录态获取视频信息: chromium:${profilePath}`)
+        cookieArg = `--cookies-from-browser "chromium:${profilePath}"`
       } else {
-        this.log('warn', `⚠️ 无法获取有效的YouTube Cookie，将尝试无认证获取视频信息`);
+        const cookiePath = youtubeAuthService.getCookieFilePath()
+        if (cookiePath) {
+          this.log('info', `✅ 使用YouTube Cookie文件获取视频信息`)
+          cookieArg = `--cookies "${cookiePath}"`
+        } else {
+          this.log('warn', `⚠️ 无法获取有效的YouTube登录信息，将尝试无认证获取视频信息`)
+        }
       }
       
       // 使用 --no-playlist 避免播放列表导致输出超大；并增大stdout缓冲区
@@ -176,19 +182,26 @@ export class YouTubePlatform extends AbstractPlatform {
     let enhancedCommand = this.addCommonArgs(command);
 
     if (useBrowserCookies) {
-      const hasCookies = await youtubeAuthService.hasCookies();
-      
-      if (hasCookies) {
-        const cookiePath = youtubeAuthService.getCookieFilePath();
-        this.log('info', `✅ 使用YouTube Cookie文件进行认证，路径: ${cookiePath}`);
-        enhancedCommand += ` --cookies "${cookiePath}"`;
+      // 优先Profile，其次Cookie文件
+      const hasProfile = await youtubeAuthService.hasBrowserProfile()
+      if (hasProfile) {
+        const profilePath = youtubeAuthService.getDefaultBrowserProfilePath()
+        this.log('info', `✅ 使用Chromium Profile进行认证: chromium:${profilePath}`)
+        enhancedCommand += ` --cookies-from-browser "chromium:${profilePath}"`
       } else {
-        this.log('warn', `⚠️ 未找到YouTube Cookie文件`);
-        this.log('warn', '请通过管理界面或CLI工具设置Cookie');
-        this.log('info', '将继续尝试下载，但可能会遇到认证问题');
+        const hasCookies = await youtubeAuthService.hasCookies()
+        if (hasCookies) {
+          const cookiePath = youtubeAuthService.getCookieFilePath()
+          this.log('info', `✅ 使用YouTube Cookie文件进行认证，路径: ${cookiePath}`)
+          enhancedCommand += ` --cookies "${cookiePath}"`
+        } else {
+          this.log('warn', `⚠️ 未找到Chromium Profile或Cookie文件`)
+          this.log('warn', '请通过“重新登录账号”或Cookie设置完成认证')
+          this.log('info', '将继续尝试下载，但可能会遇到认证问题')
+        }
       }
     } else {
-      this.log('info', '未启用浏览器Cookie，可能无法下载需要登录的视频');
+      this.log('info', '未启用浏览器Cookie，可能无法下载需要登录的视频')
     }
 
     return enhancedCommand;
