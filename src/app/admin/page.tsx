@@ -73,6 +73,110 @@ export default function TaskManagementPage() {
               <div className="text-xs text-gray-500">版本: {downloaderStatus.version}</div>
             )}
           </div>
+          {/* 维护操作 */}
+          <div className="space-y-3">
+            <div className="text-sm text-gray-600">维护操作</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/admin/maintenance/update', { method: 'POST' })
+                    const data = await res.json()
+                    if (data?.success) {
+                      alert('已开始更新，请稍等片刻，页面将自动刷新。')
+                      // 轮询状态，完成后刷新
+                      const poll = async () => {
+                        for (let i = 0; i < 30; i++) { // 最长约30*2s=60s
+                          await new Promise(r => setTimeout(r, 2000))
+                          const s = await fetch('/api/admin/maintenance/update-status')
+                          const j = await s.json()
+                          if (j?.status === 'OK' || j?.status === 'FAIL') {
+                            if (j?.status === 'OK') {
+                              location.reload()
+                            } else {
+                              alert('更新失败，请查看日志。')
+                            }
+                            return
+                          }
+                        }
+                      }
+                      poll()
+                    } else {
+                      alert('触发更新失败：' + (data?.error || 'Unknown error'))
+                    }
+                  } catch (e:any) {
+                    alert('触发更新异常：' + e.message)
+                  }
+                }}
+                className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600"
+              >
+                🔄 更新服务
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/admin/maintenance/tmux')
+                    const data = await res.json()
+                    const text = data?.output || '无输出'
+                    const w = window.open('', '_blank', 'width=720,height=480')
+                    if (w) {
+                      w.document.write('<pre style="white-space:pre-wrap;word-break:break-all;padding:12px;">' +
+                        String(text).replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>')
+                      w.document.title = 'tmux 会话列表'
+                    }
+                  } catch (e:any) {
+                    alert('检查失败：' + e.message)
+                  }
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
+              >
+                🧪 检查Chromium运行情况
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await fetch('/api/admin/maintenance/login-setup', { method: 'POST' })
+                    const data = await res.json()
+                    if (!data?.success) {
+                      alert('启动登录流程失败：' + (data?.error || 'Unknown error'))
+                      return
+                    }
+                    const guide = data.guidance
+                    const w = window.open('', '_blank', 'width=820,height=680')
+                    if (w) {
+                      w.document.title = '重新登录账号 - 操作指南'
+                      const html = `
+                        <div style="padding:16px; font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
+                          <h2>重新登录账号 - 操作指南</h2>
+                          <ol>
+                            <li>在你的本地电脑执行（保持窗口不关闭）：<pre>ssh -N -L 9222:localhost:9222 &lt;user&gt;@&lt;服务器IP&gt;</pre></li>
+                            <li>打开本机 Chrome 输入 <code>chrome://inspect/#devices</code>，点击 <b>Configure…</b>，添加 <code>localhost:9222</code></li>
+                            <li>在 Remote Target 中点击 <b>inspect</b>，在弹出的页面访问 <code>https://www.youtube.com</code> 完成登录（含二步验证）</li>
+                            <li>服务器验证命令：
+                              <pre>yt-dlp --cookies-from-browser "${guide?.cookiesFromBrowser || 'chromium:/home/<user>/chrome-profile/Default'}" --dump-json &lt;YouTubeURL&gt; | head -c 200</pre>
+                            </li>
+                          </ol>
+                          <p>你可随时在此页面查看登录流程日志：</p>
+                          <button onclick="(async()=>{const r=await fetch('/api/admin/maintenance/login-setup-status');const j=await r.json();const pre=document.getElementById('log');pre.textContent=j.logTail||'无日志';document.getElementById('status').textContent=j.status||'IDLE';})();" style="padding:6px 10px;">刷新登录日志</button>
+                          <div style="margin-top:8px;">状态：<span id="status">等待中</span></div>
+                          <pre id="log" style="white-space:pre-wrap;border:1px solid #ddd;padding:10px;border-radius:6px;max-height:260px;overflow:auto;"></pre>
+                        </div>`
+                      w.document.write(html)
+                    } else {
+                      alert('请允许弹窗以查看操作指南')
+                    }
+                  } catch (e:any) {
+                    alert('启动登录流程异常：' + e.message)
+                  }
+                }}
+                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                🔐 重新登录账号
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

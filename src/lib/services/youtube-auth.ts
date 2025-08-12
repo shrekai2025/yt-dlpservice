@@ -3,6 +3,7 @@ import { browserManager } from './browser-manager'
 import type { Page } from 'puppeteer'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import os from 'os'
 import { ConfigManager } from '~/lib/utils/config'
 
 export interface YouTubeCookie {
@@ -117,6 +118,25 @@ export class YouTubeAuthService {
    */
   getCookieFilePath(): string {
     return this.cookieFilePath
+  }
+
+  /**
+   * 获取默认Chromium Profile路径（供 --cookies-from-browser 使用）
+   * 例如: chromium:/home/ubuntu/chrome-profile/Default
+   */
+  getDefaultBrowserProfilePath(): string {
+    const home = os.homedir()
+    return path.join(home, 'chrome-profile', 'Default')
+  }
+
+  async hasBrowserProfile(): Promise<boolean> {
+    try {
+      const p = this.getDefaultBrowserProfilePath()
+      await fs.access(p)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /**

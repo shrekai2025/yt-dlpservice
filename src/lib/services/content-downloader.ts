@@ -257,13 +257,22 @@ class ContentDownloader {
       command += ` --ffmpeg-location "${this.ffmpegPath}"`
     }
     
-    // 如果是YouTube URL，添加Cookie支持
+    // 如果是YouTube URL，优先从浏览器Profile读取Cookies，其次回退到文本Cookie文件
     if (platform.name === 'youtube') {
-      const hasCookies = await youtubeAuthService.ensureValidCookies()
-      if (hasCookies) {
-        const cookieFilePath = youtubeAuthService.getCookieFilePath()
-        command += ` --cookies "${cookieFilePath}"`
-        Logger.info(`🍪 使用YouTube Cookie进行下载: ${cookieFilePath}`)
+      const hasProfile = await youtubeAuthService.hasBrowserProfile()
+      if (hasProfile) {
+        const profilePath = youtubeAuthService.getDefaultBrowserProfilePath()
+        command += ` --cookies-from-browser "chromium:${profilePath}"`
+        Logger.info(`🍪 使用Chromium Profile登录态: chromium:${profilePath}`)
+      } else {
+        const hasCookies = await youtubeAuthService.ensureValidCookies()
+        if (hasCookies) {
+          const cookieFilePath = youtubeAuthService.getCookieFilePath()
+          command += ` --cookies "${cookieFilePath}"`
+          Logger.info(`🍪 使用YouTube Cookie文件进行下载: ${cookieFilePath}`)
+        } else {
+          Logger.warn('⚠️ 未找到Chromium Profile或Cookie文件，可能会触发登录验证')
+        }
       }
     }
     
