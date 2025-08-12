@@ -668,6 +668,7 @@ export class TaskProcessor {
           viewCount: ytdlpData.view_count || 0,
           likeCount: ytdlpData.like_count || 0
         }
+        ;(baseMetadata as any).viewCount = ytdlpData.view_count || 0
       } else if (platform === 'bilibili') {
         platformData = {
           playCount: ytdlpData.view_count || 0,
@@ -677,11 +678,13 @@ export class TaskProcessor {
           favoriteCount: 0,
           commentCount: 0
         }
+        ;(baseMetadata as any).viewCount = ytdlpData.view_count || 0
       } else if (platform === 'xiaoyuzhou') {
         platformData = {
           playCount: ytdlpData.view_count || 0,
           commentCount: 0 // 等待爬虫补充
         }
+        ;(baseMetadata as any).viewCount = ytdlpData.view_count || 0
       }
 
       return {

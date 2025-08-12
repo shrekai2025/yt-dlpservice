@@ -107,6 +107,8 @@ export interface PlatformExtraMetadata {
   duration: number // 秒
   publishDate?: string
   description?: string
+  // 统一的观看量字段（各平台归一化）
+  viewCount?: number
   
   // 平台特定字段
   platformData?: BilibiliData | YouTubeData | XiaoyuzhouData
