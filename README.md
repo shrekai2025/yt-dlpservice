@@ -50,7 +50,40 @@
 
 ## 🚀 快速开始
 
+### 系统要求
+
+- **Ubuntu 20.04+** 或 **macOS 10.15+**
+- **Node.js 18.0.0+**
+- **Python 3.8+**
+- **FFmpeg**
+- **Google Chrome** (推荐)
+
+### 自动安装 (推荐)
+
+使用项目提供的跨平台安装脚本：
+
+```bash
+# 克隆项目
+git clone https://github.com/your-username/yt-dlpservice.git
+cd yt-dlpservice
+
+# 运行安装脚本 (自动识别系统类型)
+chmod +x deploy/install.sh
+./deploy/install.sh
+```
+
+安装脚本会自动：
+- 🔍 检测操作系统类型 (Ubuntu/macOS)
+- 📦 **智能检查并安装** (已安装的包会跳过，未安装的包会自动安装)
+- 🎯 配置环境变量
+- 🚀 安装所有必要的软件包
+- 🌏 **自动配置国内镜像源** (NPM、pip、Homebrew)
+- 🔄 **智能重试机制** (官方源失败时自动切换到国内镜像)
+- ✅ **版本检查** (自动检查版本是否满足要求，过低时自动更新)
+
 ### 本地开发
+
+#### Ubuntu/Linux 系统
 
 ```bash
 # 克隆项目
@@ -70,6 +103,37 @@ npx prisma db push
 # 启动开发服务器
 npm run dev
 ```
+
+#### macOS 系统
+
+```bash
+# 克隆项目
+git clone https://github.com/your-username/yt-dlpservice.git
+cd yt-dlpservice
+
+# 安装依赖
+npm install
+
+# 配置环境变量
+cp .env.production .env
+# 编辑 .env 文件，配置数据库和 API 密钥
+
+# 初始化数据库
+npx prisma db push
+
+# 启动开发服务器
+npm run dev
+```
+
+**macOS 特殊注意事项：**
+- 确保已安装 Homebrew (`brew install ffmpeg node python`)
+- 如果遇到 Chrome 权限问题，需要在"系统偏好设置 > 安全性与隐私"中允许终端访问
+- Puppeteer 会自动使用系统安装的 Chrome，无需额外配置
+
+**🌏 国内镜像源支持：**
+- 脚本会自动配置 NPM、pip 使用国内镜像源
+- Homebrew 安装失败时会自动切换到清华大学镜像源
+- 所有软件包下载都会优先使用国内镜像，大幅提升安装速度
 
 ### 环境变量配置
 
@@ -220,6 +284,8 @@ docker-compose down
 
 ### 使用部署脚本
 
+#### Ubuntu/Linux 服务器
+
 ```bash
 # 克隆项目到服务器
 git clone https://github.com/your-username/yt-dlpservice.git
@@ -237,6 +303,31 @@ nano .env  # 编辑配置
 chmod +x deploy/deploy.sh
 ./deploy/deploy.sh
 ```
+
+#### macOS 系统
+
+```bash
+# 克隆项目到本地
+git clone https://github.com/your-username/yt-dlpservice.git
+cd yt-dlpservice
+
+# 运行安装脚本 (自动识别系统)
+chmod +x deploy/install.sh
+./deploy/install.sh
+
+# 配置环境变量
+cp .env.production .env
+nano .env  # 编辑配置
+
+# 运行部署脚本
+chmod +x deploy/deploy.sh
+./deploy/deploy.sh
+```
+
+**macOS 部署注意事项：**
+- 安装脚本会自动检测 macOS 并使用 Homebrew 安装依赖
+- PM2 开机自启需要手动配置，运行 `pm2 startup` 获取配置指令
+- 确保 Chrome 浏览器已安装并配置正确的权限
 
 ### PM2 进程管理
 
@@ -569,6 +660,61 @@ interface Comment {
 - 不同平台的 `platformData` 结构不同，请根据 `platform` 字段判断数据类型
 
 ## 🔍 故障排除
+
+### macOS 特定问题
+
+#### 1. Homebrew 安装失败
+```bash
+# 如果 Homebrew 安装失败，可以尝试：
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 安装完成后，将 Homebrew 添加到 PATH
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+source ~/.zprofile
+```
+
+#### 2. Chrome 权限问题
+如果遇到 Chrome 无法启动或权限错误：
+- 打开"系统偏好设置 > 安全性与隐私"
+- 在"通用"标签页中，允许终端访问
+- 如果 Chrome 被阻止，点击"仍要打开"
+
+#### 3. Node.js 版本过低
+```bash
+# 使用 Homebrew 安装最新版本
+brew install node
+
+# 或者使用 nvm 管理 Node.js 版本
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+nvm install 20
+nvm use 20
+```
+
+#### 4. FFmpeg 安装失败
+```bash
+# 确保 Homebrew 是最新的
+brew update
+
+# 重新安装 FFmpeg
+brew uninstall ffmpeg
+brew install ffmpeg
+```
+
+#### 5. 镜像源配置问题
+如果遇到镜像源配置问题，可以手动重置：
+
+```bash
+# 重置 NPM 镜像源
+npm config set registry https://registry.npmjs.org/
+
+# 重置 pip 镜像源
+pip3 config unset global.index-url
+
+# 重置 Homebrew 镜像源
+git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew.git
+```
+
+**💡 推荐：** 使用安装脚本的自动镜像源配置功能，无需手动配置。
 
 ### 常见问题
 
