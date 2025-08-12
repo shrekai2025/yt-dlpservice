@@ -78,6 +78,15 @@ export default function TechDocPage() {
               </div>
             </div>
           </div>
+
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-blue-900 mb-2">浏览器策略说明</h3>
+            <ul className="list-disc list-inside text-blue-800 text-sm space-y-1">
+              <li>默认优先使用 Puppeteer 自带的 Chromium。</li>
+              <li>当设置了环境变量 `PUPPETEER_EXECUTABLE_PATH` 时，会使用指定的系统 Chrome。</li>
+              <li>YouTube 下载优先从浏览器 Profile 读取登录态，其次回退到 Cookie 文件。</li>
+            </ul>
+          </div>
         </div>
       </CollapsibleSection>
 
@@ -420,6 +429,14 @@ export default function TechDocPage() {
               <li>数据库性能优化</li>
               <li>磁盘空间监控</li>
             </ul>
+            <div className="mt-3 text-xs text-yellow-800 bg-white p-3 rounded border border-yellow-200">
+              <div className="font-medium mb-1">实现要点</div>
+              <ul className="list-disc list-inside space-y-1">
+                <li>任务处理器启动时会自动启动自动清理服务（无需手动启停）。</li>
+                <li>任务完成后约 5 分钟会对该任务输出目录做一次延迟清理。</li>
+                <li>清理周期与文件保留时间由配置项控制：`CLEANUP_INTERVAL_HOURS`、`MAX_FILE_AGE_HOURS`。</li>
+              </ul>
+            </div>
           </div>
 
           <div className="bg-purple-50 p-4 rounded-lg">
