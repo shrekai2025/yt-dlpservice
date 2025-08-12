@@ -243,6 +243,94 @@ BROWSER_DATA_DIR="./data/browser_data"
 - 📊 **状态监控**: 实时显示Cookie配置状态。
 - 🔧 **服务器友好**: 专为无GUI的服务器环境设计，无需浏览器即可完成配置。
 
+#### 在无 GUI 的 Ubuntu 24.04.2 LTS 上登录 YouTube（Puppeteer Chromium + Xvfb + 远程调试）
+
+用途：在服务器上创建一个“真实登录”的持久浏览器 Profile，显著提升登录态时长。无需安装完整桌面环境。
+
+1) 安装依赖（24.04 使用 t64 包名）
+
+```bash
+sudo add-apt-repository -y universe || true
+sudo apt update
+sudo apt install -y \
+  xvfb xauth \
+  libnss3 libatk-bridge2.0-0 libxkbcommon0 libgtk-3-0 \
+  libdrm2 libxdamage1 libgbm1 libasound2t64
+
+# （可选）字体，减少渲染异常
+sudo apt install -y fonts-liberation fonts-noto-color-emoji
+```
+
+2) 找到 Puppeteer 自带 Chromium 路径
+
+```bash
+cd ~/yt-dlpservice
+node -e "console.log(require('puppeteer').executablePath())"
+# 复制输出路径为 CHROME_BIN 并允许执行
+export CHROME_BIN="/绝对路径/puppeteer/chromium"
+chmod +x "$CHROME_BIN"
+```
+
+3) 创建持久化用户目录（保存登录态）
+
+```bash
+mkdir -p /home/ubuntu/chrome-profile
+```
+
+4) 启动 Xvfb 与 Chromium（推荐用 tmux 后台保持）
+
+```bash
+tmux new -s chrome
+Xvfb :99 -screen 0 1280x1024x24 -nolisten tcp &
+export DISPLAY=:99
+
+"$CHROME_BIN" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port=9222 \
+  --user-data-dir=/home/ubuntu/chrome-profile \
+  --no-first-run --no-default-browser-check \
+  --disable-dev-shm-usage --disable-gpu --no-sandbox \
+  --lang=zh-CN --window-size=1280,900
+
+# 保持前台运行；希望后台：按 Ctrl-b 然后 d 脱离 tmux
+# 查看/恢复会话：tmux ls / tmux attach -t chrome
+```
+
+5) 本机做端口转发并登录
+
+```bash
+# 在你的本地电脑执行（保持此窗口打开）
+ssh -N -L 9222:localhost:9222 ubuntu@你的服务器IP
+
+# 本机 Chrome 打开：chrome://inspect/#devices  → Configure… 添加 localhost:9222
+# 在 Remote Target 里点击 inspect 打开远程页面，在该页面里访问 https://www.youtube.com 完成登录（含2FA）
+```
+
+6) 服务器验证登录是否可用
+
+```bash
+yt-dlp --cookies-from-browser "chromium:/home/ubuntu/chrome-profile/Default" \
+  --dump-json "https://www.youtube.com/watch?v=dQw4w9WgXcQ" | head -c 200
+# 若输出 JSON 片段而非 LOGIN_REQUIRED，则可用
+```
+
+7) 运行与检查
+
+- 相关任务：
+  - 初始化依赖与虚拟显示（Xvfb）
+  - 启动 Chromium（远程调试 + 持久化 Profile）
+  - 本地端口转发 → 在本机浏览器中完成一次登录
+  - 验证 yt-dlp 读取浏览器 Cookies 的可用性
+- 什么时候执行：
+  - 首次部署后；登录态过期/风控要求重新验证时；服务器重启后需重新启动 Xvfb 与 Chromium（Profile 仍保留）
+- 如何检查：
+  - 端口：`ss -ltnp | grep 9222` 或 `curl http://localhost:9222/json/version`
+  - 登录：`yt-dlp --cookies-from-browser "chromium:/home/ubuntu/chrome-profile/Default" --dump-json URL`
+  - 应用日志：`pm2 logs yt-dlpservice --lines 50` 查看是否仍有 LOGIN_REQUIRED；管理页“查看返回数据”按钮核对 `extraMetadata`
+
+> 提示：若你希望服务自动读取该登录态，可将下载命令切换为 `--cookies-from-browser "chromium:/home/ubuntu/chrome-profile/Default"`（可按需改造代码）。
+
+
 ### 系统配置
 - ✅ 动态配置系统参数
 - ✅ 查看所有配置项
