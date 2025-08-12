@@ -939,7 +939,7 @@ class DoubaoVoiceService {
       Logger.info(`  - 文件大小: ${fileSizeMB}MB`);
       
       // 检查文件大小限制（豆包API限制100MB，但我们设置更保守的限制）
-      const maxSizeMB = 80; // 设置80MB限制，留出缓冲
+    const maxSizeMB = 80; // 设置80MB限制，留出缓冲（与压缩阈值不同，保持API安全上限）
       if (fileSizeMB > maxSizeMB) {
         Logger.error(`❌ 音频文件过大:`);
         Logger.error(`  - 当前大小: ${fileSizeMB}MB`);

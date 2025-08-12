@@ -115,8 +115,16 @@ export class TaskProcessor {
 
       // 处理音频压缩（如果需要）
       let audioPathForTranscription = downloadResult.audioPath
-      if (task.compressionPreset && task.compressionPreset !== 'none' && audioPathForTranscription) {
-        audioPathForTranscription = await this.processAudioCompression(taskId, audioPathForTranscription, task.compressionPreset as CompressionPreset)
+      if (audioPathForTranscription) {
+        if (task.compressionPreset && task.compressionPreset !== 'none') {
+          audioPathForTranscription = await this.processAudioCompression(
+            taskId,
+            audioPathForTranscription,
+            task.compressionPreset as CompressionPreset
+          )
+        } else {
+          Logger.info(`🗜️ 跳过音频压缩: 预设为 none，平台=${task.platform}`)
+        }
       }
 
       // 处理音频转录（所有类型都需要转录）
@@ -259,11 +267,11 @@ export class TaskProcessor {
       const compressedPath = path.join(dir, `${basename}_compressed${ext}`)
       
       // 配置压缩选项
-      const compressionOptions: CompressionOptions = {
+        const compressionOptions: CompressionOptions = {
         preset,
         inputPath: audioPath,
         outputPath: compressedPath,
-        maxSizeMB: 80, // 豆包API限制
+          maxSizeMB: 5,
         skipIfSmaller: true
       }
       
