@@ -117,7 +117,9 @@ export class BilibiliScraper extends BasePlatformScraper {
     return {
       ...basicInfo,
       platformData,
-      comments
+      comments,
+      // 统一顶层 viewCount，便于各平台返回一致
+      viewCount: (platformData as any)?.playCount ?? 0
     }
   }
   
@@ -125,20 +127,33 @@ export class BilibiliScraper extends BasePlatformScraper {
    * 提取基本信息
    */
   private async extractBasicInfo(page: Page) {
-    const title = await this.safeGetText(page, 
-      '.video-info-title h1, .video-title, h1[data-title], h1[title]'
-    )
+    // 适配你提供的标题结构：
+    // <div class="video-info-title"><div class="video-info-title-inner"><h1 data-title="..." title="..." class="video-title special-text-indent">文本</h1></div></div>
+    // 优先读取 h1 的 title/data-title 属性，避免文本被截断
+    let title = await this.safeGetAttribute(page, '.video-info-title h1.video-title, .video-info-title h1[title], .video-info-title h1[data-title]', 'title')
+    if (!title) {
+      title = await this.safeGetAttribute(page, '.video-info-title h1.video-title, .video-info-title h1[data-title]', 'data-title')
+    }
+    if (!title) {
+      title = await this.safeGetText(page, '.video-info-title h1.video-title, .video-info-title h1, .video-title, h1[data-title], h1[title]')
+    }
     Logger.info(`[Bilibili] 基本信息: title=${title ? 'ok' : 'empty'}`)
     
+    // 适配你提供的作者结构：
+    // <div class="up-info__detail">...<a class="up-name">作者名</a> ...</div>
     const author = await this.safeGetText(page, 
-      '.up-name, .username, .up-info .name, .video-info-detail .name'
+      '.up-info__detail .up-name, .up-name, .username, .up-info .name, .video-info-detail .name'
     )
     Logger.info(`[Bilibili] 基本信息: author=${author ? 'ok' : 'empty'}`)
     
-    const authorAvatar = await this.safeGetAttribute(page, 
-      '.up-face img, .up-info img, .video-info-detail img',
+    // 头像选择器兜底更全
+    let authorAvatar = await this.safeGetAttribute(page, 
+      '.up-face img, .up-info__detail img, .up-info img, .video-info-detail img, .up-face__avatar img',
       'src'
     )
+    if (authorAvatar && authorAvatar.startsWith('//')) {
+      authorAvatar = 'https:' + authorAvatar
+    }
     Logger.info(`[Bilibili] 基本信息: authorAvatar=${authorAvatar ? 'ok' : 'empty'}`)
     
     const description = await this.safeGetText(page, 
@@ -172,7 +187,9 @@ export class BilibiliScraper extends BasePlatformScraper {
       
       // 备用方法：从DOM元素获取
       const durationEl = document.querySelector('.total-time, .video-time .total')
-      const publishEl = document.querySelector('.pubdate, .video-info-detail .pubdate')
+      // 适配你提供的发布时间结构：
+      // <div class="pubdate-ip item"><div class="pubdate-ip-text">2025-08-04 16:20:59</div></div>
+      const publishEl = document.querySelector('.pubdate-ip-text, .pubdate, .video-info-detail .pubdate')
       
       return {
         duration: durationEl?.textContent?.trim() || '',
@@ -186,9 +203,9 @@ export class BilibiliScraper extends BasePlatformScraper {
     const basic = {
       title: title || 'Unknown Title',
       author: author || 'Unknown Author',
-      authorAvatar: authorAvatar || undefined,
+      authorAvatar: authorAvatar || '',
       duration,
-      publishDate: pageData.publishDate || undefined,
+      publishDate: pageData.publishDate || '',
       description: description || undefined
     }
     Logger.info(`[Bilibili] 基本信息汇总: ${JSON.stringify({ t: !!basic.title, a: !!basic.author, d: basic.duration, p: basic.publishDate ? 1 : 0 })}`)
@@ -228,6 +245,8 @@ export class BilibiliScraper extends BasePlatformScraper {
       }
       
       // 备用方法：从DOM元素获取（更新选择器匹配新版B站）
+      // 适配你提供的观看量结构：
+      // <div class="view item"><div class="view-text">249.7万</div></div>
       const viewEl = document.querySelector('.view-text, .view .num, .view-count, .video-info-detail .view')
       const likeEl = document.querySelector('.video-like-info, .like-count, .ops .like span')
       const coinEl = document.querySelector('.video-coin-info, .coin-count, .ops .coin span')

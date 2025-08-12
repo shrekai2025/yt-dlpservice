@@ -212,12 +212,33 @@ class ContentDownloader {
     url: string,
     config: DownloadConfig,
     options: DownloadOptions
-  ): Promise<{ videoPath?: string; audioPath?: string }> {
+  ): Promise<{ videoPath?: string; audioPath?: string; metadata?: ContentMetadata }> {
     const { outputDir } = options
     
     // 确保输出目录存在
     await fs.mkdir(outputDir, { recursive: true })
     
+    // 在下载前获取内容信息，用于回填元数据（避免等待异步爬虫）
+    let preFetchedMetadata: ContentMetadata | undefined
+    try {
+      const contentInfo = await platform.getContentInfo(url)
+      preFetchedMetadata = {
+        title: contentInfo.title,
+        description: contentInfo.description,
+        duration: contentInfo.duration,
+        coverUrl: contentInfo.thumbnail,
+        platform: contentInfo.platform,
+        // 附加原始字段，供后续 extraMetadata 映射使用
+        uploader: contentInfo.uploader,
+        upload_date: contentInfo.upload_date,
+        view_count: contentInfo.view_count,
+        like_count: contentInfo.like_count,
+        thumbnail: contentInfo.thumbnail
+      }
+    } catch (e) {
+      Logger.warn(`预取内容信息失败，将继续下载流程: ${e instanceof Error ? e.message : String(e)}`)
+    }
+
     // 构建基础命令
     let command = this.buildYtDlpCommand(`-f "${config.format}" -o "${path.join(outputDir, config.outputTemplate)}"`)
     
@@ -261,7 +282,8 @@ class ContentDownloader {
     Logger.info(`下载完成: ${stdout}`)
     
     // 解析下载结果
-    return this.parseDownloadResult(stdout, outputDir, config)
+    const paths = await this.parseDownloadResult(stdout, outputDir, config)
+    return { ...paths, ...(preFetchedMetadata ? { metadata: preFetchedMetadata } : {}) }
   }
 
   /**

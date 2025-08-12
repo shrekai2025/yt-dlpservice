@@ -30,7 +30,9 @@ export class YouTubeScraper extends BasePlatformScraper {
     return {
       ...basicInfo,
       platformData,
-      comments: []
+      comments: [],
+      // 统一顶层 viewCount，便于各平台返回一致
+      viewCount: platformData.viewCount
     }
   }
   
