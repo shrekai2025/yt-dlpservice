@@ -1,10 +1,13 @@
+const path = require('path');
+const os = require('os');
+
 module.exports = {
   apps: [
     {
       name: 'yt-dlpservice',
       script: 'npm',
       args: 'start',
-      cwd: '/home/ubuntu/yt-dlpservice',
+      cwd: process.cwd(), // 使用当前工作目录
       instances: 1,
       autorestart: true,
       watch: false,
@@ -19,13 +22,13 @@ module.exports = {
       max_restarts: 10,
       min_uptime: '10s',
       
-      // 日志配置
+      // 日志配置 - 使用相对路径
       out_file: './logs/out.log',
       error_file: './logs/error.log',
       log_file: './logs/combined.log',
       time: true,
       
-      // 进程优先级设置（降低优先级，让n8n有更高优先级）
+      // 进程优先级设置
       exec_mode: 'fork',
       nice: 10, // 降低进程优先级
       
@@ -49,14 +52,14 @@ module.exports = {
     }
   ],
 
-  // 部署配置 (可选)
+  // 部署配置 (可选) - 根据系统类型调整
   deploy: {
     production: {
-      user: 'ubuntu',
+      user: os.platform() === 'darwin' ? os.userInfo().username : 'ubuntu',
       host: 'your-server-ip', // 替换为您的服务器IP
       ref: 'origin/main',
       repo: 'https://github.com/shrekai2025/yt-dlpservice.git',
-      path: '/home/ubuntu/yt-dlpservice',
+      path: os.platform() === 'darwin' ? process.cwd() : '/home/ubuntu/yt-dlpservice',
       'pre-deploy-local': '',
       'post-deploy': 'npm install && npm run build && pm2 reload ecosystem.config.js --env production',
       'pre-setup': ''
