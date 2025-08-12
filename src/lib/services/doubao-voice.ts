@@ -495,9 +495,7 @@ class DoubaoVoiceService {
                 Logger.error(`❌ 服务内部错误: ${statusCode} - ${message}`);
                 throw new Error(`服务内部错误 (${statusCode}): ${message || '服务内部处理错误'}`);
               } else {
-                Logger.warn(`⚠️ 豆包API返回未知状态:`);
-                Logger.warn(`  - 状态码: ${statusCode}`);
-                Logger.warn(`  - 消息: ${message || '未知错误'}`);
+                Logger.info(`🔄 豆包API状态: ${statusCode}，继续处理...`);
                 throw new Error(`API未知状态 (${statusCode}): ${message || '未知错误'}`);
               }
           }
@@ -778,17 +776,8 @@ class DoubaoVoiceService {
       ? `任务状态未知 (${unknownDetails.join(', ')})，继续等待`
       : '任务状态未知，继续等待';
     
-    Logger.warn(`⚠️ 未知的豆包API响应状态: ${JSON.stringify(response)}`);
-    Logger.warn(`📋 支持的状态码列表:`);
-    Logger.warn(`  - 20000000: 成功`);
-    Logger.warn(`  - 20000001: 正在处理中`);
-    Logger.warn(`  - 20000002: 任务在队列中`);
-    Logger.warn(`  - 20000003: 静音音频`);
-    Logger.warn(`  - 45000001: 请求参数无效`);
-    Logger.warn(`  - 45000002: 空音频`);
-    Logger.warn(`  - 45000151: 音频格式不正确`);
-    Logger.warn(`  - 550xxxx: 服务内部处理错误`);
-    Logger.warn(`  - 55000031: 服务器繁忙`);
+    // 优化日志输出：合并为简洁友好的提示
+    Logger.info(`🔄 豆包处理中，状态: ${statusCode || bodyStatus || '未知'}，继续等待结果...`);
     
     // 默认继续等待
     return {
