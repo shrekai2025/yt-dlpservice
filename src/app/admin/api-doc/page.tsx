@@ -183,7 +183,8 @@ export default function ApiDocPage() {
                   <div className="bg-gray-50 p-3 rounded text-sm">
                     <strong>输入参数:</strong>
                     <pre className="mt-1">{`{
-  audioBase64: string  // Base64编码的音频数据
+  audioData: string,   // Base64编码的音频数据
+  fileName: string     // 文件名（用于日志/提示）
 }`}</pre>
                   </div>
                 </div>
@@ -212,6 +213,63 @@ export default function ApiDocPage() {
                 <div className="border-l-4 border-purple-500 pl-4">
                   <h3 className="font-medium text-purple-900">browser.openLoginWindow</h3>
                   <p className="text-sm text-gray-600">打开YouTube登录窗口</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 清理管理API */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <h2 className="text-xl font-semibold mb-4">清理管理 API (cleanup)</h2>
+              <div className="space-y-4">
+                <div className="border-l-4 border-blue-500 pl-4">
+                  <h3 className="font-medium text-blue-900">cleanup.status</h3>
+                  <p className="text-sm text-gray-600 mb-2">获取自动清理服务状态</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>返回示例:</strong>
+                    <pre className="mt-1">{`{
+  success: true,
+  data: {
+    autoCleanupEnabled: boolean,
+    isRunning: boolean
+  }
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="border-l-4 border-green-500 pl-4">
+                  <h3 className="font-medium text-green-900">cleanup.manual</h3>
+                  <p className="text-sm text-gray-600 mb-2">立即执行一次清理（需要登录）</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>返回示例:</strong>
+                    <pre className="mt-1">{`{
+  success: true,
+  message: string,
+  data: {
+    tempFiles: number,
+    completedTasks: number,
+    totalSizeCleared: number,
+    formattedSize: string
+  }
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="border-l-4 border-yellow-500 pl-4">
+                  <h3 className="font-medium text-yellow-900">cleanup.startAuto</h3>
+                  <p className="text-sm text-gray-600 mb-2">启动自动清理服务（需要登录）</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>返回示例:</strong>
+                    <pre className="mt-1">{`{ success: true, message: "自动清理服务已启动" }`}</pre>
+                  </div>
+                </div>
+
+                <div className="border-l-4 border-red-500 pl-4">
+                  <h3 className="font-medium text-red-900">cleanup.stopAuto</h3>
+                  <p className="text-sm text-gray-600 mb-2">停止自动清理服务（需要登录）</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>返回示例:</strong>
+                    <pre className="mt-1">{`{ success: true, message: "自动清理服务已停止" }`}</pre>
+                  </div>
                 </div>
               </div>
             </div>
