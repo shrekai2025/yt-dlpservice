@@ -434,22 +434,57 @@ export class TaskProcessor {
       
       Logger.info(`🎤 开始调用豆包语音识别API - 文件: ${audioPath}`)
       
-      // 进行语音识别
-      const startTime = Date.now()
-      const transcription = await doubaoVoiceService.speechToText(audioPath)
-      const duration = Date.now() - startTime
-      
-      Logger.info(`⏱️ 豆包API调用完成 - 耗时: ${duration}ms`)
-      
-      if (!transcription || transcription.trim().length === 0) {
-        Logger.error(`❌ 豆包语音识别结果为空`)
-        throw new Error('语音识别结果为空')
+      // 进行语音识别（增加：仅对超时错误进行最多5次重试）
+      const maxRetries = 5
+      let attempt = 0
+      // 超时判定：包含常见 timeout 信号，但排除整体任务超时（避免超长等待后的重复）
+      const isTimeoutError = (err: any) => {
+        const msg = (err?.message || '').toString()
+        if (!msg) return false
+        // 明确的提交/查询超时
+        const timeoutSignals = [
+          '豆包API请求超时',
+          '豆包API查询超时',
+          'ECONNABORTED',
+          'timeout',
+          '超时'
+        ]
+        // 排除：整体识别流程已达最长等待（避免5倍放大总时长）
+        const terminalSignals = [
+          '豆包语音识别任务超时'
+        ]
+        const hitTimeout = timeoutSignals.some(s => msg.includes(s))
+        const isTerminal = terminalSignals.some(s => msg.includes(s))
+        return hitTimeout && !isTerminal
       }
-      
-      // 删除重复日志 - 豆包服务中已输出详细识别成功信息
-      Logger.debug(`✅ 豆包语音识别成功 - 文本长度: ${transcription.length}字符`)
-      
-      return transcription
+
+      while (true) {
+        attempt += 1
+        try {
+          const startTime = Date.now()
+          const transcription = await doubaoVoiceService.speechToText(audioPath)
+          const duration = Date.now() - startTime
+          Logger.info(`⏱️ 豆包API调用完成 - 耗时: ${duration}ms (尝试 ${attempt}/${maxRetries + 1})`)
+          
+          if (!transcription || transcription.trim().length === 0) {
+            Logger.error(`❌ 豆包语音识别结果为空`)
+            throw new Error('语音识别结果为空')
+          }
+          
+          Logger.debug(`✅ 豆包语音识别成功 - 文本长度: ${transcription.length}字符`)
+          return transcription
+        } catch (err: any) {
+          // 仅对超时错误进行重试
+          if (isTimeoutError(err) && attempt <= maxRetries) {
+            Logger.warn(`⏰ 豆包API调用超时，将进行重试 (${attempt}/${maxRetries})`)
+            // 简单固定退避，避免瞬时拥塞；不延长接口超时，仅延迟重试启动
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            continue
+          }
+          // 非可重试或已达最大次数，抛出
+          throw err
+        }
+      }
       
     } catch (error: any) {
       Logger.error(`❌ 豆包语音转录失败: ${error.message}`)
