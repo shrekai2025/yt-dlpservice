@@ -29,13 +29,34 @@ sudo apt install -y ffmpeg
 echo "✅ 验证 FFmpeg 安装..."
 ffmpeg -version | head -1
 
+# 安装 pipx（推荐的Python应用安装方式）
+echo "📦 安装 pipx（Python应用管理）..."
+sudo apt install -y pipx python3-venv python3-full
+
+# 确保 pipx 路径正确
+pipx ensurepath
+
 # 安装 yt-dlp（视频下载）
 echo "📹 安装 yt-dlp（视频下载工具）..."
-sudo pip3 install yt-dlp
+# 尝试多种安装方式
+if pipx install yt-dlp; then
+    echo "✅ 使用 pipx 安装 yt-dlp 成功"
+elif python3 -m pip install --upgrade yt-dlp --break-system-packages; then
+    echo "✅ 使用 pip 安装 yt-dlp 成功"
+else
+    echo "⚠️  回退到 apt 安装..."
+    sudo apt install -y yt-dlp
+fi
 
 # 验证 yt-dlp 安装
 echo "✅ 验证 yt-dlp 安装..."
-yt-dlp --version
+if command -v yt-dlp &> /dev/null; then
+    yt-dlp --version
+elif python3 -m yt_dlp --version &> /dev/null; then
+    python3 -m yt_dlp --version
+else
+    echo "❌ yt-dlp 安装验证失败"
+fi
 
 # 安装 Chrome/Chromium（Puppeteer需要）
 echo "🌐 安装 Chromium（网页解析）..."
