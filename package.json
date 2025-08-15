@@ -35,7 +35,10 @@
     "youtube:setup": "node scripts/youtube-auth-cli.js --set-cookie",
     "lint": "next lint",
     "clean": "rm -rf .next tsconfig.tsbuildinfo",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate && npm run setup:ytdlp",
+    "setup:ytdlp": "python3 -m pip install --upgrade yt-dlp --break-system-packages || pipx install yt-dlp || echo 'Please install yt-dlp manually'",
+    "update:ytdlp": "python3 -m pip install --upgrade yt-dlp --break-system-packages || pipx upgrade yt-dlp || echo 'Please update yt-dlp manually'",
+    "deploy:setup": "npm install && npm run setup:ytdlp && npm run db:push"
   },
   "dependencies": {
     "@prisma/client": "^6.12.0",
