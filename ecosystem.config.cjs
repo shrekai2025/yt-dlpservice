@@ -45,8 +45,8 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3000,
         HOSTNAME: '0.0.0.0',
-        // 添加Node.js性能优化
-        NODE_OPTIONS: '--max-old-space-size=1024 --optimize-for-size',
+        // 添加Node.js性能优化（移除不支持的参数）
+        NODE_OPTIONS: '--max-old-space-size=1024',
         UV_THREADPOOL_SIZE: 4 // 限制线程池大小
       }
     },
