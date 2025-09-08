@@ -607,7 +607,7 @@ export default function ApiDocPage() {
                       <h4 className="text-sm font-medium mb-2">查询参数</h4>
                       <div className="space-y-1 text-sm">
                                                     <div><code>status</code> - 任务状态过滤 (PENDING, EXTRACTING, TRANSCRIBING, COMPLETED, FAILED)</div>
-                        <div><code>platform</code> - 平台过滤 (youtube, bilibili)</div>
+                        <div><code>platform</code> - 平台过滤 (youtube, bilibili, xiaoyuzhou, applepodcasts)</div>
                         <div><code>limit</code> - 每页数量 (1-100, 默认20)</div>
                         <div><code>offset</code> - 偏移量 (默认0)</div>
                         <div><code>orderBy</code> - 排序字段 (createdAt, updatedAt)</div>
@@ -771,6 +771,10 @@ export default function ApiDocPage() {
                     <div className="bg-purple-50 p-3 rounded-lg">
                       <h4 className="text-sm font-medium text-purple-900">小宇宙</h4>
                       <p className="text-xs text-purple-700 mt-1">播放量、评论数、评论</p>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <h4 className="text-sm font-medium text-blue-900">Apple播客</h4>
+                      <p className="text-xs text-blue-700 mt-1">评分、评分数量、评论数、分类信息</p>
                     </div>
                   </div>
                 </div>
@@ -1075,6 +1079,16 @@ curl -X POST http://localhost:3000/api/external/tasks \\
     "compressionPreset": "standard"
   }'
 
+# 创建Apple播客任务（最小音质）
+curl -X POST http://localhost:3000/api/external/tasks \\
+  -H "X-API-Key: textget-api-key-demo" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "url": "https://podcasts.apple.com/hk/podcast/a16z-podcast/id842818711?i=1000725270034",
+    "downloadType": "AUDIO_ONLY",
+    "compressionPreset": "none"
+  }'
+
 # 创建视频+音频任务（轻度压缩）
 curl -X POST http://localhost:3000/api/external/tasks \\
   -H "Authorization: Bearer textget-api-key-demo" \\
@@ -1145,8 +1159,8 @@ async function getTask(taskId) {
 
 // 使用示例
 (async () => {
-  // 创建任务（带标准压缩）
-  const task = await createTask('https://www.xiaoyuzhoufm.com/episode/example', 'AUDIO_ONLY', 'standard');
+  // 创建Apple播客任务（最小音质，语音转文字优化）
+  const task = await createTask('https://podcasts.apple.com/hk/podcast/a16z-podcast/id842818711?i=1000725270034', 'AUDIO_ONLY', 'none');
   console.log('Task created:', task);
   
   // 轮询任务状态
@@ -1242,8 +1256,8 @@ class TextGetAPI:
 if __name__ == "__main__":
     api = TextGetAPI(API_KEY)
     
-    # 创建任务（带标准压缩）
-    result = api.create_task('https://www.xiaoyuzhoufm.com/episode/example', 'AUDIO_ONLY', 'standard')
+    # 创建Apple播客任务（最小音质，语音转文字优化）
+    result = api.create_task('https://podcasts.apple.com/hk/podcast/a16z-podcast/id842818711?i=1000725270034', 'AUDIO_ONLY', 'none')
     task_id = result['data']['id']
     print(f"任务创建成功: {task_id}")
     
@@ -1571,6 +1585,22 @@ if __name__ == "__main__":
                       <li>• <strong>API优先</strong>: 使用 <code>video_info_prefer_api_over_html=true</code></li>
                       <li>• <strong>URL标准化</strong>: 短链接自动解析为标准桌面端URL</li>
                       <li>• <strong>Cookie支持</strong>: 自动获取浏览器Cookie（可选）</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Apple播客自定义策略 */}
+                <div className="border-l-4 border-blue-500 pl-4">
+                  <h3 className="font-medium text-blue-900 mb-2">🎧 Apple播客自定义策略</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <p className="text-sm text-gray-700 mb-2"><strong>下载方式:</strong> <code>自定义RSS解析器</code></p>
+                    <p className="text-sm text-gray-600 mb-2"><strong>技术实现:</strong></p>
+                    <ul className="text-sm text-gray-600 space-y-1">
+                      <li>• <strong>iTunes API</strong>: 获取播客RSS feed URL</li>
+                      <li>• <strong>RSS解析</strong>: 提取单集音频enclosure链接</li>
+                      <li>• <strong>最小音质</strong>: 自动选择128kbps MP3格式</li>
+                      <li>• <strong>地区保持</strong>: 保留原URL中的地区信息(如hk/us等)</li>
+                      <li>• <strong>无需登录</strong>: 直接RSS方式，无需Apple ID</li>
                     </ul>
                   </div>
                 </div>

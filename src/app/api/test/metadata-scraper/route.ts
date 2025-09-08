@@ -87,7 +87,8 @@ export async function GET() {
   const testUrls = {
     youtube: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     bilibili: 'https://www.bilibili.com/video/BV1GJ411x7h7',
-    xiaoyuzhou: 'https://www.xiaoyuzhoufm.com/episode/5e280fab418a84a046628f51'
+    xiaoyuzhou: 'https://www.xiaoyuzhoufm.com/episode/5e280fab418a84a046628f51',
+    applepodcasts: 'https://podcasts.apple.com/hk/podcast/a16z-podcast/id842818711?l=en-GB&i=1000725270034'
   }
   
   const supportedPlatforms = metadataScraperService.getSupportedPlatforms()
@@ -126,6 +127,8 @@ function detectPlatform(url: string): string {
     return 'bilibili'
   } else if (url.includes('xiaoyuzhoufm.com')) {
     return 'xiaoyuzhou'
+  } else if (url.includes('podcasts.apple.com')) {
+    return 'applepodcasts'
   } else {
     return 'unknown'
   }

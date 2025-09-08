@@ -5,7 +5,7 @@ export interface ContentMetadata {
   description?: string
   duration?: number  // 秒
   coverUrl?: string
-  platform: 'youtube' | 'bilibili' | 'xiaoyuzhou' | string
+  platform: 'youtube' | 'bilibili' | 'xiaoyuzhou' | 'applepodcasts' | string
   // 额外元数据（通过爬虫获取）
   extraMetadata?: PlatformExtraMetadata
   [key: string]: any  // 允许平台特定的额外字段
