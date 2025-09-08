@@ -240,9 +240,9 @@ class SmartYtdlpUpdater {
           method: 'pm2',
           output: stdout.trim()
         }
-      } catch (pm2Error) {
-        const pm2ErrorMsg = pm2Error instanceof Error ? pm2Error.message : String(pm2Error)
-        await this.log('WARN', `PM2重启失败，尝试其他方法: ${pm2ErrorMsg}`, colors.yellow)
+        } catch (pm2Error) {
+          const pm2ErrorMsg = pm2Error instanceof Error ? pm2Error.message : String(pm2Error)
+          await this.log('WARN', `PM2重启失败，尝试其他方法: ${pm2ErrorMsg}`, colors.yellow)
       }
 
       // 尝试使用systemd重启
@@ -254,9 +254,9 @@ class SmartYtdlpUpdater {
           method: 'systemd',
           output: stdout.trim()
         }
-      } catch (systemdError) {
-        const systemdErrorMsg = systemdError instanceof Error ? systemdError.message : String(systemdError)
-        await this.log('WARN', `systemd重启失败: ${systemdErrorMsg}`, colors.yellow)
+        } catch (systemdError) {
+          const systemdErrorMsg = systemdError instanceof Error ? systemdError.message : String(systemdError)
+          await this.log('WARN', `systemd重启失败: ${systemdErrorMsg}`, colors.yellow)
       }
 
       throw new Error('所有服务重启方法都失败了')
@@ -371,9 +371,9 @@ class SmartYtdlpUpdater {
     try {
       await fs.mkdir(path.dirname(this.logFile), { recursive: true })
       await fs.appendFile(this.logFile, logEntry + '\n')
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error)
-      console.error(`日志写入失败: ${errorMsg}`)
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error)
+        console.error(`日志写入失败: ${errorMsg}`)
     }
   }
 
