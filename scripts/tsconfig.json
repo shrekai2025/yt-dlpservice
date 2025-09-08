@@ -1,0 +1,39 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    /* 为脚本文件使用更宽松的配置 */
+    "strict": false,
+    "noUncheckedIndexedAccess": false,
+    "checkJs": false,
+    "allowImportingTsExtensions": false,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    
+    /* 允许更灵活的类型处理 */
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "noImplicitThis": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    
+    /* 错误处理相关 */
+    "useUnknownInCatchVariables": false,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": [
+    "*.js",
+    "*.ts",
+    "*.mjs"
+  ],
+  "exclude": [
+    "node_modules",
+    "*.backup.*",
+    "create-missing-scripts.sh"
+  ]
+}
