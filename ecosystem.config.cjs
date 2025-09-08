@@ -49,6 +49,51 @@ module.exports = {
         NODE_OPTIONS: '--max-old-space-size=1024 --optimize-for-size',
         UV_THREADPOOL_SIZE: 4 // 限制线程池大小
       }
+    },
+    {
+      name: 'yt-dlp-auto-updater',
+      script: 'node',
+      args: 'scripts/smart-ytdlp-updater.js',
+      cwd: process.cwd(),
+      instances: 1,
+      autorestart: false, // 任务完成后不自动重启
+      watch: false,
+      
+      // 定时任务配置 - 每天凌晨3点执行
+      cron_restart: '0 3 * * *',
+      
+      // 日志配置 - 独立的更新日志
+      out_file: './logs/updater-out.log',
+      error_file: './logs/updater-error.log',
+      log_file: './logs/updater-combined.log',
+      time: true,
+      
+      // 资源限制
+      max_memory_restart: '256M',
+      node_args: '--max-old-space-size=256',
+      
+      // 优雅关闭配置
+      kill_timeout: 30000, // 30秒超时，给更新过程足够时间
+      listen_timeout: 5000,
+      
+      // 进程优先级 - 更新任务优先级较低
+      nice: 15,
+      
+      // 环境变量
+      env: {
+        NODE_ENV: 'production',
+        TEMP_DIR: './temp',
+        DATABASE_URL: 'file:./data/app.db'
+      },
+      env_production: {
+        NODE_ENV: 'production',
+        TEMP_DIR: './temp',
+        DATABASE_URL: 'file:./data/app.db'
+      },
+      
+      // 禁用一些不需要的功能
+      monitoring: false,
+      pmx: false
     }
   ],
 
