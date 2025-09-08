@@ -48,5 +48,18 @@
     "requiresAuth": false,
     "downloadMethod": "custom",
     "note": "小宇宙平台使用网页解析方式下载音频"
+  },
+  "applepodcasts": {
+    "name": "Apple播客",
+    "domains": [
+      "podcasts.apple.com"
+    ],
+    "urlPatterns": [
+      "^https?://podcasts\\.apple\\.com/[a-z]{2}/podcast/.+/id\\d+\\?.*i=\\d+"
+    ],
+    "contentTypes": ["audio", "podcast"],
+    "requiresAuth": false,
+    "downloadMethod": "custom",
+    "note": "Apple播客使用网页解析方式下载音频，自动选择最小音质以减少文件大小"
   }
 } 

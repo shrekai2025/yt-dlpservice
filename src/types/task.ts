@@ -1,5 +1,5 @@
 // 平台类型
-export type Platform = 'youtube' | 'bilibili' | 'xiaoyuzhou' | 'other'
+export type Platform = 'youtube' | 'bilibili' | 'xiaoyuzhou' | 'applepodcasts' | 'other'
 
 // 任务状态类型
 export type TaskStatus = 'PENDING' | 'EXTRACTING' | 'TRANSCRIBING' | 'COMPLETED' | 'FAILED'
@@ -98,6 +98,15 @@ export interface XiaoyuzhouData {
   commentCount: number
 }
 
+export interface ApplePodcastsData {
+  rating?: number              // 播客评分 (1-5星)
+  ratingCount?: number         // 评分人数
+  reviewCount?: number         // 评论数量
+  subscriberCount?: number     // 订阅数（如果可获取）
+  genre?: string              // 播客分类/类型
+  explicit?: boolean          // 是否包含敏感内容
+}
+
 // 平台额外元数据接口
 export interface PlatformExtraMetadata {
   // 公共字段
@@ -111,7 +120,7 @@ export interface PlatformExtraMetadata {
   viewCount?: number
   
   // 平台特定字段
-  platformData?: BilibiliData | YouTubeData | XiaoyuzhouData
+  platformData?: BilibiliData | YouTubeData | XiaoyuzhouData | ApplePodcastsData
   
   // 评论数据
   comments?: Comment[]

@@ -23,7 +23,8 @@ interface TestResult {
 const TEST_URLS = {
   youtube: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
   bilibili: 'https://www.bilibili.com/video/BV1GJ411x7h7',
-  xiaoyuzhou: 'https://www.xiaoyuzhoufm.com/episode/5e280fab418a84a046628f51'
+  xiaoyuzhou: 'https://www.xiaoyuzhoufm.com/episode/5e280fab418a84a046628f51',
+  applepodcasts: 'https://podcasts.apple.com/hk/podcast/a16z-podcast/id842818711?l=en-GB&i=1000725270034'
 }
 
 export default function TestScraperPage() {
@@ -98,6 +99,12 @@ export default function TestScraperPage() {
       coinCount: '硬币数',
       shareCount: '转发数',
       favoriteCount: '收藏数',
+      rating: '评分',
+      ratingCount: '评分数量',
+      reviewCount: '评论数',
+      subscriberCount: '订阅数',
+      genre: '分类',
+      explicit: '内容分级',
       commentCount: '评论数'
     }
     return labels[key] || key
@@ -161,10 +168,18 @@ export default function TestScraperPage() {
                   className={`px-4 py-2 rounded-md text-sm font-medium ${
                     platform === 'youtube' ? 'bg-red-100 text-red-800 hover:bg-red-200' :
                     platform === 'bilibili' ? 'bg-blue-100 text-blue-800 hover:bg-blue-200' :
-                    'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                    platform === 'xiaoyuzhou' ? 'bg-purple-100 text-purple-800 hover:bg-purple-200' :
+                    platform === 'applepodcasts' ? 'bg-gray-100 text-gray-800 hover:bg-gray-200' :
+                    'bg-green-100 text-green-800 hover:bg-green-200'
                   } disabled:opacity-50`}
                 >
-                  {loading ? '测试中...' : `测试${platform.charAt(0).toUpperCase() + platform.slice(1)}`}
+                  {loading ? '测试中...' : `测试${
+                    platform === 'youtube' ? 'YouTube' :
+                    platform === 'bilibili' ? 'Bilibili' :
+                    platform === 'xiaoyuzhou' ? '小宇宙' :
+                    platform === 'applepodcasts' ? 'Apple播客' :
+                    platform.charAt(0).toUpperCase() + platform.slice(1)
+                  }`}
                 </button>
               ))}
             </div>

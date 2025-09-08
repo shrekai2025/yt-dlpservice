@@ -908,3 +908,32 @@ docker-compose logs -f
 ---
 
 **注意**: 请确保遵守相关平台的服务条款，合理使用本工具。
+
+
+
+
+
+
+# 在服务器 /home/ubuntu/yt-dlpservice 目录执行：
+
+# 1. 拉取最新的配置修复
+git pull origin main
+
+# 2. 重新安装依赖（确保配置生效）
+npm install
+
+# 3. 现在应该可以成功构建了
+npm run build
+
+# 4. 继续部署流程
+npm run db:push
+chmod +x scripts/*.sh scripts/*.js
+mkdir -p logs
+
+# 5. 启动服务
+pm2 start ecosystem.config.cjs --env production
+pm2 save
+
+# 6. 验证部署
+pm2 list
+pm2 logs yt-dlpservice --lines 5
