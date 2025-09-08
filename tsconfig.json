@@ -41,6 +41,10 @@
   "exclude": [
     "node_modules",
     "scripts/test-*.js",
-    "scripts/youtube-auth-cli.js"
+    "scripts/youtube-auth-cli.js",
+    "scripts/smart-ytdlp-updater.js",
+    "scripts/task-status-checker.js",
+    "scripts/update-status-tracker.js",
+    "scripts/test-updater-system.js"
   ]
 }

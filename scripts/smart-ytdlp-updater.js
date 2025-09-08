@@ -114,8 +114,9 @@ class SmartYtdlpUpdater {
       }
 
     } catch (error) {
-      await this.log('ERROR', `💥 更新流程异常: ${error.message}`, colors.red)
-      await this.updateStatus('error', `更新流程异常: ${error.message}`)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      await this.log('ERROR', `💥 更新流程异常: ${errorMsg}`, colors.red)
+      await this.updateStatus('error', `更新流程异常: ${errorMsg}`)
       throw error
     }
   }
@@ -204,20 +205,21 @@ class SmartYtdlpUpdater {
       }
 
     } catch (error) {
-      await this.log('ERROR', `YT-DLP更新失败: ${error.message}`, colors.red)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      await this.log('ERROR', `YT-DLP更新失败: ${errorMsg}`, colors.red)
       
-      if (error.stdout) {
+      if (error && typeof error === 'object' && 'stdout' in error) {
         await this.log('DEBUG', `stdout: ${error.stdout}`, colors.blue)
       }
-      if (error.stderr) {
+      if (error && typeof error === 'object' && 'stderr' in error) {
         await this.log('DEBUG', `stderr: ${error.stderr}`, colors.red)
       }
 
       return {
         success: false,
-        error: error.message,
-        stdout: error.stdout || '',
-        stderr: error.stderr || ''
+        error: errorMsg,
+        stdout: (error && typeof error === 'object' && 'stdout' in error) ? error.stdout : '',
+        stderr: (error && typeof error === 'object' && 'stderr' in error) ? error.stderr : ''
       }
     }
   }
@@ -239,7 +241,8 @@ class SmartYtdlpUpdater {
           output: stdout.trim()
         }
       } catch (pm2Error) {
-        await this.log('WARN', `PM2重启失败，尝试其他方法: ${pm2Error.message}`, colors.yellow)
+        const pm2ErrorMsg = pm2Error instanceof Error ? pm2Error.message : String(pm2Error)
+        await this.log('WARN', `PM2重启失败，尝试其他方法: ${pm2ErrorMsg}`, colors.yellow)
       }
 
       // 尝试使用systemd重启
@@ -252,16 +255,18 @@ class SmartYtdlpUpdater {
           output: stdout.trim()
         }
       } catch (systemdError) {
-        await this.log('WARN', `systemd重启失败: ${systemdError.message}`, colors.yellow)
+        const systemdErrorMsg = systemdError instanceof Error ? systemdError.message : String(systemdError)
+        await this.log('WARN', `systemd重启失败: ${systemdErrorMsg}`, colors.yellow)
       }
 
       throw new Error('所有服务重启方法都失败了')
 
     } catch (error) {
-      await this.log('ERROR', `服务重启失败: ${error.message}`, colors.red)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      await this.log('ERROR', `服务重启失败: ${errorMsg}`, colors.red)
       return {
         success: false,
-        error: error.message
+        error: errorMsg
       }
     }
   }
@@ -313,7 +318,9 @@ class SmartYtdlpUpdater {
   shouldForceUpdate() {
     try {
       const statusPath = path.resolve(CONFIG.STATUS_FILE)
-      const statusData = JSON.parse(fs.readFileSync(statusPath, 'utf8'))
+      // 使用同步的fs而不是fs/promises
+      const fs_sync = require('fs')
+      const statusData = JSON.parse(fs_sync.readFileSync(statusPath, 'utf8'))
       
       if (statusData.lastSuccessfulUpdate) {
         const lastUpdate = new Date(statusData.lastSuccessfulUpdate)
@@ -345,7 +352,8 @@ class SmartYtdlpUpdater {
       await fs.writeFile(CONFIG.STATUS_FILE, JSON.stringify(statusData, null, 2))
       
     } catch (error) {
-      await this.log('ERROR', `更新状态文件失败: ${error.message}`, colors.red)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      await this.log('ERROR', `更新状态文件失败: ${errorMsg}`, colors.red)
     }
   }
 
@@ -364,7 +372,8 @@ class SmartYtdlpUpdater {
       await fs.mkdir(path.dirname(this.logFile), { recursive: true })
       await fs.appendFile(this.logFile, logEntry + '\n')
     } catch (error) {
-      console.error(`日志写入失败: ${error.message}`)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error(`日志写入失败: ${errorMsg}`)
     }
   }
 
@@ -433,7 +442,8 @@ async function main() {
     process.exit(success ? 0 : 1)
 
   } catch (error) {
-    console.error('❌ 更新器执行失败:', error.message)
+    const errorMsg = error instanceof Error ? error.message : String(error)
+    console.error('❌ 更新器执行失败:', errorMsg)
     process.exit(1)
   }
 }
