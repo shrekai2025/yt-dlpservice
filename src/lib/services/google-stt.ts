@@ -223,6 +223,11 @@ class GoogleSpeechService {
     const proxyHost = await ConfigManager.get('GOOGLE_API_PROXY_HOST')
     const proxyPort = await ConfigManager.get('GOOGLE_API_PROXY_PORT')
 
+    // 如果代理主机或端口为空，则不使用代理
+    if (!proxyHost || !proxyPort) {
+      return false
+    }
+
     return {
       host: proxyHost,
       port: proxyPort,
@@ -1343,12 +1348,8 @@ class GoogleSpeechService {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json'
         },
-        timeout: 30000, // 30秒超时
-        proxy: {
-          host: '127.0.0.1',
-          port: 1080,
-          protocol: 'http'
-        }
+        timeout: 30000 // 30秒超时
+        // 移除硬编码的代理配置，统一使用 getProxyConfig() 方法
       }
     )
 

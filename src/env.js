@@ -28,8 +28,8 @@ export const env = createEnv({
 
     // Google API代理配置
     GOOGLE_API_PROXY_ENABLED: z.string().transform(val => val === "true").default("false"),
-    GOOGLE_API_PROXY_HOST: z.string().default("127.0.0.1"),
-    GOOGLE_API_PROXY_PORT: z.string().transform(val => parseInt(val)).default("7890"),
+    GOOGLE_API_PROXY_HOST: z.string().optional(),
+    GOOGLE_API_PROXY_PORT: z.string().transform(val => parseInt(val)).optional(),
     
     // 语音服务选择配置
     VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao", "google"]).default("google"),

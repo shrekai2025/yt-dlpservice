@@ -956,6 +956,8 @@ docker-compose logs -f
 
 # 在服务器 /home/ubuntu/yt-dlpservice 目录执行：
 
+pm2 stop yt-dlpservice
+
 # 1. 拉取最新的配置修复
 git pull origin main
 
@@ -981,7 +983,7 @@ pm2 logs yt-dlpservice --lines 5
 
 
 ————该环境变量env————
-nano env.txt
+nano .env.local
 Ctrl + O
 Ctrl + X
 pm2 restart yt-dlpservice
