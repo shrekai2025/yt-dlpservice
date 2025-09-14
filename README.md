@@ -958,13 +958,8 @@ docker-compose logs -f
 
 pm2 stop yt-dlpservice
 
-# 1. 拉取最新的配置修复
 git pull origin main
-
-# 2. 重新安装依赖（确保配置生效）
 npm install
-
-# 3. 现在应该可以成功构建了
 npm run build
 
 # 4. 继续部署流程
@@ -987,3 +982,4 @@ nano .env.local
 Ctrl + O
 Ctrl + X
 pm2 restart yt-dlpservice
+pm2 logs yt-dlpservice --lines 30
