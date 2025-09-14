@@ -20,8 +20,19 @@ export const env = createEnv({
     DOUBAO_ACCESS_KEY: z.string().min(1).optional(), 
     DOUBAO_ENDPOINT: z.string().min(1).default("openspeech.bytedance.com"),
     
+    // Google Speech-to-Text API配置
+    GOOGLE_STT_PROJECT_ID: z.string().min(1).optional(),
+    GOOGLE_STT_CREDENTIALS_PATH: z.string().min(1).optional(),
+    GOOGLE_STT_LOCATION: z.string().min(1).default("asia-southeast1"), // 主区域，支持智能fallback
+    GOOGLE_STT_BUCKET_NAME: z.string().min(1).optional(),
+
+    // Google API代理配置
+    GOOGLE_API_PROXY_ENABLED: z.string().transform(val => val === "true").default("false"),
+    GOOGLE_API_PROXY_HOST: z.string().default("127.0.0.1"),
+    GOOGLE_API_PROXY_PORT: z.string().transform(val => parseInt(val)).default("7890"),
+    
     // 语音服务选择配置
-    VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao"]).default("doubao"),
+    VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao", "google"]).default("google"),
     
     // 应用配置
     MAX_CONCURRENT_TASKS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("10"),
@@ -68,6 +79,15 @@ export const env = createEnv({
     DOUBAO_APP_KEY: process.env.DOUBAO_APP_KEY,
     DOUBAO_ACCESS_KEY: process.env.DOUBAO_ACCESS_KEY,
     DOUBAO_ENDPOINT: process.env.DOUBAO_ENDPOINT,
+    
+    GOOGLE_STT_PROJECT_ID: process.env.GOOGLE_STT_PROJECT_ID,
+    GOOGLE_STT_CREDENTIALS_PATH: process.env.GOOGLE_STT_CREDENTIALS_PATH,
+    GOOGLE_STT_LOCATION: process.env.GOOGLE_STT_LOCATION,
+    GOOGLE_STT_BUCKET_NAME: process.env.GOOGLE_STT_BUCKET_NAME,
+    
+    GOOGLE_API_PROXY_ENABLED: process.env.GOOGLE_API_PROXY_ENABLED,
+    GOOGLE_API_PROXY_HOST: process.env.GOOGLE_API_PROXY_HOST,
+    GOOGLE_API_PROXY_PORT: process.env.GOOGLE_API_PROXY_PORT,
     
     VOICE_SERVICE_PROVIDER: process.env.VOICE_SERVICE_PROVIDER,
     

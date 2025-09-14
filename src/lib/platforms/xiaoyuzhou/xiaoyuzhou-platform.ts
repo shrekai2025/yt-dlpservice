@@ -1,6 +1,6 @@
 import { AbstractPlatform } from '~/lib/platforms/base/abstract-platform'
 import { XiaoyuzhouExtractor } from './xiaoyuzhou-parser'
-import type { ContentInfo, ContentType } from '~/lib/platforms/base/platform-interface'
+import type { ContentInfo, ContentType, PlatformValidation } from '~/lib/platforms/base/platform-interface'
 import type { PlatformExtractor } from '~/lib/downloaders/types'
 
 /**
@@ -27,6 +27,67 @@ export class XiaoyuzhouPlatform extends AbstractPlatform {
    */
   getExtractor(): PlatformExtractor {
     return this.extractor
+  }
+
+  /**
+   * 小宇宙URL验证逻辑
+   * 只支持 /episode/ 类型的URL，不支持 /podcast/ 主页
+   */
+  validateUrl(url: string): PlatformValidation {
+    try {
+      const urlObj = new URL(url)
+      const hostname = urlObj.hostname.toLowerCase()
+      
+      // 检查域名
+      const isXiaoyuzhouDomain = this.supportedDomains.some(domain => 
+        hostname === domain || hostname.endsWith('.' + domain)
+      )
+      
+      if (!isXiaoyuzhouDomain) {
+        return {
+          isSupported: false,
+          confidence: 0,
+          reason: `不是小宇宙域名: ${hostname}`
+        }
+      }
+
+      const pathname = urlObj.pathname
+      
+      // ✅ 支持的URL：/episode/ - 具体单集页面
+      if (pathname.includes('/episode/')) {
+        const episodeId = pathname.match(/\/episode\/([a-zA-Z0-9]+)/)?.[1]
+        if (episodeId) {
+          return {
+            isSupported: true,
+            confidence: 1.0,
+            reason: `小宇宙单集页面: ${episodeId}`
+          }
+        }
+      }
+      
+      // ❌ 不支持的URL：/podcast/ - 播客主页
+      if (pathname.includes('/podcast/')) {
+        return {
+          isSupported: false,
+          confidence: 0,
+          reason: '小宇宙播客主页不支持下载，请使用具体单集链接 (格式: /episode/xxx)'
+        }
+      }
+      
+      // 其他路径也不支持
+      return {
+        isSupported: false,
+        confidence: 0,
+        reason: `不支持的小宇宙URL格式: ${pathname}，请使用单集链接 (格式: /episode/xxx)`
+      }
+
+    } catch (error) {
+      return {
+        isSupported: false,
+        confidence: 0,
+        reason: `URL解析错误: ${error instanceof Error ? error.message : String(error)}`
+      }
+    }
   }
   
   /**

@@ -6,7 +6,7 @@
 
 - 🎥 **多平台支持**: YouTube、哔哩哔哩、小宇宙 (可扩展其他平台)
 - 🎵 **音频提取**: 自动从视频中提取高质量音频
-- 📝 **语音转文字**: 支持豆包语音API和通义听悟API
+- 📝 **语音转文字**: 支持Google Speech-to-Text、豆包语音API和通义听悟API
 - 🕷️ **智能元数据爬取**: 自动获取平台特定数据（播放量、点赞数、评论等）
 - 💬 **评论数据提取**: 获取第一页评论及回复，支持结构化存储
 - 📊 **任务管理**: Web 管理界面，实时查看任务状态
@@ -15,7 +15,7 @@
 - 🍪 **YouTube Cookie支持**: 通过手动设置Cookie，解决需要登录才能访问的视频
 - 🚀 **易于部署**: 提供Docker和服务器部署脚本
 - 🔧 **配置灵活**: 支持环境变量配置，音频质量参数可调
-- 🎛️ **多服务商**: 支持豆包语音和通义听悟两种语音识别服务
+- 🎛️ **多服务商**: 支持Google Speech-to-Text、豆包语音和通义听悟三种语音识别服务
 
 ## 🏗️ 技术架构
 
@@ -143,14 +143,19 @@ npm run dev
 # 数据库配置
 DATABASE_URL="file:./dev.db"
 
-# 语音服务提供商选择 (doubao 或 tingwu)
-VOICE_SERVICE_PROVIDER="doubao"
+# 语音服务提供商选择 (doubao/tingwu/google)
+VOICE_SERVICE_PROVIDER="google"
 
 # 豆包语音API配置 (使用豆包时必填)
 DOUBAO_ACCESS_KEY_ID="your_doubao_access_key_id"
 DOUBAO_ACCESS_KEY_SECRET="your_doubao_access_key_secret"
 DOUBAO_REGION="cn-beijing"
 DOUBAO_ENDPOINT="https://openspeech.bytedance.com"
+
+# Google Speech-to-Text API配置 (使用Google时必填)
+GOOGLE_STT_PROJECT_ID="your-gcp-project-id"
+GOOGLE_STT_CREDENTIALS_PATH="./data/google-credentials.json"
+GOOGLE_STT_LOCATION="global"
 
 # 通义听悟API配置 (使用通义时必填)
 TINGWU_ACCESS_KEY_ID="your_tingwu_access_key_id"
@@ -198,6 +203,41 @@ BROWSER_DATA_DIR="./data/browser_data"
    - 访问 `http://localhost:3000/admin`
    - 在"配置管理"中设置豆包语音相关配置
    - 点击"测试语音服务连接"验证配置
+
+### Google Speech-to-Text API配置
+
+1. **创建Google Cloud项目**
+   - 访问 [Google Cloud Console](https://console.cloud.google.com/)
+   - 创建新项目或选择现有项目
+   - 记录项目ID
+
+2. **启用Speech-to-Text API**
+   - 在API库中搜索"Cloud Speech-to-Text API"
+   - 点击启用API
+
+3. **创建服务账户**
+   - 访问"IAM和管理 > 服务账户"
+   - 创建新的服务账户
+   - 角色选择："Cloud Speech服务代理"或"项目 > 编辑者"
+   - 下载JSON密钥文件
+
+4. **配置环境变量**
+   ```bash
+   VOICE_SERVICE_PROVIDER="google"
+   GOOGLE_STT_PROJECT_ID="your-gcp-project-id"
+   GOOGLE_STT_CREDENTIALS_PATH="./data/google-credentials.json"
+   GOOGLE_STT_LOCATION="global"
+   ```
+
+5. **部署密钥文件**
+   - 将下载的JSON密钥文件重命名为 `google-credentials.json`
+   - 放置在项目的 `data/` 目录下
+   - 确保文件路径与 `GOOGLE_STT_CREDENTIALS_PATH` 配置一致
+
+6. **在管理界面测试**
+   - 访问 `http://localhost:3000/admin/tools`
+   - 上传音频文件测试Google STT功能
+   - 检查诊断信息确保配置正确
 
 ### 通义听悟API配置
 
@@ -912,7 +952,7 @@ docker-compose logs -f
 
 
 
-
+————综合升级——————
 
 # 在服务器 /home/ubuntu/yt-dlpservice 目录执行：
 
@@ -937,3 +977,11 @@ pm2 save
 # 6. 验证部署
 pm2 list
 pm2 logs yt-dlpservice --lines 5
+
+
+
+————该环境变量env————
+nano env.txt
+Ctrl + O
+Ctrl + X
+pm2 restart yt-dlpservice

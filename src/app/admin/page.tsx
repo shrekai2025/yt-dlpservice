@@ -54,6 +54,51 @@ export default function TaskManagementPage() {
     }
   }
 
+  // 解析和格式化错误日志
+  const getErrorDisplay = (errorMessage: string | null) => {
+    if (!errorMessage) {
+      return { hasErrors: false, latestError: null, totalErrors: 0 }
+    }
+
+    try {
+      const parsed = JSON.parse(errorMessage)
+      
+      // 新格式：数组
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const latest = parsed[parsed.length - 1]
+        const time = new Date(latest.timestamp).toLocaleString('zh-CN', {
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+        return {
+          hasErrors: true,
+          latestError: `${time} ${latest.message}`,
+          totalErrors: parsed.length
+        }
+      }
+      
+      // 旧格式：字符串
+      if (typeof parsed === 'string') {
+        return {
+          hasErrors: true,
+          latestError: parsed,
+          totalErrors: 1
+        }
+      }
+
+      return { hasErrors: false, latestError: null, totalErrors: 0 }
+    } catch (e) {
+      // 解析失败，说明是旧的字符串格式
+      return {
+        hasErrors: true,
+        latestError: errorMessage,
+        totalErrors: 1
+      }
+    }
+  }
+
   
 
   return (
@@ -397,6 +442,9 @@ export default function TaskManagementPage() {
                   创建时间
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  错误日志
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   操作
                 </th>
               </tr>
@@ -479,6 +527,27 @@ export default function TaskManagementPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {new Date(task.createdAt).toLocaleString("zh-CN")}
+                  </td>
+                  <td className="px-6 py-4 text-sm">
+                    {(() => {
+                      const errorInfo = getErrorDisplay(task.errorMessage)
+                      if (!errorInfo.hasErrors) {
+                        return <span className="text-gray-400">无错误</span>
+                      }
+                      
+                      return (
+                        <div className="max-w-xs">
+                          <div className="text-xs text-red-600 font-mono truncate" title={errorInfo.latestError || ''}>
+                            {errorInfo.latestError}
+                          </div>
+                          {errorInfo.totalErrors > 1 && (
+                            <div className="text-xs text-gray-500 mt-1">
+                              共 {errorInfo.totalErrors} 个错误
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                     {task.status === "PENDING" && (

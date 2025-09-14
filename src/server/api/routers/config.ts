@@ -4,6 +4,7 @@ import { TRPCError } from '@trpc/server'
 import { db } from '~/server/db'
 import { ConfigManager } from '~/lib/utils/config'
 import { doubaoVoiceService } from '~/lib/services/doubao-voice'
+import GoogleSpeechService from '~/lib/services/google-stt'
 import { Logger } from '~/lib/utils/logger'
 import * as fs from 'fs/promises'
 
@@ -184,6 +185,70 @@ export const configRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `豆包API诊断失败: ${error.message}`
+        })
+      }
+    }),
+
+  // Google STT API测试
+  testGoogleSTT: publicProcedure
+    .input(z.object({
+      audioData: z.string(), // Base64 编码的音频数据
+      fileName: z.string()
+    }))
+    .mutation(async ({ input }) => {
+      try {
+        Logger.info(`开始Google STT测试，文件: ${input.fileName}`)
+        
+        // 将Base64数据写入临时文件
+        const tempFile = `/tmp/google_stt_test_${Date.now()}.mp3`
+        const audioBuffer = Buffer.from(input.audioData, 'base64')
+        await fs.writeFile(tempFile, audioBuffer)
+        
+        // 调用Google Speech服务进行转录
+        const googleSttService = GoogleSpeechService.getInstance()
+        const transcription = await googleSttService.speechToText(tempFile)
+        
+        // 清理临时文件
+        try {
+          await fs.unlink(tempFile)
+        } catch (cleanupError) {
+          Logger.warn(`清理临时文件失败: ${cleanupError}`)
+        }
+        
+        return {
+          success: true,
+          data: {
+            transcription,
+            message: 'Google STT测试成功'
+          }
+        }
+      } catch (error) {
+        Logger.error(`Google STT测试失败: ${error}`)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Google STT测试失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+        })
+      }
+    }),
+
+  // 诊断Google STT
+  diagnoseGoogleSTT: publicProcedure
+    .mutation(async () => {
+      try {
+        Logger.info('开始Google STT诊断')
+        const googleSttService = GoogleSpeechService.getInstance()
+        const result = await googleSttService.diagnoseService()
+        Logger.info(`Google STT诊断完成: ${result.success ? '成功' : '失败'}`)
+        
+        return {
+          success: true,
+          data: result
+        }
+      } catch (error: any) {
+        Logger.error(`Google STT诊断失败: ${error.message}`)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Google STT诊断失败: ${error.message}`
         })
       }
     })

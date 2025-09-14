@@ -2,6 +2,7 @@ import { db } from '~/server/db'
 import { Logger } from '~/lib/utils/logger'
 import { contentDownloader } from './content-downloader'
 import { doubaoVoiceService } from './doubao-voice'
+import GoogleSpeechService from './google-stt'
 import { cleanupManager } from './cleanup-manager'
 import { audioCompressor } from './audio-compressor'
 import { metadataScraperService } from './metadata-scraper'
@@ -9,6 +10,7 @@ import { initializeScrapers } from './metadata-scraper/scrapers'
 import { env } from '~/env'
 import { ConfigManager } from '~/lib/utils/config'
 import { GlobalInit } from '~/lib/utils/global-init'
+import { ErrorLogger } from '~/lib/utils/error-logger'
 import type { TaskStatus, DownloadType, CompressionPreset, PlatformExtraMetadata } from '~/types/task'
 import type { CompressionOptions } from '~/types/compression'
 import { formatFileSize, bytesToMB } from './audio-utils'
@@ -172,12 +174,14 @@ export class TaskProcessor {
     } catch (error: any) {
       Logger.error(`任务处理失败: ${taskId}, 错误: ${error.message}`)
       
-      // 更新任务状态为失败，并记录错误信息
+      // 添加错误日志
+      await ErrorLogger.addErrorLog(taskId, error.message)
+      
+      // 更新任务状态为失败
       await db.task.update({
         where: { id: taskId },
         data: {
           status: 'FAILED',
-          errorMessage: error.message,
           retryCount: { increment: 1 }
         }
       })
@@ -319,6 +323,10 @@ export class TaskProcessor {
     } catch (error: any) {
       Logger.error(`❌ 音频压缩处理失败: ${taskId}, 错误: ${error.message}`)
       Logger.warn(`⚠️ 使用原始音频文件继续处理`)
+      
+      // 添加警告日志（压缩失败但不影响任务继续）
+      await ErrorLogger.addErrorLog(taskId, `压缩失败但继续处理: ${error.message}`)
+      
       return audioPath
     }
   }
@@ -356,6 +364,10 @@ export class TaskProcessor {
         // 使用通义听悟API（保留原有逻辑）
         Logger.info(`🎯 调用通义听悟API: ${taskId}`)
         transcription = await this.processWithTingwuAPI(audioPath)
+      } else if (provider === 'google') {
+        // 使用Google Speech-to-Text API
+        Logger.info(`🎯 调用Google Speech-to-Text API: ${taskId}`)
+        transcription = await this.processWithGoogleSTT(audioPath)
       } else {
         Logger.error(`❌ 不支持的语音服务提供商: ${taskId} - ${provider}`)
         throw new Error(`不支持的语音服务提供商: ${provider}`)
@@ -411,6 +423,10 @@ export class TaskProcessor {
       
     } catch (error: any) {
       Logger.error(`音频转录失败: ${taskId}, 错误: ${error.message}`)
+      
+      // 添加错误日志
+      await ErrorLogger.addErrorLog(taskId, `转录失败: ${error.message}`)
+      
       // 豆包API失败，直接标记任务为失败
       throw error
     }
@@ -508,6 +524,48 @@ export class TaskProcessor {
       
     } catch (error: any) {
       Logger.error(`通义听悟转录失败: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * 使用Google Speech-to-Text API进行转录
+   */
+  private async processWithGoogleSTT(audioPath: string): Promise<string> {
+    try {
+      Logger.info(`🔍 检查Google Speech服务状态 - 文件: ${audioPath}`)
+      
+      const googleSttService = GoogleSpeechService.getInstance()
+      
+      // 检查服务状态
+      const status = await googleSttService.checkServiceStatus()
+      Logger.info(`🟢 Google Speech服务状态: 可用=${status.available}, 消息=${status.message}`)
+      
+      if (!status.available) {
+        Logger.error(`❌ Google Speech服务不可用: ${status.message}`)
+        throw new Error(`Google Speech服务不可用: ${status.message}`)
+      }
+      
+      Logger.info(`🎤 开始调用Google Speech-to-Text API - 文件: ${audioPath}`)
+      
+      // 进行语音识别（Google SDK内部已包含重试机制）
+      const startTime = Date.now()
+      const transcription = await googleSttService.speechToText(audioPath)
+      const duration = Date.now() - startTime
+      
+      Logger.info(`⏱️ Google STT调用完成 - 耗时: ${duration}ms`)
+      
+      if (!transcription || transcription.trim().length === 0) {
+        Logger.error(`❌ Google Speech识别结果为空`)
+        throw new Error('语音识别结果为空')
+      }
+      
+      Logger.debug(`✅ Google Speech识别成功 - 文本长度: ${transcription.length}字符`)
+      return transcription
+      
+    } catch (error: any) {
+      Logger.error(`❌ Google Speech转录失败: ${error.message}`)
+      Logger.error(`🔧 错误详情: ${error.stack || 'No stack trace'}`)
       throw error
     }
   }

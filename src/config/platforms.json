@@ -41,13 +41,12 @@
       "www.xiaoyuzhoufm.com"
     ],
     "urlPatterns": [
-      "^https?://(www\\.)?xiaoyuzhoufm\\.com/episode/[a-zA-Z0-9]+",
-      "^https?://(www\\.)?xiaoyuzhoufm\\.com/podcast/[a-zA-Z0-9]+"
+      "^https?://(www\\.)?xiaoyuzhoufm\\.com/episode/[a-zA-Z0-9]+"
     ],
     "contentTypes": ["audio", "podcast"],
     "requiresAuth": false,
     "downloadMethod": "custom",
-    "note": "小宇宙平台使用网页解析方式下载音频"
+    "note": "小宇宙平台仅支持单集下载 (/episode/)，不支持播客主页 (/podcast/)"
   },
   "applepodcasts": {
     "name": "Apple播客",

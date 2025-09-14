@@ -83,6 +83,7 @@ export default function ToolsPage() {
   }
 
   const testDoubaoAPI = api.config.testDoubaoAPI.useMutation()
+  const testGoogleSTT = api.config.testGoogleSTT.useMutation()
 
   const handleDoubaoTest = async () => {
     if (!selectedFile) {
@@ -117,6 +118,47 @@ export default function ToolsPage() {
           }
         } catch (apiError) {
           setTestResult("❌ 豆包API测试失败: " + (apiError instanceof Error ? apiError.message : String(apiError)))
+        }
+      }
+      reader.readAsDataURL(selectedFile)
+    } catch (error) {
+      setTestResult("测试失败: " + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  const handleGoogleSTTTest = async () => {
+    if (!selectedFile) {
+      setTestResult("请先选择音频文件")
+      return
+    }
+
+    try {
+      setTestResult("正在测试Google Speech-to-Text API...")
+      
+      // 将文件转换为 Base64
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string
+        const base64 = base64Data.split(',')[1] // 移除 data:audio/...;base64, 前缀
+        
+        if (!base64) {
+          setTestResult("❌ 文件读取失败：无法获取音频数据")
+          return
+        }
+        
+        try {
+          const result = await testGoogleSTT.mutateAsync({
+            audioData: base64,
+            fileName: selectedFile.name || 'unknown.mp3'
+          })
+          
+          if (result.success) {
+            setTestResult(`✅ Google STT测试成功！\n\n📝 转录结果:\n${result.data.transcription}\n\n📊 文件信息:\n- 文件名: ${selectedFile.name || 'unknown.mp3'}\n- 文件大小: ${selectedFile.size} bytes`)
+          } else {
+            setTestResult("❌ Google STT测试失败")
+          }
+        } catch (apiError) {
+          setTestResult("❌ Google STT测试失败: " + (apiError instanceof Error ? apiError.message : String(apiError)))
         }
       }
       reader.readAsDataURL(selectedFile)
@@ -525,9 +567,9 @@ export default function ToolsPage() {
         </div>
       </div>
 
-      {/* 豆包API测试 */}
+      {/* 语音转文字API测试 */}
       <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">豆包API测试</h2>
+        <h2 className="text-xl font-semibold mb-4">语音转文字API测试</h2>
         <div className="space-y-4">
           <div>
             <label htmlFor="audioFile" className="block text-sm font-medium text-gray-700 mb-2">
@@ -545,13 +587,23 @@ export default function ToolsPage() {
             </p>
           </div>
           
-          <button
-            onClick={handleDoubaoTest}
-            disabled={!selectedFile}
-            className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
-          >
-            测试豆包API
-          </button>
+          <div className="flex space-x-4">
+            <button
+              onClick={handleDoubaoTest}
+              disabled={!selectedFile}
+              className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
+            >
+              测试豆包API
+            </button>
+            
+            <button
+              onClick={handleGoogleSTTTest}
+              disabled={!selectedFile}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+            >
+              测试Google STT
+            </button>
+          </div>
           
           {testResult && (
             <div className="border border-gray-200 rounded p-4 bg-gray-50">

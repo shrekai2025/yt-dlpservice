@@ -317,39 +317,81 @@ export default function ApiDocPage() {
               </div>
             </div>
 
-            {/* 豆包语音服务 */}
+            {/* 语音转录服务 */}
             <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-xl font-semibold mb-4">豆包语音转录服务</h2>
+              <h2 className="text-xl font-semibold mb-4">语音转录服务</h2>
               <div className="mb-4">
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                   AI集成
                 </span>
               </div>
               
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-medium mb-2">主要功能:</h3>
-                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                    <li>音频文件转文字转录</li>
-                    <li>支持多种音频格式 (MP3, WAV, M4A等)</li>
-                    <li>异步任务处理，支持长音频</li>
-                    <li>智能标点和语音识别优化</li>
-                  </ul>
+              <div className="space-y-6">
+                {/* Google Speech-to-Text */}
+                <div className="border border-blue-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2 text-blue-700">Google Speech-to-Text</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">主要功能:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>智能同步/异步识别（3分钟自动切换）</li>
+                        <li>支持中英日等多语言自动检测</li>
+                        <li>JWT认证，企业级安全</li>
+                        <li>自动标点符号和格式优化</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">认证方式:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>Google Cloud服务账户密钥</li>
+                        <li>OAuth 2.0 JWT Bearer认证</li>
+                        <li>Base64音频内容直传（&lt;10MB）</li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-                
+
+                {/* 豆包语音 */}
+                <div className="border border-purple-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2 text-purple-700">豆包语音识别</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">主要功能:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>字节跳动豆包大模型语音识别</li>
+                        <li>异步任务处理，支持长音频</li>
+                        <li>智能标点和语音识别优化</li>
+                        <li>16kHz单声道音频优化</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">认证方式:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>X-Api-App-Key / X-Api-Access-Key 认证</li>
+                        <li>Base64音频数据传输</li>
+                        <li>状态轮询机制，实时获取处理进度</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
-                  <h3 className="font-medium mb-2">API特点:</h3>
+                  <h3 className="font-medium mb-2">通用特性:</h3>
                   <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                    <li>字节跳动豆包大模型语音识别</li>
-                    <li>X-Api-App-Key / X-Api-Access-Key 认证</li>
-                    <li>Base64音频数据传输</li>
-                    <li>状态轮询机制，实时获取处理进度</li>
+                    <li>支持多种音频格式 (MP3, WAV, M4A等)</li>
+                    <li>自动音频格式转换和优化</li>
+                    <li>错误重试和超时处理机制</li>
+                    <li>统一的服务状态检查和诊断</li>
                   </ul>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-medium mb-2">文件位置:</h3>
-                  <code className="text-sm">src/lib/services/doubao-voice.ts</code>
+                  <div className="space-y-1">
+                    <div><code className="text-sm">src/lib/services/google-stt.ts</code></div>
+                    <div><code className="text-sm">src/lib/services/doubao-voice.ts</code></div>
+                    <div><code className="text-sm">src/lib/services/task-processor.ts</code></div>
+                  </div>
                 </div>
               </div>
             </div>

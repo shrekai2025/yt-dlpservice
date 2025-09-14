@@ -136,9 +136,9 @@ export class CleanupManager {
     const taskCleanupAge = isManual ? 0 : config.maxFileAgeHours * 2 // 已完成任务保留更长时间
     completedTasksCount = await this.cleanupCompletedTasks(taskCleanupAge)
 
-    // 3. 清理豆包测试临时文件
-    const doubaoTempCount = await this.cleanupDoubaoTempFiles(cutoffTime)
-    tempFilesCount += doubaoTempCount
+    // 3. 清理语音服务测试临时文件
+    const voiceTestTempCount = await this.cleanupVoiceTestTempFiles(cutoffTime)
+    tempFilesCount += voiceTestTempCount
 
     const logLevel = isManual ? 'info' : 'debug'
     Logger[logLevel](`文件清理完成 - 临时文件: ${tempFilesCount}, 已完成任务: ${completedTasksCount}, 总大小: ${this.formatBytes(totalSizeCleared)}`)
@@ -310,33 +310,39 @@ export class CleanupManager {
   }
 
   /**
-   * 清理豆包测试临时文件
+   * 清理语音服务测试临时文件（包括豆包和Google STT）
    */
-  private async cleanupDoubaoTempFiles(cutoffTime: number): Promise<number> {
+  private async cleanupVoiceTestTempFiles(cutoffTime: number): Promise<number> {
     try {
       const tempDir = '/tmp'
       const items = await fs.readdir(tempDir)
       let count = 0
 
       for (const item of items) {
-        if (item.startsWith('doubao_test_') && item.endsWith('.mp3')) {
+        // 匹配豆包测试文件或Google STT测试文件
+        const isVoiceTestFile = (
+          (item.startsWith('doubao_test_') && item.endsWith('.mp3')) ||
+          (item.startsWith('google_stt_test_') && item.endsWith('.mp3'))
+        )
+        
+        if (isVoiceTestFile) {
           const filePath = path.join(tempDir, item)
           try {
             const stat = await fs.stat(filePath)
             if (stat.mtime.getTime() < cutoffTime) {
               await fs.unlink(filePath)
               count++
-              Logger.debug(`清理豆包测试文件: ${filePath}`)
+              Logger.debug(`清理语音测试文件: ${filePath}`)
             }
           } catch (error) {
-            Logger.debug(`清理豆包测试文件失败: ${filePath}`)
+            Logger.debug(`清理语音测试文件失败: ${filePath}`)
           }
         }
       }
 
       return count
     } catch (error) {
-      Logger.warn(`清理豆包测试文件失败: ${error}`)
+      Logger.warn(`清理语音测试文件失败: ${error}`)
       return 0
     }
   }
