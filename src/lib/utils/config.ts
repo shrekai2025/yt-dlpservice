@@ -23,7 +23,7 @@ export class ConfigManager {
   static async get(key: string): Promise<string> {
     // 1. 优先从环境变量获取
     const envValue = process.env[key]
-    if (envValue) {
+    if (envValue !== undefined && envValue !== '') {
       return envValue
     }
 

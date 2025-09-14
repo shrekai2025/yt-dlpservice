@@ -215,24 +215,22 @@ class GoogleSpeechService {
    * 获取代理配置
    */
   private async getProxyConfig(): Promise<any> {
-    const proxyEnabled = await ConfigManager.get('GOOGLE_API_PROXY_ENABLED')
-    const proxyHost = await ConfigManager.get('GOOGLE_API_PROXY_HOST')
-    const proxyPort = await ConfigManager.get('GOOGLE_API_PROXY_PORT')
+    // 使用 env.js 的转换后的值而不是 ConfigManager 的原始字符串
+    const proxyEnabled = env.GOOGLE_API_PROXY_ENABLED // 这是布尔值
+    const proxyHost = env.GOOGLE_API_PROXY_HOST       // 这可能是 undefined
+    const proxyPort = env.GOOGLE_API_PROXY_PORT       // 这可能是 undefined
     
     // 添加详细的调试日志
     Logger.debug(`🔍 代理配置调试信息:`)
-    Logger.debug(`  - ConfigManager.get('GOOGLE_API_PROXY_ENABLED'): ${proxyEnabled} (类型: ${typeof proxyEnabled})`)
-    Logger.debug(`  - ConfigManager.get('GOOGLE_API_PROXY_HOST'): ${proxyHost} (类型: ${typeof proxyHost})`)
-    Logger.debug(`  - ConfigManager.get('GOOGLE_API_PROXY_PORT'): ${proxyPort} (类型: ${typeof proxyPort})`)
+    Logger.debug(`  - env.GOOGLE_API_PROXY_ENABLED (布尔值): ${proxyEnabled} (类型: ${typeof proxyEnabled})`)
+    Logger.debug(`  - env.GOOGLE_API_PROXY_HOST: ${proxyHost} (类型: ${typeof proxyHost})`)
+    Logger.debug(`  - env.GOOGLE_API_PROXY_PORT: ${proxyPort} (类型: ${typeof proxyPort})`)
     Logger.debug(`  - process.env.GOOGLE_API_PROXY_ENABLED: ${process.env.GOOGLE_API_PROXY_ENABLED}`)
     Logger.debug(`  - process.env.GOOGLE_API_PROXY_HOST: ${process.env.GOOGLE_API_PROXY_HOST}`)
     Logger.debug(`  - process.env.GOOGLE_API_PROXY_PORT: ${process.env.GOOGLE_API_PROXY_PORT}`)
-    Logger.debug(`  - env.GOOGLE_API_PROXY_ENABLED (from env.js): ${env.GOOGLE_API_PROXY_ENABLED}`)
-    Logger.debug(`  - env.GOOGLE_API_PROXY_HOST (from env.js): ${env.GOOGLE_API_PROXY_HOST}`)
-    Logger.debug(`  - env.GOOGLE_API_PROXY_PORT (from env.js): ${env.GOOGLE_API_PROXY_PORT}`)
     
     if (!proxyEnabled) {
-      Logger.debug(`🚫 代理已禁用，返回 false`)
+      Logger.debug(`🚫 代理已禁用，返回 false (GOOGLE_API_PROXY_ENABLED = ${proxyEnabled})`)
       return false
     }
 
