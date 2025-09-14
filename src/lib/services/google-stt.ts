@@ -792,7 +792,7 @@ class GoogleSpeechService {
   /**
    * V2 API异步语音识别（大文件，>=10MB，使用batchRecognize）
    */
-  private async longRunningRecognize(audioPath: string): Promise<string> {
+  private async longRunningRecognize(audioPath: string, progressCallback?: (progress: string) => void): Promise<string> {
     let gcsUri: string | null = null
     
     try {
@@ -857,7 +857,7 @@ class GoogleSpeechService {
 
       // 轮询等待结果
       const operationName = response.data.name
-      const result = await this.pollV2LongRunningOperation(operationName)
+      const result = await this.pollV2LongRunningOperation(operationName, progressCallback)
       
       // 解析V2批量结果
       if (!result.response?.results) {
@@ -948,7 +948,7 @@ class GoogleSpeechService {
   /**
    * V2 API轮询长运行操作状态
    */
-  private async pollV2LongRunningOperation(operationName: string): Promise<V2Operation> {
+  private async pollV2LongRunningOperation(operationName: string, progressCallback?: (progress: string) => void): Promise<V2Operation> {
     const maxAttempts = 60 // 最大轮询次数
     const initialDelay = 10000 // 初始延迟10秒（增加一倍）
     const maxDelay = 60000 // 最大延迟60秒（增加一倍）
@@ -980,7 +980,17 @@ class GoogleSpeechService {
         
         // 显示进度信息（如果有）
         if (operation.metadata?.progressPercent) {
-          Logger.info(`📊 处理进度: ${operation.metadata.progressPercent}%`)
+          const progress = `${operation.metadata.progressPercent}%`
+          Logger.info(`📊 处理进度: ${progress}`)
+          
+          // 调用进度回调
+          if (progressCallback) {
+            try {
+              progressCallback(progress)
+            } catch (callbackError) {
+              Logger.warn(`⚠️ 进度回调执行失败: ${callbackError}`)
+            }
+          }
         }
         
         await new Promise(resolve => setTimeout(resolve, delay))
@@ -1405,9 +1415,46 @@ class GoogleSpeechService {
   }
 
   /**
+   * 清理 Google STT 转录结果中的中文空格
+   */
+  private cleanupTranscription(transcription: string): string {
+    try {
+      // 检查是否启用清理功能
+      if (!env.GOOGLE_STT_CLEANUP_ENABLED) {
+        Logger.debug('🚫 Google STT 转录清理功能已禁用')
+        return transcription
+      }
+
+      // 检测是否包含中文字符
+      const containsChinese = /[\u4e00-\u9fff]/.test(transcription)
+      
+      if (!containsChinese) {
+        Logger.debug('🌐 未检测到中文字符，跳过清理')
+        return transcription
+      }
+      
+      Logger.debug('🧹 检测到中文字符，开始清理转录结果中的空格')
+      
+      // 简单粗暴：删掉所有空格（按照用户要求）
+      const cleaned = transcription.replace(/\s+/g, '')
+      
+      Logger.info(`🧹 转录结果清理完成: 原始长度${transcription.length} → 清理后长度${cleaned.length}`)
+      Logger.debug(`📝 清理前: "${transcription.substring(0, 100)}${transcription.length > 100 ? '...' : ''}"`)
+      Logger.debug(`📝 清理后: "${cleaned.substring(0, 100)}${cleaned.length > 100 ? '...' : ''}"`)
+      
+      return cleaned
+      
+    } catch (error: any) {
+      Logger.error(`❌ 转录结果清理失败: ${error.message}`)
+      Logger.warn(`⚠️ 返回原始转录结果`)
+      return transcription
+    }
+  }
+
+  /**
    * 主入口：语音转文字
    */
-  public async speechToText(audioPath: string): Promise<string> {
+  public async speechToText(audioPath: string, progressCallback?: (progress: string) => void): Promise<string> {
     try {
       Logger.info(`🎤 开始Google Speech语音识别: ${audioPath}`)
 
@@ -1438,7 +1485,7 @@ class GoogleSpeechService {
       if (useSync) {
         transcription = await this.syncRecognize(audioPath)
       } else {
-        transcription = await this.longRunningRecognize(audioPath)
+        transcription = await this.longRunningRecognize(audioPath, progressCallback)
       }
 
       if (!transcription || transcription.trim().length === 0) {
@@ -1446,8 +1493,11 @@ class GoogleSpeechService {
         throw new Error('语音识别结果为空')
       }
 
-      Logger.info(`✅ Google Speech语音识别成功 - 文本长度: ${transcription.length}字符`)
-      return transcription
+      // 清理转录结果中的中文空格
+      const cleanedTranscription = this.cleanupTranscription(transcription)
+
+      Logger.info(`✅ Google Speech语音识别成功 - 文本长度: ${cleanedTranscription.length}字符`)
+      return cleanedTranscription
 
     } catch (error: any) {
       Logger.error(`❌ Google Speech语音转录失败: ${error.message}`)

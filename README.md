@@ -957,7 +957,6 @@ docker-compose logs -f
 # 在服务器 /home/ubuntu/yt-dlpservice 目录执行：
 
 pm2 stop yt-dlpservice
-
 git pull origin main
 npm install
 npm run build

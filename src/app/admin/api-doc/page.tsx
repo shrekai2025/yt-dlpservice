@@ -834,6 +834,7 @@ export default function ApiDocPage() {
     "duration": 1800,
     "publishDate": "2024-01-01",
     "description": "内容描述",
+    "progress": "73%", // Google STT转录进度，如"73%"，无进度时为空
     
     // 平台特定数据
     "platformData": {
@@ -899,6 +900,7 @@ export default function ApiDocPage() {
                     <li>• 新创建的任务可能暂时没有 extraMetadata 数据</li>
                     <li>• 不同平台的 platformData 结构不同</li>
                     <li>• 爬虫超时时间为120秒</li>
+                    <li>• progress 字段仅在使用Google STT转录且为长时间运行任务时才会有值</li>
                   </ul>
                 </div>
               </div>

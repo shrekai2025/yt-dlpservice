@@ -31,6 +31,9 @@ export const env = createEnv({
     GOOGLE_API_PROXY_HOST: z.string().optional(),
     GOOGLE_API_PROXY_PORT: z.string().transform(val => parseInt(val)).optional(),
     
+    // Google STT 转录结果清理配置
+    GOOGLE_STT_CLEANUP_ENABLED: z.string().transform(val => val === "true").default("true"),
+    
     // 语音服务选择配置
     VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao", "google"]).default("google"),
     
@@ -88,6 +91,8 @@ export const env = createEnv({
     GOOGLE_API_PROXY_ENABLED: process.env.GOOGLE_API_PROXY_ENABLED,
     GOOGLE_API_PROXY_HOST: process.env.GOOGLE_API_PROXY_HOST,
     GOOGLE_API_PROXY_PORT: process.env.GOOGLE_API_PROXY_PORT,
+    
+    GOOGLE_STT_CLEANUP_ENABLED: process.env.GOOGLE_STT_CLEANUP_ENABLED,
     
     VOICE_SERVICE_PROVIDER: process.env.VOICE_SERVICE_PROVIDER,
     

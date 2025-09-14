@@ -367,7 +367,7 @@ export class TaskProcessor {
       } else if (provider === 'google') {
         // 使用Google Speech-to-Text API
         Logger.info(`🎯 调用Google Speech-to-Text API: ${taskId}`)
-        transcription = await this.processWithGoogleSTT(audioPath)
+        transcription = await this.processWithGoogleSTT(audioPath, taskId)
       } else {
         Logger.error(`❌ 不支持的语音服务提供商: ${taskId} - ${provider}`)
         throw new Error(`不支持的语音服务提供商: ${provider}`)
@@ -410,11 +410,30 @@ export class TaskProcessor {
       }
 
       // 豆包API成功返回，更新任务转录结果并标记为完成
+      // 获取当前的extraMetadata并设置进度为100%
+      const currentTask = await db.task.findUnique({
+        where: { id: taskId },
+        select: { extraMetadata: true }
+      })
+
+      let finalExtraMetadata: any = {}
+      if (currentTask?.extraMetadata) {
+        try {
+          finalExtraMetadata = JSON.parse(currentTask.extraMetadata)
+        } catch (error) {
+          Logger.warn(`解析extraMetadata失败，使用空对象: ${error}`)
+        }
+      }
+
+      // 任务完成时，进度固定为100%
+      finalExtraMetadata.progress = '100%'
+
       await db.task.update({
         where: { id: taskId },
         data: {
           transcription: transcription,
-          status: 'COMPLETED'
+          status: 'COMPLETED',
+          extraMetadata: JSON.stringify(finalExtraMetadata)
         }
       })
       
@@ -531,7 +550,7 @@ export class TaskProcessor {
   /**
    * 使用Google Speech-to-Text API进行转录
    */
-  private async processWithGoogleSTT(audioPath: string): Promise<string> {
+  private async processWithGoogleSTT(audioPath: string, taskId?: string): Promise<string> {
     try {
       Logger.info(`🔍 检查Google Speech服务状态 - 文件: ${audioPath}`)
       
@@ -548,9 +567,16 @@ export class TaskProcessor {
       
       Logger.info(`🎤 开始调用Google Speech-to-Text API - 文件: ${audioPath}`)
       
+      // 创建进度回调函数
+      const progressCallback = taskId ? (progress: string) => {
+        this.updateTaskProgress(taskId, progress).catch(error => {
+          Logger.warn(`⚠️ 更新任务进度失败: ${error}`)
+        })
+      } : undefined
+      
       // 进行语音识别（Google SDK内部已包含重试机制）
       const startTime = Date.now()
-      const transcription = await googleSttService.speechToText(audioPath)
+      const transcription = await googleSttService.speechToText(audioPath, progressCallback)
       const duration = Date.now() - startTime
       
       Logger.info(`⏱️ Google STT调用完成 - 耗时: ${duration}ms`)
@@ -582,6 +608,51 @@ export class TaskProcessor {
       }
     })
     Logger.info(`任务 ${taskId} 状态更新为: ${status}`)
+  }
+
+  /**
+   * 更新任务进度
+   */
+  private async updateTaskProgress(taskId: string, progress: string): Promise<void> {
+    try {
+      // 获取当前任务信息
+      const task = await db.task.findUnique({
+        where: { id: taskId },
+        select: { extraMetadata: true }
+      })
+
+      if (!task) {
+        Logger.warn(`任务 ${taskId} 不存在，无法更新进度`)
+        return
+      }
+
+      // 解析现有的extraMetadata
+      let extraMetadata: any = {}
+      if (task.extraMetadata) {
+        try {
+          extraMetadata = JSON.parse(task.extraMetadata)
+        } catch (error) {
+          Logger.warn(`解析extraMetadata失败，使用空对象: ${error}`)
+        }
+      }
+
+      // 更新进度字段
+      extraMetadata.progress = progress
+
+      // 保存更新后的extraMetadata
+      await db.task.update({
+        where: { id: taskId },
+        data: { 
+          extraMetadata: JSON.stringify(extraMetadata),
+          updatedAt: new Date()
+        }
+      })
+
+      Logger.info(`任务 ${taskId} 进度更新为: ${progress}`)
+    } catch (error) {
+      Logger.error(`更新任务 ${taskId} 进度失败: ${error}`)
+      throw error
+    }
   }
 
   /**

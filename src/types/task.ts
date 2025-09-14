@@ -124,6 +124,9 @@ export interface PlatformExtraMetadata {
   
   // 评论数据
   comments?: Comment[]
+  
+  // STT进度字段
+  progress?: string // Google STT转录进度，格式如'73%'，如果STT服务没有进度值则为空
 }
 
 // 下载选项接口
