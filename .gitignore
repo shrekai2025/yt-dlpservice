@@ -25,8 +25,11 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env.local
 .env*.local
+.env.backup
+env.txt
 
 # vercel
 .vercel
@@ -53,6 +56,20 @@ next-env.d.ts
 
 # 但允许 cookies 配置目录
 !/data/cookies/
+# 忽略实际的cookies文件
+/data/cookies/*.txt
+/data/cookies/*.backup
+
+# Google Cloud credentials
+/data/mavaeai-cc140-*.json
+/data/google-credentials*.json
+google-credentials*.json
+*.backup.json
+
+# 备份文件
+*.backup
+*.backup.txt
+cookies*.backup*
 
 
 # Logs
