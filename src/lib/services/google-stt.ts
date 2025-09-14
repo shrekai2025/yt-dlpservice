@@ -2,6 +2,7 @@ import * as fs from 'fs/promises'
 import axios, { type AxiosRequestConfig } from 'axios'
 import { Logger } from '~/lib/utils/logger'
 import { ConfigManager } from '~/lib/utils/config'
+import { env } from '~/env.js'
 import { validateAudioFile, getAudioFileInfo } from '~/lib/services/audio-utils'
 // 定义服务状态和诊断结果类型
 interface ServiceStatus {
@@ -215,19 +216,33 @@ class GoogleSpeechService {
    */
   private async getProxyConfig(): Promise<any> {
     const proxyEnabled = await ConfigManager.get('GOOGLE_API_PROXY_ENABLED')
-    
-    if (!proxyEnabled) {
-      return false
-    }
-
     const proxyHost = await ConfigManager.get('GOOGLE_API_PROXY_HOST')
     const proxyPort = await ConfigManager.get('GOOGLE_API_PROXY_PORT')
+    
+    // 添加详细的调试日志
+    Logger.debug(`🔍 代理配置调试信息:`)
+    Logger.debug(`  - ConfigManager.get('GOOGLE_API_PROXY_ENABLED'): ${proxyEnabled} (类型: ${typeof proxyEnabled})`)
+    Logger.debug(`  - ConfigManager.get('GOOGLE_API_PROXY_HOST'): ${proxyHost} (类型: ${typeof proxyHost})`)
+    Logger.debug(`  - ConfigManager.get('GOOGLE_API_PROXY_PORT'): ${proxyPort} (类型: ${typeof proxyPort})`)
+    Logger.debug(`  - process.env.GOOGLE_API_PROXY_ENABLED: ${process.env.GOOGLE_API_PROXY_ENABLED}`)
+    Logger.debug(`  - process.env.GOOGLE_API_PROXY_HOST: ${process.env.GOOGLE_API_PROXY_HOST}`)
+    Logger.debug(`  - process.env.GOOGLE_API_PROXY_PORT: ${process.env.GOOGLE_API_PROXY_PORT}`)
+    Logger.debug(`  - env.GOOGLE_API_PROXY_ENABLED (from env.js): ${env.GOOGLE_API_PROXY_ENABLED}`)
+    Logger.debug(`  - env.GOOGLE_API_PROXY_HOST (from env.js): ${env.GOOGLE_API_PROXY_HOST}`)
+    Logger.debug(`  - env.GOOGLE_API_PROXY_PORT (from env.js): ${env.GOOGLE_API_PROXY_PORT}`)
+    
+    if (!proxyEnabled) {
+      Logger.debug(`🚫 代理已禁用，返回 false`)
+      return false
+    }
 
     // 如果代理主机或端口为空，则不使用代理
     if (!proxyHost || !proxyPort) {
+      Logger.debug(`🚫 代理主机或端口为空，返回 false`)
       return false
     }
 
+    Logger.debug(`✅ 返回代理配置: ${proxyHost}:${proxyPort}`)
     return {
       host: proxyHost,
       port: proxyPort,
