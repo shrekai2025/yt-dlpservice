@@ -137,19 +137,42 @@ npm run dev
 
 ### 环境变量配置
 
-创建 `.env` 文件并配置以下变量：
+#### 🔐 **重要说明**
+- `.env` - 配置模板（会被Git跟踪，**不要在此文件中填写真实密钥**）
+- `.env.local` - 本地开发配置（被.gitignore保护，**在此文件中填写真实密钥**）
 
+#### **配置步骤**
+1. **本地开发**：
+   ```bash
+   cp .env .env.local
+   # 在 .env.local 中填写真实密钥
+   ```
+
+2. **生产部署**：
+   ```bash
+   # 直接创建 .env.local 或使用环境变量
+   ```
+
+#### **配置示例（.env.local）**
 ```bash
 # 数据库配置
 DATABASE_URL="file:./dev.db"
 
-# 语音服务提供商选择 (doubao/tingwu/google)
+# 语音服务提供商选择 (tingwu/doubao/doubao-small/google)
 VOICE_SERVICE_PROVIDER="google"
 
-# 豆包语音API配置 (使用豆包时必填)
-DOUBAO_ACCESS_KEY_ID="your_doubao_access_key_id"
-DOUBAO_ACCESS_KEY_SECRET="your_doubao_access_key_secret"
-DOUBAO_REGION="cn-beijing"
+# 豆包语音API配置（实时版）
+DOUBAO_APP_KEY="your_doubao_app_key"
+DOUBAO_ACCESS_KEY="your_doubao_access_key"
+
+# 豆包录音文件识别API配置（小模型版）
+DOUBAO_SMALL_APP_ID="your_app_id"
+DOUBAO_SMALL_TOKEN="your_token"
+DOUBAO_SMALL_CLUSTER="your_cluster"
+
+# 火山引擎TOS对象存储配置（使用豆包小模型时必填）
+TOS_ACCESS_KEY_ID="your_tos_access_key_id"
+TOS_SECRET_ACCESS_KEY="your_tos_secret_access_key"
 DOUBAO_ENDPOINT="https://openspeech.bytedance.com"
 
 # Google Speech-to-Text API配置 (使用Google时必填)

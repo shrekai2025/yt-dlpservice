@@ -978,6 +978,11 @@ if __name__ == '__main__':
 appid、access_token 和 secret_key 由平台分配，通过控制台创建应用获得，创建应用并开通服务文档。
 
 
+目前提供 token 和 signature 两种鉴权方式，选择一种就可以完成鉴权。推荐使用较简单的 token 鉴权。
+
+appid、access_token 和 secret_key 由平台分配，通过控制台创建应用获得，创建应用并开通服务文档。
+
+
 Token 鉴权
 在连接建立时，须在发送的 GET 或 POST 请求中加上鉴权相关的 Authorization header。如下面示例：
 

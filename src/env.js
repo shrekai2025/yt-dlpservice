@@ -15,10 +15,16 @@ export const env = createEnv({
     TINGWU_ACCESS_KEY_SECRET: z.string().min(1).optional(),
     TINGWU_REGION: z.string().min(1).default("cn-beijing"),
     
-    // 豆包语音API配置（新增）
+    // 豆包语音API配置（实时版）
     DOUBAO_APP_KEY: z.string().min(1).optional(),
     DOUBAO_ACCESS_KEY: z.string().min(1).optional(), 
     DOUBAO_ENDPOINT: z.string().min(1).default("openspeech.bytedance.com"),
+    
+    // 豆包录音文件识别API配置（小模型版）
+    DOUBAO_SMALL_APP_ID: z.string().min(1).optional(),
+    DOUBAO_SMALL_TOKEN: z.string().min(1).optional(),
+    DOUBAO_SMALL_CLUSTER: z.string().min(1).optional(),
+    DOUBAO_SMALL_ENDPOINT: z.string().min(1).default("openspeech.bytedance.com"),
     
     // Google Speech-to-Text API配置
     GOOGLE_STT_PROJECT_ID: z.string().min(1).optional(),
@@ -31,11 +37,18 @@ export const env = createEnv({
     GOOGLE_API_PROXY_HOST: z.string().optional(),
     GOOGLE_API_PROXY_PORT: z.string().transform(val => parseInt(val)).optional(),
     
+    // 火山引擎TOS对象存储配置
+    TOS_ACCESS_KEY_ID: z.string().min(1).optional(),
+    TOS_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    TOS_REGION: z.string().min(1).default("ap-southeast-1"),
+    TOS_BUCKET_NAME: z.string().min(1).default("stt-small-01"),
+    TOS_ENDPOINT: z.string().min(1).default("tos-ap-southeast-1.volces.com"),
+    
     // Google STT 转录结果清理配置
     GOOGLE_STT_CLEANUP_ENABLED: z.string().transform(val => val === "true").default("true"),
     
     // 语音服务选择配置
-    VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao", "google"]).default("google"),
+    VOICE_SERVICE_PROVIDER: z.enum(["tingwu", "doubao", "doubao-small", "google"]).default("google"),
     
     // 应用配置
     MAX_CONCURRENT_TASKS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("10"),
@@ -83,6 +96,11 @@ export const env = createEnv({
     DOUBAO_ACCESS_KEY: process.env.DOUBAO_ACCESS_KEY,
     DOUBAO_ENDPOINT: process.env.DOUBAO_ENDPOINT,
     
+    DOUBAO_SMALL_APP_ID: process.env.DOUBAO_SMALL_APP_ID,
+    DOUBAO_SMALL_TOKEN: process.env.DOUBAO_SMALL_TOKEN,
+    DOUBAO_SMALL_CLUSTER: process.env.DOUBAO_SMALL_CLUSTER,
+    DOUBAO_SMALL_ENDPOINT: process.env.DOUBAO_SMALL_ENDPOINT,
+    
     GOOGLE_STT_PROJECT_ID: process.env.GOOGLE_STT_PROJECT_ID,
     GOOGLE_STT_CREDENTIALS_PATH: process.env.GOOGLE_STT_CREDENTIALS_PATH,
     GOOGLE_STT_LOCATION: process.env.GOOGLE_STT_LOCATION,
@@ -91,6 +109,12 @@ export const env = createEnv({
     GOOGLE_API_PROXY_ENABLED: process.env.GOOGLE_API_PROXY_ENABLED,
     GOOGLE_API_PROXY_HOST: process.env.GOOGLE_API_PROXY_HOST,
     GOOGLE_API_PROXY_PORT: process.env.GOOGLE_API_PROXY_PORT,
+    
+    TOS_ACCESS_KEY_ID: process.env.TOS_ACCESS_KEY_ID,
+    TOS_SECRET_ACCESS_KEY: process.env.TOS_SECRET_ACCESS_KEY,
+    TOS_REGION: process.env.TOS_REGION,
+    TOS_BUCKET_NAME: process.env.TOS_BUCKET_NAME,
+    TOS_ENDPOINT: process.env.TOS_ENDPOINT,
     
     GOOGLE_STT_CLEANUP_ENABLED: process.env.GOOGLE_STT_CLEANUP_ENABLED,
     

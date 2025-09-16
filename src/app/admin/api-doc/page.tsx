@@ -188,6 +188,71 @@ export default function ApiDocPage() {
 }`}</pre>
                   </div>
                 </div>
+
+                <div className="border-l-4 border-orange-500 pl-4">
+                  <h3 className="font-medium text-orange-900">config.testDoubaoSmallAPI</h3>
+                  <p className="text-sm text-gray-600 mb-2">测试豆包录音文件识别（小模型版）API</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>输入参数:</strong>
+                    <pre className="mt-1">{`{
+  audioData: string,   // Base64编码的音频数据
+  fileName: string     // 文件名（用于日志/提示）
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="border-l-4 border-cyan-500 pl-4">
+                  <h3 className="font-medium text-cyan-900">config.diagnoseDoubaoSmallAPI</h3>
+                  <p className="text-sm text-gray-600 mb-2">诊断豆包小模型API服务状态</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>返回示例:</strong>
+                    <pre className="mt-1">{`{
+  success: true,
+  data: {
+    available: boolean,
+    message: string,
+    provider: "doubao-small"
+  }
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="border-l-4 border-teal-500 pl-4">
+                  <h3 className="font-medium text-teal-900">config.testVoiceService</h3>
+                  <p className="text-sm text-gray-600 mb-2">测试语音服务（支持多提供商）</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>输入参数:</strong>
+                    <pre className="mt-1">{`{
+  provider?: "doubao" | "doubao-small" | "tingwu" | "google"  // 可选，默认: "doubao"
+}`}</pre>
+                  </div>
+                </div>
+
+                <div className="border-l-4 border-indigo-500 pl-4">
+                  <h3 className="font-medium text-indigo-900">config.getAllVoiceServiceStatus</h3>
+                  <p className="text-sm text-gray-600 mb-2">获取所有语音服务状态</p>
+                  <div className="bg-gray-50 p-3 rounded text-sm">
+                    <strong>返回示例:</strong>
+                    <pre className="mt-1">{`{
+  success: true,
+  data: [
+    {
+      provider: "doubao",
+      name: "豆包语音服务",
+      available: boolean,
+      message: string
+    },
+    {
+      provider: "doubao-small",
+      name: "豆包录音文件识别（小模型版）",
+      available: boolean,
+      message: string
+    },
+    // ... 其他服务
+  ]
+}`}</pre>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -375,6 +440,41 @@ export default function ApiDocPage() {
                   </div>
                 </div>
 
+                {/* 豆包小模型语音 */}
+                <div className="border border-orange-200 rounded-lg p-4">
+                  <h3 className="font-medium mb-2 text-orange-700">豆包录音文件识别（小模型版）</h3>
+                  <div className="space-y-2">
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">主要功能:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>字节跳动豆包小模型录音文件识别</li>
+                        <li>异步任务处理，支持长音频（&lt;5小时）</li>
+                        <li>火山引擎TOS对象存储集成</li>
+                        <li>支持多种音频格式（MP3, WAV, OGG, MP4）</li>
+                        <li>智能标点和数字归一化</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">认证方式:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>Token认证: Bearer; {'<token>'}</li>
+                        <li>音频通过TOS对象存储上传</li>
+                        <li>预签名URL访问（2小时有效期）</li>
+                        <li>任务提交和查询分离机制</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium mb-1">技术特点:</h4>
+                      <ul className="list-disc list-inside text-xs text-gray-600 space-y-1 ml-2">
+                        <li>使用官方TOS SDK (@volcengine/tos-sdk)</li>
+                        <li>自动文件清理和错误恢复</li>
+                        <li>支持音频文件大小&lt;512MB</li>
+                        <li>轮询策略参考豆包API设定</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="font-medium mb-2">通用特性:</h3>
                   <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
@@ -390,6 +490,7 @@ export default function ApiDocPage() {
                   <div className="space-y-1">
                     <div><code className="text-sm">src/lib/services/google-stt.ts</code></div>
                     <div><code className="text-sm">src/lib/services/doubao-voice.ts</code></div>
+                    <div><code className="text-sm">src/lib/services/doubao-small-stt.ts</code></div>
                     <div><code className="text-sm">src/lib/services/task-processor.ts</code></div>
                   </div>
                 </div>

@@ -14,6 +14,14 @@ interface GlobalServiceState {
     accessKey?: string
     endpoint?: string
   }
+  doubaoSmall: {
+    initialized: boolean
+    initializing: boolean
+    appId?: string
+    token?: string
+    cluster?: string
+    endpoint?: string
+  }
   contentDownloader: {
     initialized: boolean
     initializing: boolean
@@ -45,6 +53,7 @@ function getGlobalState(): GlobalServiceState {
     Logger.debug('🔧 初始化全局服务状态')
     global.__YT_DLP_SERVICE_STATE = {
       doubaoVoice: { initialized: false, initializing: false },
+      doubaoSmall: { initialized: false, initializing: false },
       contentDownloader: { initialized: false, initializing: false },
       taskProcessor: { initialized: false, initializing: false },
       metadataScraper: { initialized: false, initializing: false },
@@ -95,6 +104,12 @@ function setInitialized(service: keyof GlobalServiceState, data?: any): void {
     voiceState.appKey = data.appKey
     voiceState.accessKey = data.accessKey
     voiceState.endpoint = data.endpoint
+  } else if (data && service === 'doubaoSmall') {
+    const smallState = state.doubaoSmall
+    smallState.appId = data.appId
+    smallState.token = data.token
+    smallState.cluster = data.cluster
+    smallState.endpoint = data.endpoint
   }
   
   Logger.debug(`✅ ${service} 初始化完成`)
@@ -115,6 +130,7 @@ function isInitialized(service: keyof GlobalServiceState): boolean {
 // 获取保存的数据
 function getSavedData(service: 'contentDownloader'): { ytDlpPath?: string; ffmpegPath?: string } | undefined
 function getSavedData(service: 'doubaoVoice'): { appKey?: string; accessKey?: string; endpoint?: string } | undefined
+function getSavedData(service: 'doubaoSmall'): { appId?: string; token?: string; cluster?: string; endpoint?: string } | undefined
 function getSavedData(service: keyof GlobalServiceState): any {
   return getGlobalState()[service]
 }
@@ -140,6 +156,15 @@ export const GlobalInit = {
   isDoubaoVoiceInitialized: () => isInitialized('doubaoVoice'),
   getDoubaoVoiceData: () => getSavedData('doubaoVoice'),
   waitForDoubaoVoice: (timeout?: number) => waitForInitialization('doubaoVoice', timeout),
+  
+  // DoubaoSmall相关
+  tryInitializeDoubaoSmall: () => trySetInitializing('doubaoSmall'),
+  setDoubaoSmallInitialized: (data?: { appId: string; token: string; cluster: string; endpoint: string }) => 
+    setInitialized('doubaoSmall', data),
+  setDoubaoSmallInitializationFailed: () => setInitializationFailed('doubaoSmall'),
+  isDoubaoSmallInitialized: () => isInitialized('doubaoSmall'),
+  getDoubaoSmallData: () => getSavedData('doubaoSmall'),
+  waitForDoubaoSmall: (timeout?: number) => waitForInitialization('doubaoSmall', timeout),
   
   // ContentDownloader相关
   tryInitializeContentDownloader: () => trySetInitializing('contentDownloader'),

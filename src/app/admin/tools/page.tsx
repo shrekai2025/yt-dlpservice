@@ -16,6 +16,9 @@ export default function ToolsPage() {
   // Mutations
   const setConfig = api.config.set.useMutation()
   const testVoiceService = api.config.testVoiceService.useMutation()
+  const testDoubaoSmallAPI = api.config.testDoubaoSmallAPI.useMutation()
+  const diagnoseDoubaoSmallAPI = api.config.diagnoseDoubaoSmallAPI.useMutation()
+  const getAllVoiceServiceStatus = api.config.getAllVoiceServiceStatus.useQuery()
 
   // 浏览器管理 Mutations
   const cleanupBrowser = api.browser.cleanup.useMutation({
@@ -118,6 +121,47 @@ export default function ToolsPage() {
           }
         } catch (apiError) {
           setTestResult("❌ 豆包API测试失败: " + (apiError instanceof Error ? apiError.message : String(apiError)))
+        }
+      }
+      reader.readAsDataURL(selectedFile)
+    } catch (error) {
+      setTestResult("测试失败: " + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  const handleDoubaoSmallTest = async () => {
+    if (!selectedFile) {
+      setTestResult("请先选择音频文件")
+      return
+    }
+
+    try {
+      setTestResult("正在测试豆包录音文件识别（小模型版）API...")
+      
+      // 将文件转换为 Base64
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        const base64Data = e.target?.result as string
+        const base64 = base64Data.split(',')[1] // 移除 data:audio/...;base64, 前缀
+        
+        if (!base64) {
+          setTestResult("❌ 文件读取失败：无法获取音频数据")
+          return
+        }
+        
+        try {
+          const result = await testDoubaoSmallAPI.mutateAsync({
+            audioData: base64,
+            fileName: selectedFile.name || 'unknown.mp3'
+          })
+          
+          if (result.success) {
+            setTestResult(`✅ 豆包小模型API测试成功！\n\n📝 转录结果:\n${result.data.transcription}\n\n📊 文件信息:\n- 文件名: ${selectedFile.name || 'unknown.mp3'}\n- 文件大小: ${selectedFile.size} bytes`)
+          } else {
+            setTestResult("❌ 豆包小模型API测试失败")
+          }
+        } catch (apiError) {
+          setTestResult("❌ 豆包小模型API测试失败: " + (apiError instanceof Error ? apiError.message : String(apiError)))
         }
       }
       reader.readAsDataURL(selectedFile)
@@ -567,6 +611,72 @@ export default function ToolsPage() {
         </div>
       </div>
 
+      {/* 语音服务状态总览 */}
+      <div className="mb-6 bg-white rounded-lg shadow p-6">
+        <h2 className="text-xl font-semibold mb-4">语音服务状态总览</h2>
+        
+        {getAllVoiceServiceStatus.data?.success && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {getAllVoiceServiceStatus.data.data.map((service) => (
+              <div
+                key={service.provider}
+                className={`p-4 rounded-lg border-2 ${
+                  service.available
+                    ? 'border-green-200 bg-green-50'
+                    : 'border-red-200 bg-red-50'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <div
+                    className={`w-3 h-3 rounded-full ${
+                      service.available ? 'bg-green-500' : 'bg-red-500'
+                    }`}
+                  />
+                  <span className="font-medium text-sm">{service.name}</span>
+                </div>
+                <div className="text-xs text-gray-600">
+                  <div className="mb-1">
+                    <span className="font-mono bg-gray-100 px-1 rounded">
+                      {service.provider}
+                    </span>
+                  </div>
+                  <div className={service.available ? 'text-green-700' : 'text-red-700'}>
+                    {service.message}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        
+        <div className="flex gap-2">
+          <button
+            onClick={() => getAllVoiceServiceStatus.refetch()}
+            disabled={getAllVoiceServiceStatus.isRefetching}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+          >
+            {getAllVoiceServiceStatus.isRefetching ? "检查中..." : "刷新状态"}
+          </button>
+          
+          <button
+            onClick={() => diagnoseDoubaoSmallAPI.mutate()}
+            disabled={diagnoseDoubaoSmallAPI.isPending}
+            className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+          >
+            {diagnoseDoubaoSmallAPI.isPending ? "诊断中..." : "诊断豆包小模型"}
+          </button>
+        </div>
+
+        {diagnoseDoubaoSmallAPI.data && (
+          <div className="mt-4 p-4 bg-gray-50 rounded border">
+            <h3 className="font-medium mb-2">豆包小模型诊断结果</h3>
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+              {JSON.stringify(diagnoseDoubaoSmallAPI.data, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+
       {/* 语音转文字API测试 */}
       <div className="mb-6 bg-white rounded-lg shadow p-6">
         <h2 className="text-xl font-semibold mb-4">语音转文字API测试</h2>
@@ -594,6 +704,14 @@ export default function ToolsPage() {
               className="px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
             >
               测试豆包API
+            </button>
+
+            <button
+              onClick={handleDoubaoSmallTest}
+              disabled={!selectedFile}
+              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+            >
+              测试豆包小模型
             </button>
             
             <button

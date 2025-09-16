@@ -2,6 +2,7 @@ import { db } from '~/server/db'
 import { Logger } from '~/lib/utils/logger'
 import { contentDownloader } from './content-downloader'
 import { doubaoVoiceService } from './doubao-voice'
+import doubaoSmallSTTService from './doubao-small-stt'
 import GoogleSpeechService from './google-stt'
 import { cleanupManager } from './cleanup-manager'
 import { audioCompressor } from './audio-compressor'
@@ -360,6 +361,10 @@ export class TaskProcessor {
         // 使用豆包语音API
         Logger.info(`🎯 调用豆包语音API: ${taskId}`)
         transcription = await this.processWithDoubaoVoice(audioPath)
+      } else if (provider === 'doubao-small') {
+        // 使用豆包录音文件识别API（小模型版）
+        Logger.info(`🎯 调用豆包录音文件识别API（小模型版）: ${taskId}`)
+        transcription = await this.processWithDoubaoSmallSTT(audioPath)
       } else if (provider === 'tingwu') {
         // 使用通义听悟API（保留原有逻辑）
         Logger.info(`🎯 调用通义听悟API: ${taskId}`)
@@ -543,6 +548,43 @@ export class TaskProcessor {
       
     } catch (error: any) {
       Logger.error(`通义听悟转录失败: ${error.message}`)
+      throw error
+    }
+  }
+
+  /**
+   * 使用豆包录音文件识别API（小模型版）进行转录
+   */
+  private async processWithDoubaoSmallSTT(audioPath: string): Promise<string> {
+    try {
+      Logger.info(`🔍 检查豆包小模型服务状态 - 文件: ${audioPath}`)
+      
+      // 检查服务状态
+      const status = await doubaoSmallSTTService.checkServiceStatus()
+      Logger.info(`🟢 豆包小模型服务状态: 可用=${status.available}, 消息=${status.message}`)
+      
+      if (!status.available) {
+        Logger.error(`❌ 豆包小模型服务不可用: ${status.message}`)
+        throw new Error(`豆包小模型服务不可用: ${status.message}`)
+      }
+      
+      Logger.info(`🎤 开始调用豆包录音文件识别API（小模型版） - 文件: ${audioPath}`)
+      
+      // 进行语音识别
+      const startTime = Date.now()
+      const transcription = await doubaoSmallSTTService.speechToText(audioPath)
+      const duration = Date.now() - startTime
+      
+      Logger.info(`✅ 豆包小模型转录完成:`)
+      Logger.info(`  - 文件: ${path.basename(audioPath)}`)
+      Logger.info(`  - 耗时: ${Math.round(duration / 1000)}秒`)
+      Logger.info(`  - 文本长度: ${transcription.length}字符`)
+      Logger.info(`  - 文本预览: ${transcription.substring(0, 100)}${transcription.length > 100 ? '...' : ''}`)
+      
+      return transcription
+      
+    } catch (error: any) {
+      Logger.error(`❌ 豆包小模型转录失败: ${error.message}`)
       throw error
     }
   }
