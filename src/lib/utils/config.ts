@@ -14,6 +14,8 @@ const DEFAULT_CONFIG = {
   MAX_FILE_AGE_HOURS: '1',
   CLEANUP_INTERVAL_HOURS: '24',
   LOG_MAX_SIZE_MB: '10',
+  MAX_FILE_SIZE_MB: '300',
+  MAX_DURATION_HOURS: '2',
 } as const
 
 export class ConfigManager {
@@ -154,6 +156,8 @@ export class ConfigManager {
       maxFileAgeHours: parseInt(await this.get('MAX_FILE_AGE_HOURS')),
       cleanupIntervalHours: parseInt(await this.get('CLEANUP_INTERVAL_HOURS')),
       logMaxSizeMB: parseInt(await this.get('LOG_MAX_SIZE_MB')),
+      maxFileSizeMB: parseInt(await this.get('MAX_FILE_SIZE_MB')),
+      maxDurationHours: parseInt(await this.get('MAX_DURATION_HOURS')),
     }
   }
 } 

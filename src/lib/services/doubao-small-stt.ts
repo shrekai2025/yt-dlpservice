@@ -252,7 +252,11 @@ class DoubaoSmallSTTService {
         dataTransferStatusChange: (event) => {
           if (event.type === DataTransferType.Rw) {
             const percent = ((event.consumedBytes / event.totalBytes) * 100).toFixed(1);
-            Logger.debug(`📤 上传进度: ${percent}%`);
+            // 降低日志频率：只显示每5%的进度
+            const percentNum = parseFloat(percent);
+            if (percentNum % 5 === 0 || percentNum === 100) {
+              Logger.debug(`📤 上传进度: ${percent}%`);
+            }
           }
         }
       });
@@ -386,9 +390,9 @@ class DoubaoSmallSTTService {
    * 轮询获取转录结果
    */
   private async pollTranscriptionResult(taskId: string): Promise<string> {
-    // 参考现有豆包API的轮询策略：80次轮询，30秒间隔，最多40分钟
-    const maxRetries = 80;
-    const baseInterval = 30000; // 30秒
+    // 豆包小模型轮询策略：50次轮询，200秒间隔，最多约167分钟
+    const maxRetries = 50;
+    const baseInterval = 200000; // 200秒
     const maxWaitTime = maxRetries * baseInterval;
 
     Logger.info(`🔄 开始轮询豆包小模型任务结果:`);

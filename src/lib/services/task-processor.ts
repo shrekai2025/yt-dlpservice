@@ -17,6 +17,7 @@ import type { CompressionOptions } from '~/types/compression'
 import { formatFileSize, bytesToMB } from './audio-utils'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import { FileSizeExceededError, DurationExceededError, isTaskLimitError } from '~/lib/utils/task-errors'
 
 export class TaskProcessor {
   // 存储任务的yt-dlp元数据，用于后续爬虫整合
@@ -67,6 +68,9 @@ export class TaskProcessor {
       Logger.info(`🎯 下载配置: ${taskId} - 类型:${task.downloadType}, 输出目录:${outputDir}`)
       const downloadResult = await this.handleDownloadByType(task.url, task.downloadType, outputDir)
       Logger.info(`✅ 下载完成: ${taskId} - 视频:${downloadResult.videoPath ? '✓' : '✗'}, 音频:${downloadResult.audioPath ? '✓' : '✗'}`)
+
+      // 检查文件大小和时长限制
+      await this.validateTaskLimits(taskId, downloadResult)
 
       // 更新任务的文件路径和元数据
       const updateData: any = {
@@ -175,14 +179,22 @@ export class TaskProcessor {
     } catch (error: any) {
       Logger.error(`任务处理失败: ${taskId}, 错误: ${error.message}`)
       
+      // 处理任务限制错误
+      let errorMessage = error.message
+      if (isTaskLimitError(error)) {
+        errorMessage = error.message // 使用友好的错误消息
+        Logger.warn(`⚠️ 任务 ${taskId} 超出限制: ${error.code} - ${errorMessage}`)
+      }
+      
       // 添加错误日志
-      await ErrorLogger.addErrorLog(taskId, error.message)
+      await ErrorLogger.addErrorLog(taskId, errorMessage)
       
       // 更新任务状态为失败
       await db.task.update({
         where: { id: taskId },
         data: {
           status: 'FAILED',
+          errorMessage: errorMessage,
           retryCount: { increment: 1 }
         }
       })
@@ -1043,6 +1055,121 @@ export class TaskProcessor {
       if (!GlobalInit.isMetadataScraperInitialized()) {
         throw new Error('元数据爬虫服务初始化超时')
       }
+    }
+  }
+
+  /**
+   * 验证任务限制（文件大小和时长）
+   */
+  private async validateTaskLimits(taskId: string, downloadResult: {
+    videoPath: string | null
+    audioPath: string | null
+    metadata?: any
+  }): Promise<void> {
+    const config = await ConfigManager.getTyped()
+    const maxFileSizeBytes = config.maxFileSizeMB * 1024 * 1024
+    const maxDurationSeconds = config.maxDurationHours * 3600
+
+    Logger.info(`🔍 检查任务限制: ${taskId} - 最大文件:${config.maxFileSizeMB}MB, 最大时长:${config.maxDurationHours}小时`)
+
+    // 1. 检查文件大小
+    await this.validateFileSize(taskId, downloadResult, maxFileSizeBytes, config.maxFileSizeMB)
+
+    // 2. 检查时长限制
+    await this.validateDuration(taskId, downloadResult, maxDurationSeconds, config.maxDurationHours)
+
+    Logger.info(`✅ 任务 ${taskId} 通过所有限制检查`)
+  }
+
+  /**
+   * 验证文件大小限制
+   */
+  private async validateFileSize(
+    taskId: string, 
+    downloadResult: { videoPath: string | null; audioPath: string | null },
+    maxSizeBytes: number,
+    maxSizeMB: number
+  ): Promise<void> {
+    const filesToCheck = [downloadResult.videoPath, downloadResult.audioPath].filter(Boolean) as string[]
+
+    for (const filePath of filesToCheck) {
+      try {
+        const stats = await fs.stat(filePath)
+        const fileSizeMB = Math.round(stats.size / 1024 / 1024 * 100) / 100
+
+        Logger.debug(`📊 文件大小检查: ${path.basename(filePath)} - ${fileSizeMB}MB`)
+
+        if (stats.size > maxSizeBytes) {
+          Logger.error(`❌ 文件大小超限: ${taskId} - ${fileSizeMB}MB > ${maxSizeMB}MB`)
+          throw new FileSizeExceededError()
+        }
+      } catch (error) {
+        if (error instanceof FileSizeExceededError) {
+          throw error
+        }
+        Logger.warn(`⚠️ 无法检查文件大小: ${filePath} - ${error}`)
+      }
+    }
+  }
+
+  /**
+   * 验证时长限制
+   */
+  private async validateDuration(
+    taskId: string,
+    downloadResult: { videoPath: string | null; audioPath: string | null; metadata?: any },
+    maxDurationSeconds: number,
+    maxDurationHours: number
+  ): Promise<void> {
+    let durationSeconds: number | null = null
+
+    // 1. 尝试从元数据获取时长
+    if (downloadResult.metadata?.duration) {
+      durationSeconds = downloadResult.metadata.duration
+      Logger.debug(`📊 从元数据获取时长: ${taskId} - ${durationSeconds}秒`)
+    }
+
+    // 2. 如果元数据没有时长，尝试从音频文件获取
+    if (!durationSeconds && downloadResult.audioPath) {
+      durationSeconds = await this.getAudioDuration(downloadResult.audioPath)
+    }
+
+    // 3. 如果音频文件也没有，尝试从视频文件获取
+    if (!durationSeconds && downloadResult.videoPath) {
+      durationSeconds = await this.getAudioDuration(downloadResult.videoPath)
+    }
+
+    // 4. 检查时长限制
+    if (durationSeconds) {
+      const durationHours = Math.round(durationSeconds / 3600 * 100) / 100
+      Logger.debug(`📊 时长检查: ${taskId} - ${durationHours}小时`)
+
+      if (durationSeconds > maxDurationSeconds) {
+        Logger.error(`❌ 时长超限: ${taskId} - ${durationHours}小时 > ${maxDurationHours}小时`)
+        throw new DurationExceededError()
+      }
+    } else {
+      Logger.warn(`⚠️ 无法获取时长信息: ${taskId}，跳过时长检查`)
+    }
+  }
+
+  /**
+   * 获取音频文件时长（使用 ffprobe）
+   */
+  private async getAudioDuration(filePath: string): Promise<number | null> {
+    try {
+      const { exec } = await import('child_process')
+      const { promisify } = await import('util')
+      const execAsync = promisify(exec)
+
+      const command = `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${filePath}"`
+      const { stdout } = await execAsync(command)
+      
+      const duration = parseFloat(stdout.trim())
+      return isNaN(duration) ? null : duration
+    } catch (error) {
+      Logger.warn(`⚠️ 获取文件时长失败: ${filePath} - ${error}`)
+      return null
     }
   }
 } 
