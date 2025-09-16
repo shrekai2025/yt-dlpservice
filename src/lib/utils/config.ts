@@ -13,6 +13,7 @@ const DEFAULT_CONFIG = {
   AUDIO_BITRATE: '128k',
   MAX_FILE_AGE_HOURS: '1',
   CLEANUP_INTERVAL_HOURS: '24',
+  LOG_MAX_SIZE_MB: '10',
 } as const
 
 export class ConfigManager {
@@ -152,6 +153,7 @@ export class ConfigManager {
       audioBitrate: await this.get('AUDIO_BITRATE'),
       maxFileAgeHours: parseInt(await this.get('MAX_FILE_AGE_HOURS')),
       cleanupIntervalHours: parseInt(await this.get('CLEANUP_INTERVAL_HOURS')),
+      logMaxSizeMB: parseInt(await this.get('LOG_MAX_SIZE_MB')),
     }
   }
 } 

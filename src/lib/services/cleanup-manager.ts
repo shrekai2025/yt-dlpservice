@@ -140,6 +140,9 @@ export class CleanupManager {
     const voiceTestTempCount = await this.cleanupVoiceTestTempFiles(cutoffTime)
     tempFilesCount += voiceTestTempCount
 
+    // 4. 清理日志文件（按大小轮转）
+    await this.cleanupLogFile()
+
     const logLevel = isManual ? 'info' : 'debug'
     Logger[logLevel](`文件清理完成 - 临时文件: ${tempFilesCount}, 已完成任务: ${completedTasksCount}, 总大小: ${this.formatBytes(totalSizeCleared)}`)
 
@@ -376,6 +379,45 @@ export class CleanupManager {
     ]
 
     return protectedPatterns.some(pattern => pattern.test(filePath))
+  }
+
+  /**
+   * 清理日志文件（按大小轮转）
+   */
+  private async cleanupLogFile(): Promise<void> {
+    try {
+      const config = await ConfigManager.getTyped()
+      const logFilePath = './logs/app.log'
+      const maxSizeBytes = config.logMaxSizeMB * 1024 * 1024 // 转换为字节
+
+      // 检查日志文件是否存在
+      try {
+        const stats = await fs.stat(logFilePath)
+        
+        if (stats.size >= maxSizeBytes) {
+          Logger.debug(`日志文件大小 ${this.formatBytes(stats.size)} 超过限制 ${config.logMaxSizeMB}MB，正在重置`)
+          
+          // 直接删除并重新创建空文件
+          await fs.unlink(logFilePath)
+          
+          // 确保目录存在
+          await fs.mkdir(path.dirname(logFilePath), { recursive: true })
+          
+          // 创建新的空日志文件
+          await fs.writeFile(logFilePath, '')
+          
+          Logger.debug('日志文件已重置')
+        }
+      } catch (error: any) {
+        if (error.code !== 'ENOENT') {
+          // 如果不是文件不存在的错误，记录警告
+          Logger.warn(`检查日志文件失败: ${error.message}`)
+        }
+        // 文件不存在是正常情况，不需要处理
+      }
+    } catch (error) {
+      Logger.error(`日志文件清理失败: ${error}`)
+    }
   }
 
   /**

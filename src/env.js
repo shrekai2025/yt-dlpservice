@@ -60,6 +60,9 @@ export const env = createEnv({
     MAX_FILE_AGE_HOURS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("1"),
     CLEANUP_INTERVAL_HOURS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("24"),
     
+    // 日志文件配置
+    LOG_MAX_SIZE_MB: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("10"),
+    
     // 音频压缩配置
     AUDIO_COMPRESSION_ENABLED: z.string().transform(val => val === 'true').default('true'),
     AUDIO_COMPRESSION_TEMP_DIR: z.string().default('./temp/compression'),
@@ -127,6 +130,8 @@ export const env = createEnv({
     
     MAX_FILE_AGE_HOURS: process.env.MAX_FILE_AGE_HOURS,
     CLEANUP_INTERVAL_HOURS: process.env.CLEANUP_INTERVAL_HOURS,
+    
+    LOG_MAX_SIZE_MB: process.env.LOG_MAX_SIZE_MB,
     
     AUDIO_COMPRESSION_ENABLED: process.env.AUDIO_COMPRESSION_ENABLED,
     AUDIO_COMPRESSION_TEMP_DIR: process.env.AUDIO_COMPRESSION_TEMP_DIR,
