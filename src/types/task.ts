@@ -7,6 +7,9 @@ export type TaskStatus = 'PENDING' | 'EXTRACTING' | 'TRANSCRIBING' | 'COMPLETED'
 // 下载类型
 export type DownloadType = 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
 
+// STT服务提供商类型
+export type SttProvider = 'google' | 'doubao' | 'doubao-small' | 'tingwu'
+
 // 视频信息接口
 export interface VideoInfo {
   id: string
@@ -26,6 +29,7 @@ export interface CreateTaskInput {
   url: string
   downloadType?: DownloadType // 新增下载类型参数，默认为 AUDIO_ONLY
   compressionPreset?: CompressionPreset // 音频压缩预设，默认为 none
+  sttProvider?: SttProvider // STT服务提供商，默认为全局配置
 }
 
 // 压缩预设类型

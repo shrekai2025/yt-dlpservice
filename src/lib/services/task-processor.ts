@@ -355,17 +355,28 @@ export class TaskProcessor {
       await this.updateTaskStatus(taskId, 'TRANSCRIBING')
       Logger.info(`📝 任务状态已更新为转录中: ${taskId}`)
       
-      // 从配置中获取语音服务提供商
-      Logger.info(`🔧 获取语音服务配置: ${taskId}`)
-      let provider: string;
-      try {
-        provider = await ConfigManager.get('voice_service_provider');
-      } catch {
-        // 如果配置不存在，使用环境变量或默认值
-        provider = env.VOICE_SERVICE_PROVIDER;
-      }
+      // 获取任务的STT服务提供商配置
+      Logger.info(`🔧 获取任务的STT服务配置: ${taskId}`)
+      const task = await db.task.findUnique({
+        where: { id: taskId },
+        select: { sttProvider: true }
+      })
       
-      Logger.info(`🚀 使用语音服务提供商: ${taskId} - ${provider}`)
+      let provider: string;
+      if (task?.sttProvider) {
+        // 优先使用任务级别的配置
+        provider = task.sttProvider;
+        Logger.info(`📌 使用任务级别的STT服务提供商: ${taskId} - ${provider}`)
+      } else {
+        // 回退到全局配置
+        try {
+          provider = await ConfigManager.get('voice_service_provider');
+        } catch {
+          // 如果配置不存在，使用环境变量或默认值
+          provider = env.VOICE_SERVICE_PROVIDER;
+        }
+        Logger.info(`📌 使用全局STT服务提供商: ${taskId} - ${provider}`)
+      }
       
       let transcription = ''
       

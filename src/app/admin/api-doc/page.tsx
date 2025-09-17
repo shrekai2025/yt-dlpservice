@@ -91,7 +91,8 @@ export default function ApiDocPage() {
                     <pre className="mt-1">{`{
   url: string,                    // 视频URL
   downloadType: enum,             // 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
-  compressionPreset?: enum        // 'none' | 'light' | 'standard' | 'heavy' (可选)
+  compressionPreset?: enum,       // 'none' | 'light' | 'standard' | 'heavy' (可选)
+  sttProvider?: enum              // 'google' | 'doubao' | 'doubao-small' | 'tingwu' (可选)
 }`}</pre>
                   </div>
                 </div>
@@ -713,7 +714,8 @@ export default function ApiDocPage() {
                       <pre className="bg-gray-50 p-3 rounded text-sm overflow-x-auto"><code>{`{
   "url": "https://www.youtube.com/watch?v=example",
   "downloadType": "AUDIO_ONLY",  // AUDIO_ONLY | VIDEO_ONLY | BOTH
-  "compressionPreset": "standard"  // none | light | standard | heavy (可选)
+  "compressionPreset": "standard",  // none | light | standard | heavy (可选)
+  "sttProvider": "doubao-small"  // google | doubao | doubao-small | tingwu (可选)
 }`}</code></pre>
                     </div>
                     
@@ -727,12 +729,44 @@ export default function ApiDocPage() {
     "platform": "youtube",
     "downloadType": "AUDIO_ONLY",
     "compressionPreset": "standard",
+    "sttProvider": "doubao-small",
     "status": "PENDING",
     "createdAt": "2024-01-01T00:00:00.000Z",
     "updatedAt": "2024-01-01T00:00:00.000Z"
   },
   "message": "任务创建成功，下载类型：仅音频，压缩设置：标准压缩"
 }`}</code></pre>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-4 bg-blue-50 rounded-lg">
+                    <h4 className="text-sm font-medium mb-2">参数说明</h4>
+                    <div className="space-y-2 text-sm">
+                      <div><strong>url</strong> (必需): 视频链接，支持YouTube、Bilibili、小宇宙、Apple Podcasts等平台</div>
+                      <div><strong>downloadType</strong> (可选): 下载类型
+                        <ul className="ml-4 mt-1 list-disc text-xs text-gray-600">
+                          <li><code>AUDIO_ONLY</code> - 仅下载音频（默认）</li>
+                          <li><code>VIDEO_ONLY</code> - 仅下载视频</li>
+                          <li><code>BOTH</code> - 同时下载视频和音频</li>
+                        </ul>
+                      </div>
+                      <div><strong>compressionPreset</strong> (可选): 音频压缩设置
+                        <ul className="ml-4 mt-1 list-disc text-xs text-gray-600">
+                          <li><code>none</code> - 无压缩（默认）</li>
+                          <li><code>light</code> - 轻度压缩，减少30-50%文件大小</li>
+                          <li><code>standard</code> - 标准压缩，减少50-70%文件大小</li>
+                          <li><code>heavy</code> - 高度压缩，减少70-85%文件大小</li>
+                        </ul>
+                      </div>
+                      <div><strong>sttProvider</strong> (可选): 语音识别服务提供商
+                        <ul className="ml-4 mt-1 list-disc text-xs text-gray-600">
+                          <li><code>google</code> - Google Speech-to-Text（高精度，支持多语言）</li>
+                          <li><code>doubao</code> - 豆包语音API（实时版）</li>
+                          <li><code>doubao-small</code> - 豆包录音识别API（小模型版）</li>
+                          <li><code>tingwu</code> - 通义听悟API</li>
+                          <li>留空则使用系统默认配置</li>
+                        </ul>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1214,14 +1248,15 @@ curl -X POST http://localhost:3000/api/external/tasks \\
     "downloadType": "AUDIO_ONLY"
   }'
 
-# 创建音频任务（标准压缩）
+# 创建音频任务（标准压缩，使用豆包小模型STT）
 curl -X POST http://localhost:3000/api/external/tasks \\
   -H "X-API-Key: textget-api-key-demo" \\
   -H "Content-Type: application/json" \\
   -d '{
     "url": "https://www.xiaoyuzhoufm.com/episode/example",
     "downloadType": "AUDIO_ONLY",
-    "compressionPreset": "standard"
+    "compressionPreset": "standard",
+    "sttProvider": "doubao-small"
   }'
 
 # 创建Apple播客任务（最小音质）
@@ -1344,13 +1379,15 @@ class TextGetAPI:
             'Content-Type': 'application/json'
         }
     
-    def create_task(self, url, download_type='AUDIO_ONLY', compression_preset='none'):
+    def create_task(self, url, download_type='AUDIO_ONLY', compression_preset='none', stt_provider=None):
         """创建下载任务"""
         data = {
             'url': url,
             'downloadType': download_type,
             'compressionPreset': compression_preset
         }
+        if stt_provider:
+            data['sttProvider'] = stt_provider
         response = requests.post(
             f'{self.base_url}/tasks',
             headers=self.headers,
@@ -1510,6 +1547,18 @@ if __name__ == "__main__":
                     <li>妥善处理网络错误和超时</li>
                     <li>对于 401 错误，检查 API Key 配置</li>
                     <li>对于 400 错误，检查请求参数格式</li>
+                    <li>任务失败时检查 errorMessage 字段获取详细信息</li>
+                  </ul>
+                </div>
+                
+                <div>
+                  <h3 className="font-medium mb-2">📏 任务限制</h3>
+                  <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                    <li><strong>文件大小限制</strong>：单个文件不能超过 300MB（默认）</li>
+                    <li><strong>时长限制</strong>：内容时长不能超过 2小时（默认）</li>
+                    <li>超出限制的任务会自动失败，错误信息分别为"文件超大"或"内容超长"</li>
+                    <li>限制值可通过环境变量 MAX_FILE_SIZE_MB 和 MAX_DURATION_HOURS 调整</li>
+                    <li>失败任务的文件会在1小时后自动清理</li>
                   </ul>
                 </div>
                 

@@ -646,6 +646,10 @@ pm2 logs yt-dlpservice --lines 50
 MAX_FILE_AGE_HOURS="1"          # 文件保留时长，数值越小清得越快
 CLEANUP_INTERVAL_HOURS="24"     # 自动清理周期，建议 12~24 小时
 TEMP_DIR="/tmp/yt-dlpservice"   # 临时目录位置
+
+# 任务限制配置
+MAX_FILE_SIZE_MB="300"          # 最大文件大小限制（MB）
+MAX_DURATION_HOURS="2"          # 最大内容时长限制（小时）
 ```
 
 - 若磁盘较小或任务量大，可将 `MAX_FILE_AGE_HOURS` 下调至 0.5~1 小时

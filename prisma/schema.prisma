@@ -42,6 +42,7 @@ model Task {
   // 转录相关
   transcription String?    // 转录文本
   tingwuTaskId  String?    // 通义转录任务ID
+  sttProvider   String?    // STT服务提供商 (google, doubao, doubao-small, tingwu)
   
   // 元数据
   duration      Int?       // 视频时长（秒）

@@ -7,6 +7,7 @@ export default function TaskManagementPage() {
   const [url, setUrl] = useState("")
   const [downloadType, setDownloadType] = useState<"AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH">("AUDIO_ONLY")
   const [compressionPreset, setCompressionPreset] = useState<"none" | "light" | "standard" | "heavy">("none")
+  const [sttProvider, setSttProvider] = useState<"google" | "doubao" | "doubao-small" | "tingwu" | undefined>(undefined)
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false)
   const [selectedTranscription, setSelectedTranscription] = useState<{taskId: string, text: string} | null>(null)
 
@@ -22,6 +23,7 @@ export default function TaskManagementPage() {
       setUrl("")
       setDownloadType("AUDIO_ONLY")
       setCompressionPreset("none")
+      setSttProvider(undefined)
       refetchTasks()
     },
   })
@@ -38,7 +40,12 @@ export default function TaskManagementPage() {
     if (!url.trim()) return
 
     try {
-      await createTask.mutateAsync({ url: url.trim(), downloadType, compressionPreset })
+      await createTask.mutateAsync({ 
+        url: url.trim(), 
+        downloadType, 
+        compressionPreset,
+        sttProvider 
+      })
     } catch (error) {
       console.error("Failed to create task:", error)
     }
@@ -352,6 +359,27 @@ export default function TaskManagementPage() {
                 <li><strong>高度压缩</strong>：文件过大时使用，满足豆包API 80MB限制</li>
               </ul>
             </div>
+          </div>
+
+          <div>
+            <label htmlFor="sttProvider" className="block text-sm font-medium text-gray-700 mb-2">
+              语音识别提供商
+            </label>
+            <select
+              id="sttProvider"
+              value={sttProvider || ""}
+              onChange={(e) => setSttProvider(e.target.value ? e.target.value as "google" | "doubao" | "doubao-small" | "tingwu" : undefined)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">使用系统默认设置</option>
+              <option value="google">Google Speech-to-Text (高精度，支持多语言)</option>
+              <option value="doubao">豆包语音API (实时版)</option>
+              <option value="doubao-small">豆包录音识别API (小模型版)</option>
+              <option value="tingwu">通义听悟API</option>
+            </select>
+            <p className="mt-1 text-sm text-gray-500">
+              可选择特定的语音识别服务，留空则使用系统默认配置。不同服务商在识别精度和语言支持上各有特色。
+            </p>
           </div>
           
           <button

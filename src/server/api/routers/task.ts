@@ -41,6 +41,7 @@ export const taskRouter = createTRPCRouter({
             platform,
             downloadType: input.downloadType,
             compressionPreset: input.compressionPreset,
+            sttProvider: input.sttProvider,
             status: 'PENDING'
           }
         })
