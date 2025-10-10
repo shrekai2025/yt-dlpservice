@@ -50,7 +50,7 @@ interface V1RecognitionConfig {
 interface V2RecognitionConfig {
   model: string
   languageCodes: string[]
-  autoDecodingConfig?: {}  // 空对象表示自动检测编码，Google V2 API会自动处理
+  autoDecodingConfig?: Record<string, never>  // 空对象表示自动检测编码，Google V2 API会自动处理
   features?: {
     enableAutomaticPunctuation?: boolean
     maxAlternatives?: number
@@ -90,7 +90,7 @@ interface V2BatchRecognizeRequest {
   config: V2RecognitionConfig
   files: V2BatchRecognizeFileMetadata[]
   recognitionOutputConfig: {
-    inlineResponseConfig?: {}
+    inlineResponseConfig?: Record<string, never>
     gcsOutputConfig?: {
       uri: string
     }
@@ -179,7 +179,8 @@ class GoogleSpeechService {
   private credentials: GoogleCredentials | null = null
   private accessToken: string | null = null
   private tokenExpiration: number = 0
-  
+  private currentLanguageCode: string = 'cmn-Hans-CN' // 当前使用的语言代码
+
   // V2 API区域端点配置
   private readonly V2_REGION_ENDPOINTS = {
     'asia-southeast1': 'https://asia-southeast1-speech.googleapis.com', // 中文支持
@@ -192,17 +193,17 @@ class GoogleSpeechService {
   private readonly REGION_LANGUAGE_MAP = {
     'asia-southeast1': {
       languages: ['cmn-Hans-CN', 'cmn-Hant-TW', 'yue-Hant-HK'],
-      model: 'chirp',
+      model: 'chirp_2', // V2 API chirp_2 模型支持中文
       description: '中文专用区域'
     },
     'asia-northeast1': {
       languages: ['en-US', 'ja-JP'],
-      model: 'long', // 或 short
+      model: 'chirp_2', // V2 API chirp_2 模型支持英语和日语
       description: '英日文专用区域'
     },
     'us-central1': {
       languages: ['en-US', 'es-ES', 'fr-FR', 'de-DE'], // 更多语言
-      model: 'latest',
+      model: 'chirp_2', // V2 API chirp_2 模型支持多语言
       description: '多语言支持区域'
     }
   }
@@ -1076,21 +1077,30 @@ class GoogleSpeechService {
     languages: string[],
     model: string
   } {
-    // 优先级策略：
-    // 1. 中文优先：asia-southeast1 (chirp模型支持多语言)
-    // 2. 英文备选：asia-northeast1  
-    // 3. 全球备选：us-central1
-    
-    const primaryRegion = 'asia-southeast1' // 主选区域（chirp模型支持中英文）
-    const config = this.REGION_LANGUAGE_MAP[primaryRegion]
-    
-    Logger.debug(`🌍 选择区域: ${primaryRegion} (${config.description})`)
-    Logger.debug(`💬 支持语言: ${config.languages.join(', ')}`)
+    // 根据当前语言代码选择最佳区域
+    let selectedRegion: string
+
+    // 根据语言代码选择区域
+    if (this.currentLanguageCode.startsWith('cmn-') || this.currentLanguageCode.startsWith('yue-')) {
+      // 中文语言 -> asia-southeast1
+      selectedRegion = 'asia-southeast1'
+    } else if (this.currentLanguageCode === 'en-US' || this.currentLanguageCode === 'ja-JP') {
+      // 英语或日语 -> asia-northeast1
+      selectedRegion = 'asia-northeast1'
+    } else {
+      // 其他语言 -> us-central1
+      selectedRegion = 'us-central1'
+    }
+
+    const config = this.REGION_LANGUAGE_MAP[selectedRegion]
+
+    Logger.debug(`🌍 根据语言 ${this.currentLanguageCode} 选择区域: ${selectedRegion} (${config.description})`)
+    Logger.debug(`💬 区域支持语言: ${config.languages.join(', ')}`)
     Logger.debug(`🤖 使用模型: ${config.model}`)
-    
+
     return {
-      region: primaryRegion,
-      endpoint: this.V2_REGION_ENDPOINTS[primaryRegion],
+      region: selectedRegion,
+      endpoint: this.V2_REGION_ENDPOINTS[selectedRegion],
       languages: config.languages,
       model: config.model
     }
@@ -1127,26 +1137,21 @@ class GoogleSpeechService {
    */
   private buildV2RecognitionConfig(isLongRunning: boolean = false): V2RecognitionConfig {
     const endpoints = this.getV2Endpoints()
-    
+
     Logger.debug(`🎵 使用Google V2自动音频编码检测`)
-    
-    // 针对asia-southeast1区域的chirp模型，只能使用单一语言
-    // 根据Google API文档：chirp模型不支持多语言识别，asia-southeast1区域也不支持多语言
-    let languageCodes: string[]
-    
-    if (endpoints.region === 'asia-southeast1' && endpoints.model === 'chirp') {
-      // 对于中文专用区域的chirp模型，只使用简体中文
-      languageCodes = ['cmn-Hans-CN']
-      Logger.debug(`🌍 asia-southeast1区域chirp模型使用单语言: ${languageCodes[0]}`)
-    } else {
-      // 其他区域和模型可以使用配置的多语言
-      languageCodes = endpoints.supportedLanguages
-      Logger.debug(`🌍 ${endpoints.region}区域${endpoints.model}模型使用多语言: ${languageCodes.join(', ')}`)
-    }
-    
+    Logger.debug(`🌐 使用语言代码: ${this.currentLanguageCode}`)
+
+    // 使用当前设置的语言代码
+    const languageCodes = [this.currentLanguageCode]
+
+    // 使用根据区域和语言选择的模型
+    const model = endpoints.model
+
+    Logger.debug(`🌍 使用语言: ${languageCodes[0]}, 模型: ${model}, 区域: ${endpoints.region}`)
+
     return {
-      model: endpoints.model,  // 根据区域自动选择模型
-      languageCodes,  // 使用智能调整后的语言配置
+      model,  // 使用区域推荐的模型
+      languageCodes,  // 使用指定的语言配置
       autoDecodingConfig: {},  // 空对象，让Google API自动检测音频编码格式
       features: {
         enableAutomaticPunctuation: true,
@@ -1454,9 +1459,18 @@ class GoogleSpeechService {
   /**
    * 主入口：语音转文字
    */
-  public async speechToText(audioPath: string, progressCallback?: (progress: string) => void): Promise<string> {
+  public async speechToText(audioPath: string, progressCallback?: (progress: string) => void, languageCode?: string): Promise<string> {
     try {
       Logger.info(`🎤 开始Google Speech语音识别: ${audioPath}`)
+
+      // 设置语言代码（如果提供）
+      if (languageCode) {
+        this.currentLanguageCode = languageCode
+        Logger.info(`🌐 使用指定语言: ${languageCode}`)
+      } else {
+        this.currentLanguageCode = 'cmn-Hans-CN'  // 默认简体中文
+        Logger.info(`🌐 使用默认语言: cmn-Hans-CN`)
+      }
 
       // 初始化服务
       await this.initialize()

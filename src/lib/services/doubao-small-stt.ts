@@ -701,22 +701,48 @@ class DoubaoSmallSTTService {
    */
   public async checkServiceStatus(): Promise<{available: boolean, message: string}> {
     try {
-      await this.ensureInitialized();
-      
+      // 先检查配置是否完整（不初始化）
+      const missingConfigs: string[] = [];
+
+      // 尝试加载配置
+      try {
+        await this.loadConfiguration();
+      } catch (error) {
+        // 加载失败，返回配置错误
+        Logger.error(`❌ 豆包小模型配置加载失败: ${error}`);
+        return {
+          available: false,
+          message: `配置加载失败: ${error instanceof Error ? error.message : 'Unknown error'}`
+        };
+      }
+
+      // 检查必需配置
+      if (!this.appId) missingConfigs.push('DOUBAO_SMALL_APP_ID');
+      if (!this.token) missingConfigs.push('DOUBAO_SMALL_TOKEN');
+      if (!this.cluster) missingConfigs.push('DOUBAO_SMALL_CLUSTER');
+      if (!this.tosAccessKeyId) missingConfigs.push('TOS_ACCESS_KEY_ID');
+      if (!this.tosSecretAccessKey) missingConfigs.push('TOS_SECRET_ACCESS_KEY');
+
+      if (missingConfigs.length > 0) {
+        const message = `配置不完整，缺少: ${missingConfigs.join(', ')}`;
+        Logger.warn(`⚠️ ${message}`);
+        return {
+          available: false,
+          message
+        };
+      }
+
       Logger.info(`🔍 检查豆包小模型服务状态...`);
-      
-      // 检查配置完整性
-      this.validateConfiguration();
-      
+
       // 简单的网络连接测试
       const testUrl = `https://${this.endpoint}`;
       const response = await axios.get(testUrl, {
         timeout: 10000,
         validateStatus: () => true
       });
-      
+
       const isNetworkOk = response.status < 500;
-      
+
       if (isNetworkOk) {
         Logger.info(`✅ 豆包小模型服务状态正常`);
         return {
@@ -730,12 +756,12 @@ class DoubaoSmallSTTService {
           message: `网络连接异常: ${response.status}`
         };
       }
-      
+
     } catch (error: any) {
       Logger.error(`❌ 豆包小模型服务状态检查失败: ${error.message}`);
       return {
         available: false,
-        message: `服务不可用: ${error.message}`
+        message: `服务检查失败: ${error.message}`
       };
     }
   }

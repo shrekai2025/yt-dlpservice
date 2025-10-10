@@ -359,9 +359,9 @@ export class TaskProcessor {
       Logger.info(`🔧 获取任务的STT服务配置: ${taskId}`)
       const task = await db.task.findUnique({
         where: { id: taskId },
-        select: { sttProvider: true }
+        select: { sttProvider: true, googleSttLanguage: true }
       })
-      
+
       let provider: string;
       if (task?.sttProvider) {
         // 优先使用任务级别的配置
@@ -377,9 +377,9 @@ export class TaskProcessor {
         }
         Logger.info(`📌 使用全局STT服务提供商: ${taskId} - ${provider}`)
       }
-      
+
       let transcription = ''
-      
+
       if (provider === 'doubao') {
         // 使用豆包语音API
         Logger.info(`🎯 调用豆包语音API: ${taskId}`)
@@ -395,7 +395,8 @@ export class TaskProcessor {
       } else if (provider === 'google') {
         // 使用Google Speech-to-Text API
         Logger.info(`🎯 调用Google Speech-to-Text API: ${taskId}`)
-        transcription = await this.processWithGoogleSTT(audioPath, taskId)
+        const googleLanguage = task?.googleSttLanguage || undefined
+        transcription = await this.processWithGoogleSTT(audioPath, taskId, googleLanguage)
       } else {
         Logger.error(`❌ 不支持的语音服务提供商: ${taskId} - ${provider}`)
         throw new Error(`不支持的语音服务提供商: ${provider}`)
@@ -615,33 +616,36 @@ export class TaskProcessor {
   /**
    * 使用Google Speech-to-Text API进行转录
    */
-  private async processWithGoogleSTT(audioPath: string, taskId?: string): Promise<string> {
+  private async processWithGoogleSTT(audioPath: string, taskId?: string, languageCode?: string): Promise<string> {
     try {
       Logger.info(`🔍 检查Google Speech服务状态 - 文件: ${audioPath}`)
-      
+
       const googleSttService = GoogleSpeechService.getInstance()
-      
+
       // 检查服务状态
       const status = await googleSttService.checkServiceStatus()
       Logger.info(`🟢 Google Speech服务状态: 可用=${status.available}, 消息=${status.message}`)
-      
+
       if (!status.available) {
         Logger.error(`❌ Google Speech服务不可用: ${status.message}`)
         throw new Error(`Google Speech服务不可用: ${status.message}`)
       }
-      
+
       Logger.info(`🎤 开始调用Google Speech-to-Text API - 文件: ${audioPath}`)
-      
+      if (languageCode) {
+        Logger.info(`🌐 语言设置: ${languageCode}`)
+      }
+
       // 创建进度回调函数
       const progressCallback = taskId ? (progress: string) => {
         this.updateTaskProgress(taskId, progress).catch(error => {
           Logger.warn(`⚠️ 更新任务进度失败: ${error}`)
         })
       } : undefined
-      
+
       // 进行语音识别（Google SDK内部已包含重试机制）
       const startTime = Date.now()
-      const transcription = await googleSttService.speechToText(audioPath, progressCallback)
+      const transcription = await googleSttService.speechToText(audioPath, progressCallback, languageCode)
       const duration = Date.now() - startTime
       
       Logger.info(`⏱️ Google STT调用完成 - 耗时: ${duration}ms`)
@@ -898,7 +902,7 @@ export class TaskProcessor {
 
       // 根据平台创建特定数据结构
       let platformData: any = {}
-      let comments: any[] = [] // yt-dlp不提供评论，等待爬虫补充
+      const comments: any[] = [] // yt-dlp不提供评论，等待爬虫补充
 
       if (platform === 'youtube') {
         platformData = {

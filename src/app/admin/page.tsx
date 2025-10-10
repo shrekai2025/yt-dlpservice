@@ -1,15 +1,49 @@
 "use client"
 
-import { useState } from "react"
-import { api } from "~/components/providers/trpc-provider"
+import { useEffect, useState } from 'react'
+
+import { Button } from '~/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '~/components/ui/card'
+import { Separator } from '~/components/ui/separator'
+import { Badge } from '~/components/ui/badge'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+import { cn } from '~/lib/utils/cn'
+import { api } from '~/components/providers/trpc-provider'
 
 export default function TaskManagementPage() {
   const [url, setUrl] = useState("")
   const [downloadType, setDownloadType] = useState<"AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH">("AUDIO_ONLY")
   const [compressionPreset, setCompressionPreset] = useState<"none" | "light" | "standard" | "heavy">("none")
   const [sttProvider, setSttProvider] = useState<"google" | "doubao" | "doubao-small" | "tingwu" | undefined>(undefined)
+  const [googleSttLanguage, setGoogleSttLanguage] = useState<"cmn-Hans-CN" | "en-US">("cmn-Hans-CN")
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false)
   const [selectedTranscription, setSelectedTranscription] = useState<{taskId: string, text: string} | null>(null)
+  const [toast, setToast] = useState<{ message: string; tone?: 'default' | 'success' | 'error' } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+
+  const showToast = (message: string, tone: 'default' | 'success' | 'error' = 'default') => {
+    setToast({ message, tone })
+  }
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), 4000)
+    return () => clearTimeout(timer)
+  }, [toast])
 
 
   // 数据查询
@@ -24,14 +58,33 @@ export default function TaskManagementPage() {
       setDownloadType("AUDIO_ONLY")
       setCompressionPreset("none")
       setSttProvider(undefined)
+      setGoogleSttLanguage("cmn-Hans-CN")
       refetchTasks()
+      showToast('任务创建成功', 'success')
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : '创建任务失败', 'error')
     },
   })
-  const processTask = api.task.process.useMutation()
-  const processPending = api.task.processPending.useMutation()
+  const processTask = api.task.process.useMutation({
+    onSuccess: () => showToast('已触发任务处理', 'success'),
+    onError: (error) => showToast(error instanceof Error ? error.message : '处理任务失败', 'error'),
+  })
+  const processPending = api.task.processPending.useMutation({
+    onSuccess: () => {
+      showToast('已触发等待任务处理', 'success')
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : '批量处理失败', 'error')
+    },
+  })
   const deleteTask = api.task.delete.useMutation({
     onSuccess: () => {
       refetchTasks()
+      showToast('任务已删除', 'success')
+    },
+    onError: (error) => {
+      showToast(error instanceof Error ? error.message : '删除任务失败', 'error')
     },
   })
 
@@ -40,11 +93,12 @@ export default function TaskManagementPage() {
     if (!url.trim()) return
 
     try {
-      await createTask.mutateAsync({ 
-        url: url.trim(), 
-        downloadType, 
+      await createTask.mutateAsync({
+        url: url.trim(),
+        downloadType,
         compressionPreset,
-        sttProvider 
+        sttProvider,
+        googleSttLanguage: sttProvider === 'google' ? googleSttLanguage : undefined
       })
     } catch (error) {
       console.error("Failed to create task:", error)
@@ -106,592 +160,449 @@ export default function TaskManagementPage() {
     }
   }
 
-  
+
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold text-center mb-8">任务管理</h1>
+    <div className="space-y-10">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">任务工作台</h1>
+        <div className="flex items-center gap-3 text-xs text-neutral-500">
+          <span className="uppercase tracking-wide">Chromium 下载器</span>
+          <Badge variant={downloaderStatus?.available ? 'success' : 'danger'}>
+            {downloaderStatus?.available ? '可用' : '未启动'}
+          </Badge>
+          {downloaderStatus?.version && (
+            <span className="text-neutral-400">yt-dlp v{downloaderStatus.version}</span>
+          )}
+        </div>
+      </div>
+      {toast && (
+        <div
+          className={cn(
+            'flex items-start justify-between gap-4 rounded-md border px-4 py-3 text-sm shadow-sm',
+            toast.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : toast.tone === 'success'
+              ? 'border-green-200 bg-green-50 text-green-700'
+              : 'border-neutral-200 bg-white text-neutral-600',
+          )}
+        >
+          <span className="leading-relaxed">{toast.message}</span>
+          <Button size="sm" variant="ghost" onClick={() => setToast(null)}>
+            关闭
+          </Button>
+        </div>
+      )}
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>删除任务</DialogTitle>
+            <DialogDescription>
+              确认删除任务 {deleteTarget ? `${deleteTarget.slice(0, 8)}…` : ''}。此操作不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (!deleteTarget) return
+                deleteTask.mutate({ id: deleteTarget })
+                setDeleteTarget(null)
+              }}
+              disabled={deleteTask.isPending}
+            >
+              {deleteTask.isPending ? '删除中…' : '删除'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* 下载器状态 */}
-      <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">系统状态</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm text-gray-600">下载器状态</div>
-            <div className={`font-semibold ${downloaderStatus?.available ? 'text-green-600' : 'text-red-600'}`}>
-              {downloaderStatus?.available ? '✅ 可用' : '❌ 不可用'}
+      <Card>
+        <CardHeader>
+          <CardTitle>任务统计</CardTitle>
+          <CardDescription>当前任务队列与状态分布概览。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-6 sm:grid-cols-5">
+            {[{
+              label: '总任务数',
+              value: stats?.total ?? 0,
+            }, {
+              label: '等待中',
+              value: stats?.byStatus?.pending ?? 0,
+            }, {
+              label: '处理中',
+              value: (stats?.byStatus?.extracting ?? 0) + (stats?.byStatus?.transcribing ?? 0),
+            }, {
+              label: '已完成',
+              value: stats?.byStatus?.completed ?? 0,
+            }, {
+              label: '失败',
+              value: stats?.byStatus?.failed ?? 0,
+            }].map((item) => (
+              <div key={item.label} className="space-y-2 rounded-md border border-neutral-200 p-4">
+                <span className="text-xs font-medium uppercase text-neutral-500">{item.label}</span>
+                <div className="text-2xl font-semibold tracking-tight text-neutral-900">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>创建新任务</CardTitle>
+          <CardDescription>选择下载配置、压缩预设和语音服务，加入任务队列。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleCreateTask} className="space-y-6">
+            <div className="space-y-2">
+              <label htmlFor="url" className="text-sm font-medium text-neutral-700">
+                视频 URL
+              </label>
+              <input
+                type="url"
+                id="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://"
+                className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                required
+              />
+              <p className="text-xs text-neutral-500">支持 YouTube、Bilibili、小宇宙、Apple 播客等平台。</p>
             </div>
-            {downloaderStatus?.version && (
-              <div className="text-xs text-gray-500">版本: {downloaderStatus.version}</div>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-neutral-700">下载类型</span>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[{ value: 'AUDIO_ONLY', label: '仅音频' }, { value: 'VIDEO_ONLY', label: '仅视频' }, { value: 'BOTH', label: '视频 + 音频' }].map(
+                  (option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setDownloadType(option.value as typeof downloadType)}
+                      className={cn(
+                        'rounded-md border border-neutral-200 px-3 py-2 text-sm transition-colors',
+                        downloadType === option.value
+                          ? 'border-neutral-900 bg-neutral-900 text-white'
+                          : 'hover:border-neutral-300 hover:bg-neutral-100',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ),
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-neutral-700">音频压缩</span>
+              <div className="grid gap-2 sm:grid-cols-4">
+                {[{ value: 'none', label: '不压缩' }, { value: 'light', label: '轻度' }, { value: 'standard', label: '标准' }, { value: 'heavy', label: '高度' }].map(
+                  (option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setCompressionPreset(option.value as typeof compressionPreset)}
+                      className={cn(
+                        'rounded-md border border-neutral-200 px-3 py-2 text-sm transition-colors',
+                        compressionPreset === option.value
+                          ? 'border-neutral-900 bg-neutral-900 text-white'
+                          : 'hover:border-neutral-300 hover:bg-neutral-100',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ),
+                )}
+              </div>
+              <p className="text-xs text-neutral-500">建议使用“标准”，兼顾音质与豆包 API 的 80MB 限制。</p>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-neutral-700">语音识别服务</span>
+              <div className="grid gap-2 sm:grid-cols-4">
+                {[{ value: undefined, label: '遵循默认' }, { value: 'doubao', label: '豆包' }, { value: 'doubao-small', label: '豆包小模型' }, { value: 'google', label: 'Google' }, { value: 'tingwu', label: '通义听悟' }].map(
+                  (option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => setSttProvider(option.value as typeof sttProvider)}
+                      className={cn(
+                        'rounded-md border border-neutral-200 px-3 py-2 text-sm transition-colors',
+                        sttProvider === option.value
+                          ? 'border-neutral-900 bg-neutral-900 text-white'
+                          : 'hover:border-neutral-300 hover:bg-neutral-100',
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ),
+                )}
+              </div>
+              <p className="text-xs text-neutral-500">留空表示使用系统默认语音服务配置。</p>
+            </div>
+
+            {sttProvider === 'google' && (
+              <div className="space-y-2">
+                <label htmlFor="googleSttLanguage" className="text-sm font-medium text-neutral-700">
+                  Google STT 语言
+                </label>
+                <select
+                  id="googleSttLanguage"
+                  value={googleSttLanguage}
+                  onChange={(e) => setGoogleSttLanguage(e.target.value as typeof googleSttLanguage)}
+                  className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
+                >
+                  <option value="cmn-Hans-CN">简体中文 (cmn-Hans-CN)</option>
+                  <option value="en-US">英语 (en-US)</option>
+                </select>
+                <p className="text-xs text-neutral-500">默认：简体中文 | 位置：us-central1 | 模型：chirp_2</p>
+              </div>
             )}
-          </div>
-          {/* 维护操作 */}
-          <div className="space-y-3">
-            <div className="text-sm text-gray-600">维护操作</div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/admin/maintenance/update', { method: 'POST' })
-                    const data = await res.json()
-                    if (data?.success) {
-                      alert('已开始更新，请稍等片刻，页面将自动刷新。')
-                      // 轮询状态，完成后刷新
-                      const poll = async () => {
-                        for (let i = 0; i < 30; i++) { // 最长约30*2s=60s
-                          await new Promise(r => setTimeout(r, 2000))
-                          const s = await fetch('/api/admin/maintenance/update-status')
-                          const j = await s.json()
-                          if (j?.status === 'OK' || j?.status === 'FAIL') {
-                            if (j?.status === 'OK') {
-                              location.reload()
-                            } else {
-                              alert('更新失败，请查看日志。')
-                            }
-                            return
-                          }
-                        }
-                      }
-                      poll()
-                    } else {
-                      alert('触发更新失败：' + (data?.error || 'Unknown error'))
-                    }
-                  } catch (e:any) {
-                    alert('触发更新异常：' + e.message)
-                  }
-                }}
-                className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600"
-              >
-                🔄 更新服务
-              </button>
 
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/admin/maintenance/tmux')
-                    const data = await res.json()
-                    const text = data?.output || '无输出'
-                    const w = window.open('', '_blank', 'width=720,height=480')
-                    if (w) {
-                      w.document.write('<pre style="white-space:pre-wrap;word-break:break-all;padding:12px;">' +
-                        String(text).replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>')
-                      w.document.title = 'tmux 会话列表'
-                    }
-                  } catch (e:any) {
-                    alert('检查失败：' + e.message)
-                  }
-                }}
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300"
-              >
-                🧪 检查Chromium运行情况
-              </button>
+            <Separator />
 
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/admin/maintenance/login-setup', { method: 'POST' })
-                    const data = await res.json()
-                    if (!data?.success) {
-                      alert('启动登录流程失败：' + (data?.error || 'Unknown error'))
-                      return
-                    }
-                    const guide = data.guidance
-                    const w = window.open('', '_blank', 'width=820,height=680')
-                    if (w) {
-                      w.document.title = '重新登录账号 - 操作指南'
-                      const html = `
-                        <div style="padding:16px; font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;">
-                          <h2>重新登录账号 - 操作指南</h2>
-                          <ol>
-                            <li>在你的本地电脑执行（保持窗口不关闭）：<pre>ssh -N -L 9222:localhost:9222 &lt;user&gt;@&lt;服务器IP&gt;</pre></li>
-                            <li>打开本机 Chrome 输入 <code>chrome://inspect/#devices</code>，点击 <b>Configure…</b>，添加 <code>localhost:9222</code></li>
-                            <li>在 Remote Target 中点击 <b>inspect</b>，在弹出的页面访问 <code>https://www.youtube.com</code> 完成登录（含二步验证）</li>
-                            <li>服务器验证命令：
-                              <pre>yt-dlp --cookies-from-browser "${guide?.cookiesFromBrowser || 'chromium:/home/<user>/chrome-profile/Default'}" --dump-json &lt;YouTubeURL&gt; | head -c 200</pre>
-                            </li>
-                          </ol>
-                          <p>你可随时在此页面查看登录流程日志：</p>
-                          <button onclick="(async()=>{const r=await fetch('/api/admin/maintenance/login-setup-status');const j=await r.json();const pre=document.getElementById('log');pre.textContent=j.logTail||'无日志';document.getElementById('status').textContent=j.status||'IDLE';})();" style="padding:6px 10px;">刷新登录日志</button>
-                          <div style="margin-top:8px;">状态：<span id="status">等待中</span></div>
-                          <pre id="log" style="white-space:pre-wrap;border:1px solid #ddd;padding:10px;border-radius:6px;max-height:260px;overflow:auto;"></pre>
-                        </div>`
-                      w.document.write(html)
-                    } else {
-                      alert('请允许弹窗以查看操作指南')
-                    }
-                  } catch (e:any) {
-                    alert('启动登录流程异常：' + e.message)
-                  }
-                }}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                🔐 重新登录账号
-              </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-xs text-neutral-500">
+                • 任务创建后会自动进入队列并立即处理。<br />• 如需访问受限视频，请提前配置 Cookie。
+              </div>
+              <Button type="submit" disabled={createTask.isPending}>
+                {createTask.isPending ? '创建中…' : '创建任务'}
+              </Button>
             </div>
-          </div>
-        </div>
-      </div>
+          </form>
+        </CardContent>
+      </Card>
 
-      {/* 快速导航 */}
-      <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">工具和测试</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <a 
-            href="/admin/test-scraper" 
-            className="flex items-center p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-          >
-            <div className="text-2xl mr-3">🕷️</div>
-            <div>
-              <div className="font-medium text-blue-900">元数据爬虫测试</div>
-              <div className="text-sm text-blue-700">测试各平台元数据抓取功能</div>
-            </div>
-          </a>
-          <a 
-            href="/admin/platforms" 
-            className="flex items-center p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
-          >
-            <div className="text-2xl mr-3">🎯</div>
-            <div>
-              <div className="font-medium text-green-900">平台管理</div>
-              <div className="text-sm text-green-700">管理支持的平台</div>
-            </div>
-          </a>
-          <a 
-            href="/admin/api-doc" 
-            className="flex items-center p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
-          >
-            <div className="text-2xl mr-3">📚</div>
-            <div>
-              <div className="font-medium text-purple-900">API文档</div>
-              <div className="text-sm text-purple-700">查看接口文档</div>
-            </div>
-          </a>
-        </div>
-      </div>
-
-      {/* 任务统计 */}
-      <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">任务统计</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">{stats?.total || 0}</div>
-            <div className="text-sm text-gray-600">总任务数</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-yellow-600">{stats?.byStatus?.pending || 0}</div>
-            <div className="text-sm text-gray-600">等待中</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">
-              {(stats?.byStatus?.extracting || 0) + (stats?.byStatus?.transcribing || 0)}
-            </div>
-            <div className="text-sm text-gray-600">处理中</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-green-600">{stats?.byStatus?.completed || 0}</div>
-            <div className="text-sm text-gray-600">已完成</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-red-600">{stats?.byStatus?.failed || 0}</div>
-            <div className="text-sm text-gray-600">失败</div>
-          </div>
-        </div>
-      </div>
-
-      {/* 创建任务 */}
-      <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">创建新任务</h2>
-        <form onSubmit={handleCreateTask} className="space-y-4">
-          <div>
-            <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-2">
-              视频 URL
-            </label>
-            <input
-              type="url"
-              id="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="请输入 YouTube 或 Bilibili 视频链接"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              required
-            />
-          </div>
-          
-          <div>
-            <label htmlFor="downloadType" className="block text-sm font-medium text-gray-700 mb-2">
-              下载类型
-            </label>
-            <select
-              id="downloadType"
-              value={downloadType}
-              onChange={(e) => setDownloadType(e.target.value as "AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH")}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="AUDIO_ONLY">仅音频 (用于语音转录)</option>
-              <option value="VIDEO_ONLY">仅视频 (不转录文字)</option>
-              <option value="BOTH">视频+音频 (完整备份)</option>
-            </select>
-            <p className="mt-1 text-sm text-gray-500">
-              默认选择"仅音频"适合语音转录需求，节省存储空间
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="compressionPreset" className="block text-sm font-medium text-gray-700 mb-2">
-              音频压缩设置
-            </label>
-            <select
-              id="compressionPreset"
-              value={compressionPreset}
-              onChange={(e) => setCompressionPreset(e.target.value as "none" | "light" | "standard" | "heavy")}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="none">不压缩 - 保持原始质量</option>
-              <option value="light">轻度压缩 - 减少30-50%文件大小</option>
-              <option value="standard">标准压缩 - 减少50-70%文件大小 (推荐)</option>
-              <option value="heavy">高度压缩 - 减少70-85%文件大小</option>
-            </select>
-            <div className="mt-1 text-sm text-gray-500">
-              <p>💡 压缩建议：</p>
-              <ul className="ml-4 list-disc">
-                <li><strong>轻度压缩</strong>：适合高质量音频需求</li>
-                <li><strong>标准压缩</strong>：平衡质量与大小，推荐语音转录</li>
-                <li><strong>高度压缩</strong>：文件过大时使用，满足豆包API 80MB限制</li>
-              </ul>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor="sttProvider" className="block text-sm font-medium text-gray-700 mb-2">
-              语音识别提供商
-            </label>
-            <select
-              id="sttProvider"
-              value={sttProvider || ""}
-              onChange={(e) => setSttProvider(e.target.value ? e.target.value as "google" | "doubao" | "doubao-small" | "tingwu" : undefined)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">使用系统默认设置</option>
-              <option value="google">Google Speech-to-Text (高精度，支持多语言)</option>
-              <option value="doubao">豆包语音API (实时版)</option>
-              <option value="doubao-small">豆包录音识别API (小模型版)</option>
-              <option value="tingwu">通义听悟API</option>
-            </select>
-            <p className="mt-1 text-sm text-gray-500">
-              可选择特定的语音识别服务，留空则使用系统默认配置。不同服务商在识别精度和语言支持上各有特色。
-            </p>
-          </div>
-          
-          <button
-            type="submit"
-            disabled={createTask.isPending}
-            className="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
-          >
-            {createTask.isPending ? "创建中..." : `创建任务 (${downloadType === 'AUDIO_ONLY' ? '仅音频' : downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频+音频'})`}
-          </button>
-        </form>
-      </div>
-
-      {/* YouTube Cookie管理 */}
-      <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">🍪 YouTube Cookie管理</h2>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-blue-800 font-medium">遇到"Sign in to confirm you're not a bot"错误？</span>
-          </div>
-          <p className="text-sm text-blue-700 mb-3">
-            这是YouTube的反机器人验证，需要设置有效的Cookie来解决。
-          </p>
-          <div className="flex gap-3">
-            <a
-              href="/admin/youtube-auth"
-              className="inline-flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              🔧 设置YouTube Cookie
-            </a>
-            <button
-              onClick={() => window.open('/admin/youtube-auth', '_blank')}
-              className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-            >
-              📋 查看设置指南
-            </button>
-          </div>
-        </div>
-        <div className="text-xs text-gray-600 space-y-1">
-          <p>• Cookie通常24-48小时后过期，需要定期更新</p>
-          <p>• 设置后立即生效，无需重启服务</p>
-          <p>• 支持从浏览器直接复制Cookie字符串</p>
-        </div>
-      </div>
-
-      {/* 批量操作 */}
-      <div className="mb-6 bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-semibold mb-4">批量操作</h2>
-        <div className="flex gap-2">
-          <button
+      <Card>
+        <CardHeader>
+          <CardTitle>批量操作</CardTitle>
+          <CardDescription>针对等待中的任务执行统一处理。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="subtle"
             onClick={() => processPending.mutate()}
             disabled={processPending.isPending}
-            className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
           >
-            {processPending.isPending ? "处理中..." : "处理所有等待任务"}
-          </button>
-        </div>
-      </div>
+            {processPending.isPending ? '处理中…' : '处理所有等待任务'}
+          </Button>
+        </CardContent>
+      </Card>
 
-      {/* 任务列表 */}
-      <div className="mt-8 bg-white rounded-lg shadow overflow-hidden">
-        <h2 className="text-xl font-semibold p-6 border-b">任务列表</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  ID
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  URL
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  平台
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  下载类型
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  压缩设置
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  状态
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  文件路径
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  创建时间
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  错误日志
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {tasks?.data?.map((task) => (
-                <tr key={task.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-mono">
-                    {task.id.slice(0, 8)}...
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 max-w-xs truncate">
-                    <a href={task.url} target="_blank" rel="noopener noreferrer">
-                      {task.url}
-                    </a>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    {task.platform}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                      task.downloadType === 'AUDIO_ONLY' ? 'bg-purple-100 text-purple-800' :
-                      task.downloadType === 'VIDEO_ONLY' ? 'bg-blue-100 text-blue-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                      {task.downloadType === 'AUDIO_ONLY' ? '仅音频' :
-                       task.downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频+音频'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <div className="space-y-1">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                        (task as any).compressionPreset === 'none' ? 'bg-gray-100 text-gray-800' :
-                        (task as any).compressionPreset === 'light' ? 'bg-yellow-100 text-yellow-800' :
-                        (task as any).compressionPreset === 'standard' ? 'bg-orange-100 text-orange-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {(task as any).compressionPreset === 'none' ? '不压缩' :
-                         (task as any).compressionPreset === 'light' ? '轻度' :
-                         (task as any).compressionPreset === 'standard' ? '标准' :
-                         (task as any).compressionPreset === 'heavy' ? '高度' : '未知'}
-                      </span>
-                      {(task as any).compressionRatio && (
-                        <div className="text-xs text-gray-500">
-                          压缩率: {((task as any).compressionRatio * 100).toFixed(1)}%
-                        </div>
-                      )}
-                      {(task as any).originalFileSize && (task as any).compressedFileSize && (
-                        <div className="text-xs text-gray-500">
-                          {Math.round((task as any).originalFileSize / 1024 / 1024)}MB → {Math.round((task as any).compressedFileSize / 1024 / 1024)}MB
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                      className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        task.status === "COMPLETED"
-                          ? "bg-green-100 text-green-800"
-                          : task.status === "FAILED"
-                          ? "bg-red-100 text-red-800"
-                          : task.status === "PENDING"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {task.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
-                    {task.videoPath && (
-                      <div className="font-mono" title={task.videoPath}>
-                        视频: {task.videoPath.split('/').pop()}
-                      </div>
-                    )}
-                    {task.audioPath && (
-                      <div className="font-mono mt-1" title={task.audioPath}>
-                        音频: {task.audioPath.split('/').pop()}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(task.createdAt).toLocaleString("zh-CN")}
-                  </td>
-                  <td className="px-6 py-4 text-sm">
-                    {(() => {
-                      const errorInfo = getErrorDisplay(task.errorMessage)
-                      if (!errorInfo.hasErrors) {
-                        return <span className="text-gray-400">无错误</span>
-                      }
-                      
-                      return (
-                        <div className="max-w-xs">
-                          <div className="text-xs text-red-600 font-mono truncate" title={errorInfo.latestError || ''}>
-                            {errorInfo.latestError}
+      <Card className="mt-10">
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>任务列表</CardTitle>
+            <CardDescription>查看任务状态、压缩信息与转录结果。</CardDescription>
+          </div>
+          <span className="text-xs text-neutral-500">共 {tasks?.total ?? 0} 条</span>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-neutral-200 bg-neutral-50 text-xs uppercase text-neutral-500">
+                <tr>
+                  <th className="px-5 py-3 text-left font-medium">ID</th>
+                  <th className="px-5 py-3 text-left font-medium">URL</th>
+                  <th className="px-5 py-3 text-left font-medium">平台</th>
+                  <th className="px-5 py-3 text-left font-medium">下载类型</th>
+                  <th className="px-5 py-3 text-left font-medium">压缩</th>
+                  <th className="px-5 py-3 text-left font-medium">状态</th>
+                  <th className="px-5 py-3 text-left font-medium">文件</th>
+                  <th className="px-5 py-3 text-left font-medium">创建时间</th>
+                  <th className="px-5 py-3 text-left font-medium">错误</th>
+                  <th className="px-5 py-3 text-left font-medium">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(tasks?.data ?? []).map((task) => {
+                  const compressionPreset = (task as any).compressionPreset as string | undefined
+                  const compressionRatio = (task as any).compressionRatio as number | undefined
+                  const compressionLabel =
+                    compressionPreset === 'light'
+                      ? '轻度'
+                      : compressionPreset === 'standard'
+                      ? '标准'
+                      : compressionPreset === 'heavy'
+                      ? '高度'
+                      : '不压缩'
+                  const statusBadgeVariant =
+                    task.status === 'COMPLETED' ? 'success' : task.status === 'FAILED' ? 'danger' : 'outline'
+
+                  return (
+                    <tr key={task.id} className="border-b border-neutral-100 last:border-0">
+                      <td className="px-5 py-4 font-mono text-xs text-neutral-600">{task.id.slice(0, 8)}…</td>
+                      <td className="px-5 py-4 max-w-xs truncate text-neutral-700">
+                        <a
+                          className="text-neutral-900 underline-offset-2 hover:underline"
+                          href={task.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {task.url}
+                        </a>
+                      </td>
+                      <td className="px-5 py-4 text-neutral-700">{task.platform}</td>
+                      <td className="px-5 py-4 text-neutral-700">
+                        <Badge variant={task.downloadType === 'AUDIO_ONLY' ? 'outline' : 'subtle'}>
+                          {task.downloadType === 'AUDIO_ONLY' ? '仅音频' : task.downloadType === 'VIDEO_ONLY' ? '仅视频' : '视频 + 音频'}
+                        </Badge>
+                      </td>
+                      <td className="px-5 py-4 space-y-1 text-neutral-700">
+                        <Badge variant={compressionPreset && compressionPreset !== 'none' ? 'subtle' : 'outline'}>
+                          {compressionLabel}
+                        </Badge>
+                        {typeof compressionRatio === 'number' && (
+                          <div className="text-xs text-neutral-500">压缩率 {Math.round(compressionRatio * 100)}%</div>
+                        )}
+                        {(task as any).originalFileSize && (task as any).compressedFileSize && (
+                          <div className="text-xs text-neutral-500">
+                            {Math.round((task as any).originalFileSize / 1024 / 1024)}MB → {Math.round((task as any).compressedFileSize / 1024 / 1024)}MB
                           </div>
-                          {errorInfo.totalErrors > 1 && (
-                            <div className="text-xs text-gray-500 mt-1">
-                              共 {errorInfo.totalErrors} 个错误
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <Badge variant={statusBadgeVariant}>{task.status}</Badge>
+                      </td>
+                      <td className="px-5 py-4 text-xs text-neutral-500">
+                        {task.videoPath && <div className="truncate" title={task.videoPath}>视频: {task.videoPath.split('/').pop()}</div>}
+                        {task.audioPath && <div className="truncate" title={task.audioPath}>音频: {task.audioPath.split('/').pop()}</div>}
+                      </td>
+                      <td className="px-5 py-4 text-xs text-neutral-500">{new Date(task.createdAt).toLocaleString('zh-CN')}</td>
+                      <td className="px-5 py-4 text-xs text-neutral-500">
+                        {(() => {
+                          const errorInfo = getErrorDisplay(task.errorMessage)
+                          if (!errorInfo.hasErrors) return <span>无</span>
+                          return (
+                            <div className="max-w-xs space-y-1">
+                              <span className="line-clamp-2 font-mono text-red-600" title={errorInfo.latestError || ''}>
+                                {errorInfo.latestError}
+                              </span>
+                              {errorInfo.totalErrors > 1 && (
+                                <span className="text-neutral-500">共 {errorInfo.totalErrors} 条</span>
+                              )}
                             </div>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          {task.status === 'PENDING' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => processTask.mutate({ id: task.id })}
+                              disabled={processTask.isPending}
+                            >
+                              {processTask.isPending ? '处理中…' : '处理'}
+                            </Button>
                           )}
-                        </div>
-                      )
-                    })()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                    {task.status === "PENDING" && (
-                      <button
-                        onClick={() => processTask.mutate({ id: task.id })}
-                        disabled={processTask.isPending}
-                        className="text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                      >
-                        {processTask.isPending ? "处理中..." : "处理"}
-                      </button>
-                    )}
-                    {task.status === "COMPLETED" && task.transcription && (
-                      <button
-                        onClick={() => handleShowTranscription(task)}
-                        className="text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-2 py-1 rounded text-xs font-medium transition-colors"
-                      >
-                        获取文本
-                      </button>
-                    )}
-                    {task.status === "COMPLETED" && (
-                      <button
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(`/api/admin/tasks/${task.id}`)
-                            const data = await res.json()
-                            if (data && typeof window !== 'undefined') {
-                              const w = window.open('', '_blank', 'width=800,height=600')
-                              if (w) {
-                                w.document.write('<pre style="white-space:pre-wrap;word-break:break-all;padding:12px;">' + 
-                                  JSON.stringify(data, null, 2).replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</pre>')
-                                w.document.title = `任务返回 - ${task.id}`
+                          {task.status === 'COMPLETED' && task.transcription && (
+                            <Button size="sm" variant="ghost" onClick={() => handleShowTranscription(task)}>
+                              获取文本
+                            </Button>
+                          )}
+                          {task.status === 'COMPLETED' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/admin/tasks/${task.id}`)
+                                  const data = await res.json()
+                                  if (data && typeof window !== 'undefined') {
+                                    const w = window.open('', '_blank', 'width=800,height=600')
+                                    if (w) {
+                                      w.document.write(
+                                        '<pre style="white-space:pre-wrap;word-break:break-all;padding:12px;">' +
+                                          JSON.stringify(data, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+                                          '</pre>',
+                                      )
+                                      w.document.title = `任务返回 - ${task.id}`
                               } else {
-                                alert('弹窗被浏览器拦截，请允许弹窗')
+                                showToast('弹窗被浏览器拦截，请允许弹窗', 'error')
                               }
                             }
                           } catch (e) {
-                            alert('获取返回数据失败')
+                            showToast('获取返回数据失败', 'error')
                           }
                         }}
-                        className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded text-xs font-medium transition-colors"
-                      >
-                        查看返回数据
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`确定要删除任务 ${task.id.slice(0,8)} 吗？`)) {
-                          deleteTask.mutate({ id: task.id })
-                        }
-                      }}
-                      disabled={deleteTask.isPending}
-                      className="text-red-600 hover:text-red-800 disabled:opacity-50"
-                    >
-                      删除
-                    </button>
-                    {task.title && (
-                      <div className="text-xs text-gray-500 mt-1" title={task.title}>
-                        {task.title.length > 20 ? task.title.slice(0, 20) + "..." : task.title}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              )) ?? []}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                            >
+                              查看返回数据
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteTarget(task.id)}
+                            disabled={deleteTask.isPending}
+                          >
+                            删除
+                          </Button>
+                        </div>
+                        {task.title && (
+                          <div className="mt-2 text-xs text-neutral-500" title={task.title}>
+                            {task.title.length > 36 ? `${task.title.slice(0, 36)}…` : task.title}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* 转录文本弹窗 */}
       {showTranscriptionModal && selectedTranscription && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
-            {/* 弹窗头部 */}
-            <div className="flex items-center justify-between p-6 border-b">
-              <h3 className="text-lg font-semibold text-gray-900">
-                转录文本 - 任务 {selectedTranscription.taskId.slice(0, 8)}...
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
+          <div className="flex w-full max-w-4xl max-h-[80vh] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
+              <h3 className="text-base font-semibold text-neutral-900">
+                转录文本 · {selectedTranscription.taskId.slice(0, 8)}…
               </h3>
-              <button
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
                 onClick={() => setShowTranscriptionModal(false)}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="关闭"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
                 </svg>
-              </button>
+              </Button>
             </div>
-            
-            {/* 弹窗内容 */}
-            <div className="flex-1 overflow-auto p-6">
-              <div className="bg-gray-50 rounded-lg p-4 border">
-                <div className="text-sm text-gray-600 mb-2">
-                  文本长度: {selectedTranscription.text.length} 字符
+            <div className="flex-1 overflow-auto px-6 py-5">
+              <div className="space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+                <div className="text-xs text-neutral-500">
+                  文本长度：{selectedTranscription.text.length} 字符
                 </div>
-                <div className="text-gray-800 leading-relaxed whitespace-pre-wrap font-mono text-sm">
-                  {selectedTranscription.text}
-                </div>
+                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-neutral-800">
+{selectedTranscription.text}
+                </pre>
               </div>
             </div>
-            
-            {/* 弹窗底部 */}
-            <div className="flex items-center justify-end space-x-3 p-6 border-t bg-gray-50">
-              <button
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-6 py-4">
+              <Button
+                variant="outline"
                 onClick={() => {
                   navigator.clipboard.writeText(selectedTranscription.text)
-                  alert('文本已复制到剪贴板')
+                  showToast('文本已复制到剪贴板', 'success')
                 }}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
               >
                 复制文本
-              </button>
-              <button
-                onClick={() => setShowTranscriptionModal(false)}
-                className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors"
-              >
+              </Button>
+              <Button variant="subtle" onClick={() => setShowTranscriptionModal(false)}>
                 关闭
-              </button>
+              </Button>
             </div>
           </div>
         </div>

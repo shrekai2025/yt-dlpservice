@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const { url, downloadType, compressionPreset, sttProvider } = validation.data
+    const { url, downloadType, compressionPreset, sttProvider, googleSttLanguage } = validation.data
 
     // 验证URL和获取平台信息
     const urlValidation = await validateVideoUrl(url)
@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
         downloadType,
         compressionPreset,
         sttProvider,
+        googleSttLanguage,
         status: 'PENDING'
       }
     })

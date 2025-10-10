@@ -69,6 +69,8 @@ google-credentials*.json
 *.backup.txt
 cookies*.backup*
 
+# 参考代码
+/genapihub-main
 
 # Logs
 /logs/

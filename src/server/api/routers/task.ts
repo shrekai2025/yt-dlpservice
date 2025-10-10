@@ -42,6 +42,7 @@ export const taskRouter = createTRPCRouter({
             downloadType: input.downloadType,
             compressionPreset: input.compressionPreset,
             sttProvider: input.sttProvider,
+            googleSttLanguage: input.googleSttLanguage,
             status: 'PENDING'
           }
         })
@@ -299,7 +300,7 @@ export const taskRouter = createTRPCRouter({
   // 获取视频信息
   getVideoInfo: publicProcedure
     .input(getVideoInfoSchema)
-    .query(async ({ input }) => {
+    .mutation(async ({ input }) => {
       try {
         // 验证URL
         const urlValidation = await validateVideoUrl(input.url)

@@ -19,7 +19,7 @@ const createTRPCClient = () => {
     links: [
       loggerLink({
         enabled: (opts) =>
-          process.env.NODE_ENV === "development" ||
+          // 只在出错时记录，避免误导性的调试日志
           (opts.direction === "down" && opts.result instanceof Error),
       }),
       httpBatchLink({

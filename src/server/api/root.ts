@@ -3,6 +3,11 @@ import { taskRouter } from "~/server/api/routers/task"
 import { configRouter } from "~/server/api/routers/config"
 import { browserRouter } from "~/server/api/routers/browser"
 import { cleanupRouter } from "~/server/api/routers/cleanup"
+import { sttRouter } from "~/server/api/routers/stt"
+import { generationRouter } from "~/server/api/routers/generation"
+import { apiKeysRouter } from "~/server/api/routers/api-keys"
+import { storageRouter } from "~/server/api/routers/storage"
+import { storageAdminRouter } from "~/server/api/routers/storage-admin"
 
 /**
  * This is the primary router for your server.
@@ -14,6 +19,11 @@ export const appRouter = createTRPCRouter({
   config: configRouter,
   browser: browserRouter,
   cleanup: cleanupRouter,
+  stt: sttRouter,
+  generation: generationRouter,
+  apiKeys: apiKeysRouter,
+  storage: storageRouter,
+  storageAdmin: storageAdminRouter,
 })
 
 // export type definition of API

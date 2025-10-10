@@ -68,12 +68,12 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
         const content = script.innerHTML
         if (content.includes('window.__INITIAL_STATE__') || content.includes('window.__DATA__')) {
           try {
-            let match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/) ||
+            const match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/) ||
                        content.match(/window\.__DATA__\s*=\s*({.+?});/)
             if (match) {
               const data = JSON.parse(match[1]!)
               const episode = data?.episode || data?.episodeDetail
-              
+
               return {
                 duration: episode?.duration || 0,
                 publishDate: episode?.pubDate ? new Date(episode.pubDate).toLocaleDateString() : ''
@@ -157,7 +157,7 @@ export class XiaoyuzhouScraper extends BasePlatformScraper {
         const content = script.innerHTML
         if (content.includes('window.__INITIAL_STATE__') || content.includes('window.__DATA__')) {
           try {
-            let match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/) ||
+            const match = content.match(/window\.__INITIAL_STATE__\s*=\s*({.+?});/) ||
                        content.match(/window\.__DATA__\s*=\s*({.+?});/)
             if (match) {
               const data = JSON.parse(match[1]!)

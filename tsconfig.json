@@ -44,6 +44,7 @@
     "scripts/**/*.js",
     "scripts/**/*.ts",
     "temp/**/*",
-    "logs/**/*"
+    "logs/**/*",
+    "genapihub-main/**/*"
   ]
 }

@@ -15,13 +15,15 @@ const taskStatusEnum = z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLET
 const downloadTypeEnum = z.enum(['AUDIO_ONLY', 'VIDEO_ONLY', 'BOTH'])
 const compressionPresetEnum = z.enum(['none', 'light', 'standard', 'heavy'])
 const sttProviderEnum = z.enum(['google', 'doubao', 'doubao-small', 'tingwu'])
+const googleSttLanguageEnum = z.enum(['cmn-Hans-CN', 'en-US'])
 
 // 创建任务验证
 export const createTaskSchema = z.object({
   url: urlSchema,
   downloadType: downloadTypeEnum.default('AUDIO_ONLY'),
   compressionPreset: compressionPresetEnum.default('none'),
-  sttProvider: sttProviderEnum.optional()
+  sttProvider: sttProviderEnum.optional(),
+  googleSttLanguage: googleSttLanguageEnum.optional()
 })
 
 // 更新任务验证

@@ -43,7 +43,8 @@ model Task {
   transcription String?    // 转录文本
   tingwuTaskId  String?    // 通义转录任务ID
   sttProvider   String?    // STT服务提供商 (google, doubao, doubao-small, tingwu)
-  
+  googleSttLanguage String?  // Google STT语言代码 (cmn-Hans-CN, en-US)
+
   // 元数据
   duration      Int?       // 视频时长（秒）
   fileSize      Int?       // 文件大小（字节）
@@ -81,4 +82,236 @@ model Config {
   updatedAt DateTime @updatedAt
 
   @@map("configs")
+}
+
+// STT任务状态枚举
+enum SttJobStatus {
+  PENDING      // 等待处理
+  PROCESSING   // 处理中
+  COMPLETED    // 完成
+  FAILED       // 失败
+}
+
+// STT任务表（REST API异步任务记录）
+model SttJob {
+  id            String       @id @default(cuid())
+
+  // 音频文件信息
+  audioPath     String       // 音频文件路径
+  originalName  String       // 原始文件名
+  fileSize      Int          // 文件大小（字节）
+  duration      Float?       // 音频时长（秒）
+
+  // STT配置
+  provider      String       // STT服务提供商 (google, doubao, doubao-small)
+  languageCode  String?      // 语言代码（Google STT专用）
+
+  // 压缩信息
+  compressionPreset    String?  // 压缩预设: none, light, standard, heavy
+  originalFileSize     Int?     // 压缩前文件大小（字节）
+  compressedFileSize   Int?     // 压缩后文件大小（字节）
+  compressionRatio     Float?   // 压缩比例 (0-1)
+
+  // 任务状态
+  status        SttJobStatus @default(PENDING)
+  errorMessage  String?      // 错误信息
+
+  // 转录结果
+  transcription String?      // 转录文本
+
+  // 元数据
+  metadata      String?      // JSON格式存储额外信息
+
+  // 时间戳
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  completedAt   DateTime?    // 完成时间
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("stt_jobs")
+}
+
+// ============================================
+// GenAPIHub 模型 - AI 内容生成服务
+// ============================================
+
+// 生成请求状态枚举
+enum GenerationStatus {
+  PENDING      // 等待处理
+  PROCESSING   // 处理中
+  SUCCESS      // 成功
+  FAILED       // 失败
+}
+
+// AI 生成服务供应商配置表
+model ApiProvider {
+  id               String   @id @default(cuid())
+  name             String   // 供应商名称 (如 "FLUX Pro", "Kling Video", "Google STT")
+  modelIdentifier  String   @unique // 模型唯一标识符
+  adapterName      String   // 适配器名称 (FluxAdapter, KlingAdapter, GoogleSTTAdapter)
+  type             String   // 类型: image, video, stt
+  provider         String?  // 第三方平台 (Replicate, Pollo)
+
+  apiEndpoint      String   // API 端点
+  apiFlavor        String   // API 风格 (openai, custom)
+  encryptedAuthKey String?  // 加密的认证密钥
+
+  isActive         Boolean  @default(true)
+  callCount        Int      @default(0)
+
+  uploadToS3       Boolean  @default(false)
+  s3PathPrefix     String?
+  modelVersion     String?  // Replicate 模型版本
+
+  requests         GenerationRequest[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([type])
+  @@index([isActive])
+  @@map("api_providers")
+}
+
+// API 密钥管理表
+model ApiKey {
+  id           String   @id @default(cuid())
+  name         String   // 密钥描述
+  keyPrefix    String   @unique // 密钥前6位
+  hashedKey    String   // SHA256 哈希值
+  isActive     Boolean  @default(true)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([keyPrefix])
+  @@map("api_keys")
+}
+
+// 生成任务请求日志表
+model GenerationRequest {
+  id              String            @id @default(cuid())
+  providerId      String
+  provider        ApiProvider       @relation(fields: [providerId], references: [id])
+
+  modelIdentifier String
+  status          GenerationStatus  @default(PENDING)
+
+  // 请求参数
+  prompt          String
+  inputImages     String?           // JSON 数组
+  numberOfOutputs Int               @default(1)
+  parameters      String?           // JSON 对象
+
+  // 响应数据
+  results         String?           // JSON 数组
+  errorMessage    String?
+
+  // 异步任务 ID
+  taskId          String?
+
+  // 调用来源与原始数据
+  clientKeyPrefix String?
+  clientKeyHash   String?
+  requestPayload  String?
+  responsePayload String?
+
+  // 统计与软删除
+  durationMs      Int?
+  deletedAt       DateTime?
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  completedAt     DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([providerId])
+  @@map("generation_requests")
+}
+
+// S3 存储文件记录表
+model StorageFile {
+  id           String   @id @default(cuid())
+  fileName     String   // 原始文件名
+  storedName   String   // 存储的文件名
+  s3Url        String   // S3完整URL
+  s3Key        String   // S3 Key (pathPrefix/fileName)
+  fileSize     Int      // 文件大小（字节）
+  mimeType     String?  // MIME类型
+  pathPrefix   String   @default("yt") // 路径前缀，默认"yt"
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdAt])
+  @@map("storage_files")
+}
+
+// ============================================
+// 错误监控和告警
+// ============================================
+
+// 错误日志级别
+enum ErrorLevel {
+  WARN
+  ERROR
+  CRITICAL
+}
+
+// 错误日志表
+model ErrorLog {
+  id           String     @id @default(cuid())
+  level        ErrorLevel // 错误级别
+  source       String     // 来源 (adapter name, service name)
+  message      String     // 错误消息
+  stack        String?    // 错误堆栈
+  context      String?    // JSON: 请求详情、任务信息
+
+  requestId    String?    // 关联的 GenerationRequest
+  taskId       String?    // 供应商任务 ID
+
+  resolved     Boolean    @default(false)
+  resolvedAt   DateTime?
+  resolvedBy   String?
+
+  createdAt    DateTime   @default(now())
+
+  @@index([level])
+  @@index([source])
+  @@index([createdAt])
+  @@index([resolved])
+  @@map("error_logs")
+}
+
+// 系统告警类型
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// 系统告警表
+model SystemAlert {
+  id          String        @id @default(cuid())
+  type        String        // ERROR_RATE_HIGH, TASK_TIMEOUT, API_DOWN
+  severity    AlertSeverity // LOW, MEDIUM, HIGH, CRITICAL
+  message     String
+  details     String?       // JSON
+
+  sentAt      DateTime?
+  channel     String?       // email, webhook, slack
+
+  acknowledged   Boolean   @default(false)
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([severity])
+  @@index([acknowledged])
+  @@index([createdAt])
+  @@map("system_alerts")
 }

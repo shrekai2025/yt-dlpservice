@@ -3,7 +3,7 @@ import "../styles/globals.css";
 import { TRPCReactProvider } from "~/components/providers/trpc-provider";
 
 export const metadata: Metadata = {
-  title: "YT-DLP Service",
+  title: "Media Converter",
   description: "在线视频内容提取工具",
 };
 

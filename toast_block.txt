@@ -1,0 +1,3 @@
+  const showToast = (message: string, tone: 'default' | 'success' | 'error' = 'default') => {
+    setToast({ message, tone })
+  }

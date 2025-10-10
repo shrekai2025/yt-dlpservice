@@ -8,6 +8,12 @@ import "./src/env.js";
 const config = {
   reactStrictMode: true,
   // App Router is stable in Next.js 13+ - no experimental config needed
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
 };
 
 export default config;

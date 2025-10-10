@@ -1,100 +1,74 @@
 "use client"
 
-import { useState } from "react"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+import { Separator } from '~/components/ui/separator'
+import { cn } from '~/lib/utils/cn'
+
+type NavKey = 'tasks' | 'info-fetch' | 'standalone-stt' | 'generation' | 'storage' | 'config-tools' | 'docs'
+
+const NAV_ITEMS: Array<{ key: NavKey; label: string; href: string }> = [
+  { key: 'tasks', label: '音视频STT', href: '/admin' },
+  { key: 'info-fetch', label: '信息获取', href: '/admin/info-fetch' },
+  { key: 'standalone-stt', label: '独立STT', href: '/admin/standalone-stt' },
+  { key: 'generation', label: 'AI生成', href: '/admin/generation/providers' },
+  { key: 'storage', label: 'S3存储', href: '/admin/storage' },
+  { key: 'config-tools', label: '配置与工具', href: '/admin/config-tools' },
+  { key: 'docs', label: 'API文档', href: '/admin/api-doc' },
+]
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const [activeTab, setActiveTab] = useState(() => {
-    if (pathname === "/admin") return "tasks"
-    if (pathname === "/admin/tools") return "tools"
-    if (pathname === "/admin/api-doc") return "api-doc"
-    if (pathname === "/admin/platforms") return "platforms"
-    if (pathname === "/admin/tech-doc") return "tech-doc"
-    return "tasks"
-  })
+  const inferredKey: NavKey = useMemo(() => {
+    if (pathname === '/admin/config-tools') return 'config-tools'
+    if (pathname === '/admin/info-fetch') return 'info-fetch'
+    if (pathname === '/admin/standalone-stt') return 'standalone-stt'
+    if (pathname.startsWith('/admin/generation')) return 'generation'
+    if (pathname === '/admin/storage') return 'storage'
+    if (pathname === '/admin/api-doc') return 'docs'
+    return 'tasks'
+  }, [pathname])
+
+  const [active, setActive] = useState<NavKey>(inferredKey)
+
+  useEffect(() => {
+    setActive(inferredKey)
+  }, [inferredKey])
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 导航栏 */}
-      <nav className="bg-white shadow-sm border-b">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">YT-DLP Service</h1>
-            </div>
-            
-            {/* 导航标签 */}
-            <div className="flex space-x-1">
-              <Link
-                href="/admin"
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === "tasks"
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setActiveTab("tasks")}
-              >
-                任务管理
-              </Link>
-              <Link
-                href="/admin/tools"
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === "tools"
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setActiveTab("tools")}
-              >
-                实用工具
-              </Link>
-              <Link
-                href="/admin/api-doc"
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === "api-doc"
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setActiveTab("api-doc")}
-              >
-                API文档
-              </Link>
-              <Link
-                href="/admin/platforms"
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === "platforms"
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setActiveTab("platforms")}
-              >
-                平台配置
-              </Link>
-              <Link
-                href="/admin/tech-doc"
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === "tech-doc"
-                    ? "bg-blue-100 text-blue-700"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setActiveTab("tech-doc")}
-              >
-                技术文档
-              </Link>
+    <div className="min-h-screen bg-neutral-50 text-neutral-900">
+      <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold tracking-wider text-neutral-900">多媒体工作站</span>
+              <span className="text-xs text-neutral-500">原yt-dlpservice</span>
             </div>
           </div>
+          <nav className="flex items-center gap-2">
+            {NAV_ITEMS.map((item) => (
+              <Link
+                key={item.key}
+                href={item.href}
+                onClick={() => setActive(item.key)}
+                className={cn(
+                  'inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors',
+                  active === item.key
+                    ? 'bg-neutral-900 text-white'
+                    : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
         </div>
-      </nav>
-
-      {/* 页面内容 */}
-      <main className="py-8">
+      </header>
+      <main className="mx-auto w-full max-w-6xl px-6 py-10" role="main">
         {children}
       </main>
     </div>
   )
-} 
+}

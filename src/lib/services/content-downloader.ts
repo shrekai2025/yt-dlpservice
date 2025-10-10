@@ -98,6 +98,14 @@ class ContentDownloader {
           this.isInitialized = true
           this.ytDlpPath = savedData.ytDlpPath
           this.ffmpegPath = savedData.ffmpegPath || 'ffmpeg'
+
+          // 确保平台插件也已初始化
+          const { initializePlatforms, platformRegistry } = await import('~/lib/platforms')
+          const stats = platformRegistry.getStats()
+          if (stats.totalPlatforms === 0) {
+            Logger.info('检测到平台未注册，重新初始化平台插件...')
+            initializePlatforms(this.ytDlpPath)
+          }
         }
       }
       return
