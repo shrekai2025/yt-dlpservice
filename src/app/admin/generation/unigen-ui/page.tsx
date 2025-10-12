@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import Image from "next/image"
 import { Card } from "~/components/ui/card"
 import { Button } from "~/components/ui/button"
 import { Badge } from "~/components/ui/badge"
@@ -15,9 +16,90 @@ import {
 } from "~/components/ui/dialog"
 
 const STORAGE_KEY = "unigen_api_key"
-const DEFAULT_PARAMETERS_TEMPLATE = `{
-  "size_or_ratio": "16:9"
-}`
+type ParameterFieldType = 'string' | 'number' | 'boolean' | 'select' | 'string-array'
+
+interface ParameterFieldOption {
+  label: string
+  value: string | number
+}
+
+interface ParameterField {
+  key: string
+  label: string
+  type: ParameterFieldType
+  defaultValue?: unknown
+  options?: ParameterFieldOption[]
+  helperText?: string
+  placeholder?: string
+  min?: number
+  max?: number
+  step?: number
+}
+
+const PARAMETER_FIELDS_BY_PROVIDER: Record<string, ParameterField[]> = {
+  'flux-pro': [
+    { key: 'size_or_ratio', label: '尺寸 / 比例', type: 'string', defaultValue: '1:1', helperText: '支持 1:1、4:3、16:9 或 1024x1024 这类尺寸' },
+    { key: 'seed', label: 'Seed', type: 'number', helperText: '可选，非负整数' },
+    { key: 'prompt_upsampling', label: '提示词增强', type: 'boolean', defaultValue: false },
+    { key: 'safety_tolerance', label: '安全等级', type: 'number', min: 0, max: 6, step: 1, helperText: '0-6 之间的整数' },
+  ],
+  'flux-dev': [
+    { key: 'size_or_ratio', label: '尺寸 / 比例', type: 'string', defaultValue: '1:1', helperText: '支持 1:1、4:3、16:9 或 1024x1024 这类尺寸' },
+    { key: 'seed', label: 'Seed', type: 'number', helperText: '可选，非负整数' },
+    { key: 'prompt_upsampling', label: '提示词增强', type: 'boolean', defaultValue: false },
+    { key: 'safety_tolerance', label: '安全等级', type: 'number', min: 0, max: 6, step: 1, helperText: '0-6 之间的整数' },
+  ],
+  'tuzi-openai-dalle': [
+    { key: 'size_or_ratio', label: '尺寸 / 比例', type: 'string', defaultValue: '1024x1024', helperText: '默认 1024x1024，可填写 1024x1536 等' },
+    { key: 'seed', label: 'Seed', type: 'number', helperText: '可选，非负整数' },
+    { key: 'n', label: '生成张数 (n)', type: 'number', min: 1, max: 10, step: 1, helperText: '1-10 之间的整数' },
+    { key: 'quality', label: '质量', type: 'select', options: [{ label: 'Standard', value: 'standard' }, { label: 'HD', value: 'hd' }] },
+    { key: 'style', label: '风格', type: 'select', options: [{ label: 'Vivid', value: 'vivid' }, { label: 'Natural', value: 'natural' }] },
+  ],
+  mj_relax_imagine: [
+    { key: 'botType', label: '模型类型', type: 'select', defaultValue: 'MID_JOURNEY', options: [{ label: 'Midjourney', value: 'MID_JOURNEY' }, { label: 'Niji Journey', value: 'NIJI_JOURNEY' }] },
+    { key: 'noStorage', label: '返回官方链接 (noStorage)', type: 'boolean', defaultValue: false },
+    { key: 'notifyHook', label: '回调地址', type: 'string', placeholder: 'https://example.com/webhook' },
+    { key: 'accountFilter.modes', label: '账号模式', type: 'string-array', defaultValue: ['FAST'], helperText: '每行一个模式值，例如 FAST、RELAX' },
+    { key: 'state', label: '自定义参数 (state)', type: 'string' },
+    { key: 'base64Array', label: '垫图 Base64 列表', type: 'string-array', helperText: '纯 base64 字符串，每行一条。上传图片后可自动填充。' },
+  ],
+  mj_relax_video: [
+    { key: 'videoType', label: '视频模型', type: 'select', defaultValue: 'vid_1.1_i2v_720', options: [{ label: 'vid_1.1_i2v_480', value: 'vid_1.1_i2v_480' }, { label: 'vid_1.1_i2v_720', value: 'vid_1.1_i2v_720' }] },
+    { key: 'motion', label: '运动幅度', type: 'select', defaultValue: 'low', options: [{ label: 'Low', value: 'low' }, { label: 'High', value: 'high' }] },
+    { key: 'image', label: '首帧图片 (URL 或 Base64)', type: 'string', placeholder: 'https://example.com/image.png' },
+    { key: 'endImage', label: '尾帧图片', type: 'string', placeholder: '可选，URL 或 Base64' },
+    { key: 'loop', label: '循环播放', type: 'boolean', defaultValue: false },
+    { key: 'batchSize', label: '批量生成数量', type: 'select', defaultValue: 4, options: [{ label: '1', value: 1 }, { label: '2', value: 2 }, { label: '4', value: 4 }] },
+    { key: 'action', label: '任务操作', type: 'select', options: [{ label: 'Extend', value: 'extend' }], helperText: '扩展现有任务时使用' },
+    { key: 'index', label: '视频索引 (action 时必填)', type: 'number', min: 0, max: 3, step: 1 },
+    { key: 'taskId', label: '父任务 ID (action 时必填)', type: 'string' },
+    { key: 'state', label: '自定义参数 (state)', type: 'string' },
+    { key: 'notifyHook', label: '回调地址', type: 'string', placeholder: 'https://example.com/webhook' },
+    { key: 'noStorage', label: '返回官方链接 (noStorage)', type: 'boolean', defaultValue: false },
+  ],
+  'kling-v1': [
+    { key: 'size_or_ratio', label: '尺寸 / 比例', type: 'string', defaultValue: '1024x1024', helperText: '自动转换为 Kling 支持的比例' },
+    { key: 'duration', label: '时长 (秒)', type: 'select', defaultValue: 5, options: [{ label: '5 秒', value: 5 }, { label: '10 秒', value: 10 }] },
+    { key: 'mode', label: '模式', type: 'select', defaultValue: 'pro', options: [{ label: 'Standard', value: 'standard' }, { label: 'Pro', value: 'pro' }] },
+  ],
+  'pollo-veo3': [
+    { key: 'duration', label: '视频时长 (秒)', type: 'number', defaultValue: 8, min: 1, max: 30, helperText: '1-30 之间的整数' },
+    { key: 'generateAudio', label: '生成音频', type: 'boolean', defaultValue: true },
+    { key: 'negative_prompt', label: '反向提示词', type: 'string', placeholder: '可选' },
+    { key: 'seed', label: 'Seed', type: 'number', helperText: '可选，非负整数' },
+  ],
+  'pollo-kling': [
+    { key: 'duration', label: '视频时长 (秒)', type: 'select', defaultValue: 5, options: [{ label: '5 秒', value: 5 }, { label: '10 秒', value: 10 }] },
+    { key: 'strength', label: '风格强度', type: 'number', defaultValue: 50, min: 0, max: 100, step: 1 },
+    { key: 'negative_prompt', label: '反向提示词', type: 'string', placeholder: '可选' },
+  ],
+  'replicate-minimax': [
+    { key: 'duration', label: '视频时长 (秒)', type: 'number', min: 1, max: 30, helperText: '可选，1-30 之间的整数' },
+    { key: 'aspect_ratio', label: '画面比例', type: 'select', options: [{ label: '16:9', value: '16:9' }, { label: '9:16', value: '9:16' }, { label: '1:1', value: '1:1' }] },
+    { key: 'seed', label: 'Seed', type: 'number', helperText: '可选，非负整数' },
+  ],
+}
 
 const POLL_INTERVAL_MS = 4000
 const MAX_POLL_ATTEMPTS = 45 // ~3分钟
@@ -107,6 +189,102 @@ function getStatusTone(status: GenerationStatus) {
   }
 }
 
+function getParameterFields(modelIdentifier: string | null | undefined): ParameterField[] {
+  if (!modelIdentifier) return []
+  return PARAMETER_FIELDS_BY_PROVIDER[modelIdentifier] || []
+}
+
+function cloneParameters<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value ?? {}))
+}
+
+function getValueAtPath(source: Record<string, unknown> | undefined, path: string): unknown {
+  if (!source) return undefined
+  return path.split('.').reduce<unknown>((acc, segment) => {
+    if (acc && typeof acc === 'object' && segment in (acc as Record<string, unknown>)) {
+      return (acc as Record<string, unknown>)[segment]
+    }
+    return undefined
+  }, source)
+}
+
+function pruneEmpty(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    const items = value
+      .map((item) => pruneEmpty(item))
+      .filter((item) => item !== undefined)
+    return items.length > 0 ? items : undefined
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .map(([key, item]) => [key, pruneEmpty(item)] as const)
+      .filter(([, item]) => item !== undefined)
+
+    if (entries.length === 0) {
+      return undefined
+    }
+
+    return Object.fromEntries(entries)
+  }
+
+  return value
+}
+
+function setValueAtPath(
+  source: Record<string, unknown>,
+  path: string,
+  rawValue: unknown
+): Record<string, unknown> {
+  const cloned = cloneParameters(source)
+  const segments = path.split('.')
+  const lastKey = segments.pop()
+
+  if (!lastKey) return cloned
+
+  let cursor: Record<string, unknown> = cloned
+  for (const segment of segments) {
+    const next = cursor[segment]
+    if (typeof next === 'object' && next !== null) {
+      cursor = next as Record<string, unknown>
+    } else {
+      cursor[segment] = {}
+      cursor = cursor[segment] as Record<string, unknown>
+    }
+  }
+
+  let value = rawValue
+  if (typeof value === 'string') {
+    value = value.trim()
+    if (value === '') {
+      value = undefined
+    }
+  }
+  if (typeof value === 'number' && Number.isNaN(value)) {
+    value = undefined
+  }
+  if (Array.isArray(value) && value.length === 0) {
+    value = undefined
+  }
+
+  if (value === undefined) {
+    delete cursor[lastKey]
+  } else {
+    cursor[lastKey] = value
+  }
+
+  return (pruneEmpty(cloned) as Record<string, unknown>) || {}
+}
+
+function buildDefaultParameters(fields: ParameterField[]): Record<string, unknown> {
+  return fields.reduce<Record<string, unknown>>((accumulator, field) => {
+    if (field.defaultValue !== undefined) {
+      return setValueAtPath(accumulator, field.key, field.defaultValue)
+    }
+    return accumulator
+  }, {})
+}
+
 export default function UnigenUiPage() {
   const [apiKeyInput, setApiKeyInput] = useState("")
   const [storedApiKey, setStoredApiKey] = useState("")
@@ -123,7 +301,30 @@ export default function UnigenUiPage() {
   )
 
   const [prompt, setPrompt] = useState("")
-  const [parameterEditor, setParameterEditor] = useState(DEFAULT_PARAMETERS_TEMPLATE)
+  const [numberOfOutputs, setNumberOfOutputs] = useState(1)
+  const [inputImagesText, setInputImagesText] = useState("")
+  const [parameters, setParameters] = useState<Record<string, unknown>>({})
+  const parameterDefaultsRef = useRef<Record<string, unknown>>({})
+  const parameterFields = useMemo(
+    () => getParameterFields(selectedProvider?.model_identifier),
+    [selectedProvider?.model_identifier]
+  )
+
+  useEffect(() => {
+    if (!selectedProvider) {
+      setParameters({})
+      parameterDefaultsRef.current = {}
+      setInputImagesText("")
+      setNumberOfOutputs(1)
+      return
+    }
+
+    const defaults = buildDefaultParameters(parameterFields)
+    setParameters(cloneParameters(defaults))
+    parameterDefaultsRef.current = cloneParameters(defaults)
+    setInputImagesText("")
+    setNumberOfOutputs(1)
+  }, [selectedProvider, parameterFields])
   const [formError, setFormError] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
 
@@ -155,6 +356,104 @@ export default function UnigenUiPage() {
       setStoredApiKey(savedKey)
       setKeyStatus("valid")
     }
+  }, [])
+
+  const handleParameterValueChange = useCallback((field: ParameterField, rawValue: unknown) => {
+    setParameters((prev) => {
+      let normalized: unknown = rawValue
+
+      switch (field.type) {
+        case 'number': {
+          if (rawValue === '' || rawValue === null || rawValue === undefined) {
+            normalized = undefined
+          } else {
+            const num = typeof rawValue === 'number' ? rawValue : Number(rawValue)
+            normalized = Number.isNaN(num) ? undefined : num
+          }
+          break
+        }
+        case 'boolean': {
+          normalized = Boolean(rawValue)
+          break
+        }
+        case 'select': {
+          if (rawValue === '' || rawValue === undefined || rawValue === null) {
+            normalized = undefined
+          } else if (field.options && field.options.length > 0) {
+            const sample = field.options[0]!.value
+            if (typeof sample === 'number') {
+              normalized = Number(rawValue)
+              if (Number.isNaN(normalized)) {
+                normalized = undefined
+              }
+            } else {
+              normalized = String(rawValue)
+            }
+          }
+          break
+        }
+        case 'string-array': {
+          if (typeof rawValue !== 'string') {
+            normalized = rawValue
+            break
+          }
+          const items = rawValue
+            .split('\n')
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0)
+          normalized = items.length > 0 ? items : undefined
+          break
+        }
+        default: {
+          if (typeof rawValue === 'string') {
+            normalized = rawValue
+          }
+        }
+      }
+
+      return setValueAtPath(prev, field.key, normalized)
+    })
+  }, [])
+
+  const getParameterDisplayValue = useCallback(
+    (field: ParameterField) => {
+      const value = getValueAtPath(parameters, field.key)
+
+      if (field.type === 'boolean') {
+        if (typeof value === 'boolean') return value
+        if (typeof field.defaultValue === 'boolean') return field.defaultValue
+        return false
+      }
+
+      if (field.type === 'string-array') {
+        if (Array.isArray(value)) {
+          return value.join('\n')
+        }
+        if (Array.isArray(field.defaultValue)) {
+          return (field.defaultValue as string[]).join('\n')
+        }
+        return ''
+      }
+
+      if (field.type === 'number') {
+        if (typeof value === 'number') return value
+        if (typeof field.defaultValue === 'number') return field.defaultValue
+        return ''
+      }
+
+      if (field.type === 'select') {
+        if (value !== undefined) return value
+        if (field.defaultValue !== undefined) return field.defaultValue
+        return ''
+      }
+
+      return (value as string) ?? (field.defaultValue as string) ?? ''
+    },
+    [parameters]
+  )
+
+  const resetParameters = useCallback(() => {
+    setParameters(cloneParameters(parameterDefaultsRef.current))
   }, [])
 
   const fetchProviders = useCallback(
@@ -359,15 +658,13 @@ export default function UnigenUiPage() {
       return
     }
 
-    let parsedParameters: Record<string, unknown> = {}
-    if (parameterEditor.trim()) {
-      try {
-        parsedParameters = JSON.parse(parameterEditor)
-      } catch (error) {
-        setFormError("参数 JSON 格式错误")
-        return
-      }
-    }
+    const cleanedParameters =
+      (pruneEmpty(parameters) as Record<string, unknown> | undefined) ?? {}
+    const parametersForRequest = cloneParameters(cleanedParameters)
+    const inputImages = inputImagesText
+      .split('\n')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
 
     setIsGenerating(true)
 
@@ -381,9 +678,9 @@ export default function UnigenUiPage() {
         body: JSON.stringify({
           model_identifier: selectedProvider.model_identifier,
           prompt: prompt.trim(),
-          input_images: [],
-          number_of_outputs: 1,
-          parameters: parsedParameters,
+          input_images: inputImages,
+          number_of_outputs: numberOfOutputs,
+          parameters: parametersForRequest,
         }),
       })
 
@@ -403,9 +700,9 @@ export default function UnigenUiPage() {
             status: data.status as GenerationStatus,
             model_identifier: selectedProvider.model_identifier,
             prompt: prompt.trim(),
-            input_images: [],
-            number_of_outputs: 1,
-            parameters: parsedParameters,
+            input_images: inputImages,
+            number_of_outputs: numberOfOutputs,
+            parameters: parametersForRequest,
             results: data.results || null,
             error_message: data.error || null,
             task_id: data.task_id,
@@ -550,11 +847,14 @@ export default function UnigenUiPage() {
               </a>
             </div>
             {result.type === "image" ? (
-              <img
-                src={result.url}
-                alt={`generation-${index}`}
-                className="mt-3 max-h-[320px] w-full rounded object-contain"
-              />
+              <div className="relative mt-3 h-[320px] w-full">
+                <Image
+                  src={result.url}
+                  alt={`generation-${index}`}
+                  fill
+                  className="rounded object-contain"
+                />
+              </div>
             ) : null}
             {result.type === "video" ? (
               <video src={result.url} controls className="mt-3 w-full rounded" />
@@ -604,8 +904,13 @@ export default function UnigenUiPage() {
               <h2 className="text-lg font-semibold text-neutral-900">生成配置</h2>
               <p className="text-sm text-neutral-500">选择模型，填写提示词与参数</p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setParameterEditor(DEFAULT_PARAMETERS_TEMPLATE)}>
-              重置参数
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={resetParameters}
+              disabled={parameterFields.length === 0}
+            >
+              恢复推荐参数
             </Button>
           </div>
 
@@ -648,16 +953,114 @@ export default function UnigenUiPage() {
             </div>
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-neutral-700">参数 (JSON)</label>
-              <textarea
-                value={parameterEditor}
-                onChange={(event) => setParameterEditor(event.target.value)}
-                rows={6}
-                className="w-full rounded-md border border-neutral-300 px-3 py-2 font-mono text-xs focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                placeholder='{"style": "cinematic"}'
+              <label className="block text-sm font-medium text-neutral-700">输出数量</label>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={numberOfOutputs}
+                onChange={(event) => {
+                  const value = Number(event.target.value)
+                  if (Number.isNaN(value)) {
+                    setNumberOfOutputs(1)
+                  } else {
+                    setNumberOfOutputs(Math.min(Math.max(value, 1), 10))
+                  }
+                }}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
-              <p className="text-xs text-neutral-500">示例参数：size_or_ratio, style, seed 等</p>
+              <p className="text-xs text-neutral-500">1-10 之间的整数</p>
             </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-neutral-700">输入图片 (可选)</label>
+              <textarea
+                value={inputImagesText}
+                onChange={(event) => setInputImagesText(event.target.value)}
+                rows={3}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="每行一个图片 URL 或 data:image/... 的 Base64"
+              />
+              <p className="text-xs text-neutral-500">用于垫图、首帧等需求；多张图片请换行填写。</p>
+            </div>
+
+            {parameterFields.length > 0 ? (
+              <div className="space-y-3">
+                <div className="text-sm font-medium text-neutral-800">供应商参数</div>
+                <div className="grid gap-4">
+                  {parameterFields.map((field) => {
+                    if ((field.key === 'index' || field.key === 'taskId') && !getValueAtPath(parameters, 'action')) {
+                      return null
+                    }
+                    const displayValue = getParameterDisplayValue(field)
+
+                    return (
+                      <div key={field.key} className="space-y-1">
+                        <label className="block text-sm font-medium text-neutral-700">{field.label}</label>
+                        {field.type === 'boolean' ? (
+                          <label className="inline-flex items-center gap-2 text-sm text-neutral-700">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(displayValue)}
+                              onChange={(event) => handleParameterValueChange(field, event.target.checked)}
+                              className="h-4 w-4 rounded border-neutral-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span>{Boolean(displayValue) ? '开启' : '关闭'}</span>
+                          </label>
+                        ) : field.type === 'select' ? (
+                          <select
+                            value={displayValue === '' ? '' : String(displayValue)}
+                            onChange={(event) => handleParameterValueChange(field, event.target.value)}
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          >
+                            <option value="">未选择</option>
+                            {field.options?.map((option) => (
+                              <option key={option.value} value={String(option.value)}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : field.type === 'number' ? (
+                          <input
+                            type="number"
+                            value={displayValue === '' ? '' : Number(displayValue)}
+                            onChange={(event) => handleParameterValueChange(field, event.target.value)}
+                            min={field.min}
+                            max={field.max}
+                            step={field.step}
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            placeholder={field.placeholder}
+                          />
+                        ) : field.type === 'string-array' ? (
+                          <textarea
+                            value={displayValue as string}
+                            onChange={(event) => handleParameterValueChange(field, event.target.value)}
+                            rows={4}
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            placeholder={field.placeholder}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={displayValue as string}
+                            onChange={(event) => handleParameterValueChange(field, event.target.value)}
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            placeholder={field.placeholder}
+                          />
+                        )}
+                        {field.helperText ? (
+                          <p className="text-xs text-neutral-500">{field.helperText}</p>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : selectedProvider ? (
+              <div className="rounded border border-dashed border-neutral-200 p-4 text-xs text-neutral-500">
+                当前模型无需额外参数
+              </div>
+            ) : null}
           </div>
 
           {formError ? (

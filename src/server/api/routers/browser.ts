@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import { createTRPCRouter, publicProcedure, loggedProcedure } from '~/server/api/trpc'
 import { TRPCError } from '@trpc/server'
 import { browserManager } from '~/lib/services/browser-manager'

@@ -1,7 +1,6 @@
 import { z } from 'zod'
-import { createTRPCRouter, publicProcedure, loggedProcedure } from '~/server/api/trpc'
+import { createTRPCRouter, publicProcedure } from '~/server/api/trpc'
 import { TRPCError } from '@trpc/server'
-import { db } from '~/server/db'
 import { ConfigManager } from '~/lib/utils/config'
 import { doubaoVoiceService } from '~/lib/services/doubao-voice'
 import GoogleSpeechService from '~/lib/services/google-stt'

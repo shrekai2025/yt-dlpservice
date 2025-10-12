@@ -80,7 +80,7 @@ export async function POST() {
           continue
         }
       }
-    } catch (error) {
+    } catch {
       Logger.warn('无法获取更新后的版本号')
     }
 

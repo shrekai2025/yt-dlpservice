@@ -9,7 +9,7 @@ export async function GET() {
     const { stdout, stderr } = await execAsync('tmux ls | cat', { maxBuffer: 1024 * 1024 })
     const output = (stdout || stderr || '').trim() || '无 tmux 会话或 tmux 未运行'
     return NextResponse.json({ success: true, output })
-  } catch (error) {
+  } catch {
     // tmux 未运行时会返回非零；我们转为友好信息
     return NextResponse.json({ success: true, output: '无 tmux 会话或 tmux 未运行' })
   }

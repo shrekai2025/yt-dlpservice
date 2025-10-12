@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-import { Separator } from '~/components/ui/separator'
 import { cn } from '~/lib/utils/cn'
 
 type NavKey = 'tasks' | 'info-fetch' | 'standalone-stt' | 'generation' | 'storage' | 'config-tools' | 'docs'

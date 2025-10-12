@@ -3,7 +3,7 @@
  */
 
 import { z } from 'zod'
-import { BaseGenerationRequestSchema, SeedSchema } from './common-schemas'
+import { SeedSchema } from './common-schemas'
 
 export const AspectRatioSchema = z.enum([
   '1:1', '4:3', '3:4', '16:9', '9:16', '21:9', '9:21'
@@ -49,3 +49,30 @@ export const TuziOpenAIRequestSchema = z.object({
 })
 
 export type TuziOpenAIRequest = z.infer<typeof TuziOpenAIRequestSchema>
+
+// Tuzi Midjourney Imagine Schema
+export const TuziMidjourneyAccountFilterSchema = z
+  .object({
+    modes: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .partial()
+
+export const TuziMidjourneyImagineParametersSchema = z.object({
+  botType: z.enum(['MID_JOURNEY', 'NIJI_JOURNEY']).default('MID_JOURNEY'),
+  notifyHook: z.string().url().optional(),
+  noStorage: z.boolean().default(false),
+  accountFilter: TuziMidjourneyAccountFilterSchema.optional(),
+  state: z.string().optional(),
+  base64Array: z.array(z.string().min(1)).optional(),
+})
+
+export const TuziMidjourneyImagineRequestSchema = z.object({
+  prompt: z.string().min(1).max(2000),
+  input_images: z.array(z.string()).optional().default([]),
+  number_of_outputs: z.number().int().min(1).max(10).default(1),
+  parameters: TuziMidjourneyImagineParametersSchema.optional().default({}),
+})
+
+export type TuziMidjourneyImagineRequest = z.infer<
+  typeof TuziMidjourneyImagineRequestSchema
+>

@@ -255,11 +255,11 @@ export abstract class BaseAdapter {
 
   /**
    * Check task status - must be implemented by adapters that support async tasks
-   * @param taskId - Provider task ID
+   * @param _taskId - Provider task ID
    * @returns Task status response
    */
   protected async checkTaskStatus(
-    taskId: string
+    _taskId: string
   ): Promise<TaskStatusResponse> {
     throw new Error(
       `${this.sourceInfo.adapterName} does not support async task polling`

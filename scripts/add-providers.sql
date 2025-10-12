@@ -140,6 +140,52 @@ INSERT OR REPLACE INTO api_providers (
   datetime('now')
 );
 
+-- 7. Tuzi Midjourney Imagine (图像生成)
+INSERT OR REPLACE INTO api_providers (
+  id, name, modelIdentifier, adapterName, type, provider,
+  apiEndpoint, apiFlavor, encryptedAuthKey,
+  isActive, uploadToS3, s3PathPrefix,
+  createdAt, updatedAt
+) VALUES (
+  'tuzi-midjourney-imagine-001',
+  'Tuzi Midjourney Imagine',
+  'mj_relax_imagine',
+  'TuziMidjourneyImagineAdapter',
+  'image',
+  'TuZi',
+  'https://api.tu-zi.com',
+  'custom',
+  'REPLACE_WITH_YOUR_TUZI_API_KEY',
+  1,
+  0,
+  'midjourney-images',
+  datetime('now'),
+  datetime('now')
+);
+
+-- 8. Tuzi Midjourney Video (视频生成)
+INSERT OR REPLACE INTO api_providers (
+  id, name, modelIdentifier, adapterName, type, provider,
+  apiEndpoint, apiFlavor, encryptedAuthKey,
+  isActive, uploadToS3, s3PathPrefix,
+  createdAt, updatedAt
+) VALUES (
+  'tuzi-midjourney-video-001',
+  'Tuzi Midjourney Video',
+  'mj_relax_video',
+  'TuziMidjourneyVideoAdapter',
+  'video',
+  'TuZi',
+  'https://api.tu-zi.com',
+  'custom',
+  'REPLACE_WITH_YOUR_TUZI_API_KEY',
+  1,
+  0,
+  'midjourney-videos',
+  datetime('now'),
+  datetime('now')
+);
+
 -- 查看添加结果
 SELECT
   name,

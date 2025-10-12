@@ -103,7 +103,7 @@ export class PolloKlingAdapter extends PolloAdapter {
             )
             generationInput.strength = 50
           }
-        } catch (_error) {
+        } catch {
           this.logger.warn({ strength }, 'Invalid strength value, using default 50')
           generationInput.strength = 50
         }

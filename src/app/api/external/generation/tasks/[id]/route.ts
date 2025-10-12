@@ -105,11 +105,11 @@ export async function DELETE(
     })
 
     if (!generationRequest || generationRequest.deletedAt) {
-      return NextResponse.json(null, { status: 204 })
+      return new NextResponse(null, { status: 204 })
     }
 
     if (generationRequest.clientKeyHash !== clientKeyHash) {
-      return NextResponse.json(null, { status: 204 })
+      return new NextResponse(null, { status: 204 })
     }
 
     if (generationRequest.status === 'PROCESSING' || generationRequest.status === 'PENDING') {
@@ -124,7 +124,7 @@ export async function DELETE(
       data: { deletedAt: new Date() },
     })
 
-    return NextResponse.json(null, { status: 204 })
+    return new NextResponse(null, { status: 204 })
   } catch (error) {
     console.error('[External API] Delete generation task error:', error)
     return NextResponse.json(

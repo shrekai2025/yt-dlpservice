@@ -150,7 +150,7 @@ export default function TaskManagementPage() {
       }
 
       return { hasErrors: false, latestError: null, totalErrors: 0 }
-    } catch (e) {
+    } catch {
       // 解析失败，说明是旧的字符串格式
       return {
         hasErrors: true,
@@ -528,7 +528,7 @@ export default function TaskManagementPage() {
                                 showToast('弹窗被浏览器拦截，请允许弹窗', 'error')
                               }
                             }
-                          } catch (e) {
+                          } catch {
                             showToast('获取返回数据失败', 'error')
                           }
                         }}

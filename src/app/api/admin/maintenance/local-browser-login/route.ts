@@ -199,7 +199,7 @@ export async function POST() {
           await browser.close()
         }
         Logger.warn('本地浏览器登录超时（30分钟），已自动关闭')
-      } catch (e) {
+      } catch {
         // 忽略关闭错误
       }
     }, 30 * 60 * 1000)
@@ -224,7 +224,7 @@ export async function POST() {
       if (browser) {
         await browser.close()
       }
-    } catch (e) {
+    } catch {
       // 忽略清理错误
     }
 

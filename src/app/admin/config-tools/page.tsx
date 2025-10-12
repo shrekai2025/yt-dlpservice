@@ -141,19 +141,19 @@ type ChromiumDownloaderSectionProps = {
 function ChromiumDownloaderSection({ downloaderStatus, showToast }: ChromiumDownloaderSectionProps): React.ReactElement {
   const { data: browserStatus, refetch: refetchBrowserStatus } = api.browser.getStatus.useQuery()
   const cleanupBrowser = api.browser.cleanup.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: { message?: string } | undefined) => {
       showToast(data?.message ?? '浏览器资源清理成功', 'success')
       void refetchBrowserStatus()
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       showToast(error instanceof Error ? error.message : '清理浏览器资源失败', 'error')
     },
   })
   const testBrowser = api.browser.testBrowser.useMutation({
-    onSuccess: (data) => {
+    onSuccess: (data: { message?: string } | undefined) => {
       showToast(data?.message ?? '浏览器测试成功', 'success')
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       showToast(error instanceof Error ? error.message : '浏览器测试失败', 'error')
     },
   })
@@ -542,7 +542,6 @@ function ConfigManagementSection({ showToast }: ConfigManagementSectionProps): R
 }
 
 function YouTubeCookieSection(): React.ReactElement {
-  const [showLoginGuide, setShowLoginGuide] = React.useState(false)
   const [isLocalBrowserLoading, setIsLocalBrowserLoading] = React.useState(false)
 
   const handleLocalBrowserLogin = async () => {

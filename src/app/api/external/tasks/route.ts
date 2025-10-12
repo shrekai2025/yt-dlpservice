@@ -3,7 +3,7 @@ import { validateExternalApiKey, createAuthErrorResponse } from '~/lib/utils/aut
 import { parseTasksExtraMetadata } from '~/lib/utils/json'
 import { db } from '~/server/db'
 import { TaskProcessor } from '~/lib/services/task-processor'
-import { validateVideoUrl, getPlatformFromUrl, getDownloadTypeDisplayName, createTaskSchema } from '~/lib/utils/validation'
+import { validateVideoUrl, getDownloadTypeDisplayName, createTaskSchema } from '~/lib/utils/validation'
 import { Logger } from '~/lib/utils/logger'
 import { z } from 'zod'
 

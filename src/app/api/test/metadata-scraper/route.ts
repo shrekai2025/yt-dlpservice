@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     // 初始化爬虫服务（如果尚未初始化）
     try {
       initializeScrapers()
-    } catch (error) {
+    } catch {
       // 忽略重复初始化错误
     }
     

@@ -1,4 +1,3 @@
-import { env } from '~/env.js'
 import { NextRequest } from 'next/server'
 
 export interface AuthResult {
@@ -42,7 +41,7 @@ export function validateExternalApiKey(request: NextRequest): AuthResult {
       success: false,
       error: 'Invalid API key'
     }
-  } catch (error) {
+  } catch {
     return {
       success: false,
       error: 'Authentication error'

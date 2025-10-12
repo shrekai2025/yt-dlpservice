@@ -67,3 +67,30 @@ export const ReplicateRequestSchema = z.object({
 })
 
 export type ReplicateRequest = z.infer<typeof ReplicateRequestSchema>
+
+// Tuzi Midjourney Video Schema
+export const TuziMidjourneyVideoParametersSchema = z.object({
+  videoType: z.enum(['vid_1.1_i2v_480', 'vid_1.1_i2v_720']).default('vid_1.1_i2v_720'),
+  motion: z.enum(['low', 'high']).default('low'),
+  image: z.string().optional(),
+  endImage: z.string().optional(),
+  loop: z.boolean().default(false),
+  batchSize: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(4),
+  action: z.enum(['extend']).optional(),
+  index: z.number().int().min(0).max(3).optional(),
+  taskId: z.string().optional(),
+  state: z.string().optional(),
+  notifyHook: z.string().url().optional(),
+  noStorage: z.boolean().default(false),
+})
+
+export const TuziMidjourneyVideoRequestSchema = z.object({
+  prompt: z.string().min(1).max(2000),
+  input_images: z.array(z.string()).optional().default([]),
+  number_of_outputs: z.number().int().min(1).max(4).default(1),
+  parameters: TuziMidjourneyVideoParametersSchema.optional().default({}),
+})
+
+export type TuziMidjourneyVideoRequest = z.infer<
+  typeof TuziMidjourneyVideoRequestSchema
+>

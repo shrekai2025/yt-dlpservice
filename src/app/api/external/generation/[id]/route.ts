@@ -50,7 +50,16 @@ export async function GET(
       )
     }
 
-    // 4. Build response
+    // 4. Verify client key hash
+    const clientKeyHash = hashApiKey(apiKey)
+    if (generationRequest.clientKeyHash && generationRequest.clientKeyHash !== clientKeyHash) {
+      return NextResponse.json(
+        { error: `Generation request not found: ${id}` },
+        { status: 404 }
+      )
+    }
+
+    // 5. Build response
     const response = {
       id: generationRequest.id,
       status: generationRequest.status,
@@ -95,10 +104,3 @@ export async function GET(
     )
   }
 }
-    const clientKeyHash = hashApiKey(apiKey)
-    if (generationRequest.clientKeyHash && generationRequest.clientKeyHash !== clientKeyHash) {
-      return NextResponse.json(
-        { error: `Generation request not found: ${id}` },
-        { status: 404 }
-      )
-    }

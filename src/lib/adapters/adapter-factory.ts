@@ -14,6 +14,10 @@ import { KlingAdapter } from './kling-adapter'
 import { PolloAdapter } from './pollo-adapter'
 import { PolloKlingAdapter } from './pollo-kling-adapter'
 import { ReplicateAdapter } from './replicate-adapter'
+import {
+  TuziMidjourneyImagineAdapter,
+  TuziMidjourneyVideoAdapter,
+} from './tuzi-midjourney-adapter'
 
 /**
  * Adapter registry mapping adapter names to their classes
@@ -21,6 +25,8 @@ import { ReplicateAdapter } from './replicate-adapter'
 const ADAPTER_REGISTRY: Record<string, new (config: ProviderConfig) => BaseAdapter> = {
   FluxAdapter,
   TuziOpenAIAdapter,
+  TuziMidjourneyImagineAdapter,
+  TuziMidjourneyVideoAdapter,
   KlingAdapter,
   PolloAdapter,
   PolloKlingAdapter,

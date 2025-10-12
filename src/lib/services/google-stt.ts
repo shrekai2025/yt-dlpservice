@@ -1078,7 +1078,7 @@ class GoogleSpeechService {
     model: string
   } {
     // 根据当前语言代码选择最佳区域
-    let selectedRegion: string
+    let selectedRegion: keyof typeof this.REGION_LANGUAGE_MAP
 
     // 根据语言代码选择区域
     if (this.currentLanguageCode.startsWith('cmn-') || this.currentLanguageCode.startsWith('yue-')) {
