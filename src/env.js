@@ -66,6 +66,10 @@ export const env = createEnv({
     // 任务限制配置
     MAX_FILE_SIZE_MB: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("300"),
     MAX_DURATION_HOURS: z.string().transform(val => parseInt(val)).pipe(z.number().positive()).default("2"),
+
+    // 管理后台登录凭据
+    ADMIN_USERNAME: z.string().min(1),
+    ADMIN_PASSWORD: z.string().min(1),
     
     // 音频压缩配置
     AUDIO_COMPRESSION_ENABLED: z.string().transform(val => val === 'true').default('true'),
@@ -143,6 +147,9 @@ export const env = createEnv({
     AUDIO_COMPRESSION_ENABLED: process.env.AUDIO_COMPRESSION_ENABLED,
     AUDIO_COMPRESSION_TEMP_DIR: process.env.AUDIO_COMPRESSION_TEMP_DIR,
     AUDIO_COMPRESSION_MAX_SIZE: process.env.AUDIO_COMPRESSION_MAX_SIZE,
+
+    ADMIN_USERNAME: process.env.ADMIN_USERNAME,
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
     
     PUPPETEER_HEADLESS: process.env.PUPPETEER_HEADLESS,
     PUPPETEER_ARGS: process.env.PUPPETEER_ARGS,

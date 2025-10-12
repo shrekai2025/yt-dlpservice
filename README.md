@@ -992,6 +992,9 @@ npm run build
 npm run db:push
 chmod +x scripts/*.sh scripts/*.js
 mkdir -p logs
+# 更安全的数据库升级
+npx prisma migrate deploy
+npx prisma generate
 
 # 5. 启动服务
 pm2 start ecosystem.config.cjs --env production
@@ -999,7 +1002,7 @@ pm2 save
 
 # 6. 验证部署
 pm2 list
-pm2 logs yt-dlpservice --lines 5
+pm2 logs yt-dlpservice --lines 20
 
 
 

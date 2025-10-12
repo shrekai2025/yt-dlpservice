@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 
 import { cn } from '~/lib/utils/cn'
 
@@ -20,6 +20,7 @@ const NAV_ITEMS: Array<{ key: NavKey; label: string; href: string }> = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const router = useRouter()
   const inferredKey: NavKey = useMemo(() => {
     if (pathname === '/admin/config-tools') return 'config-tools'
     if (pathname === '/admin/info-fetch') return 'info-fetch'
@@ -36,6 +37,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     setActive(inferredKey)
   }, [inferredKey])
 
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+
+  async function handleLogout() {
+    try {
+      setIsLoggingOut(true)
+      await fetch('/api/logout', { method: 'POST' })
+      router.replace('/')
+      router.refresh()
+    } catch (error) {
+      console.error('Failed to logout:', error)
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
       <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/90 backdrop-blur">
@@ -46,23 +62,33 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="text-xs text-neutral-500">原yt-dlpservice</span>
             </div>
           </div>
-          <nav className="flex items-center gap-2">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.key}
-                href={item.href}
-                onClick={() => setActive(item.key)}
-                className={cn(
-                  'inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors',
-                  active === item.key
-                    ? 'bg-neutral-900 text-white'
-                    : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          <div className="flex items-center gap-3">
+            <nav className="flex items-center gap-2">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.key}
+                  href={item.href}
+                  onClick={() => setActive(item.key)}
+                  className={cn(
+                    'inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors',
+                    active === item.key
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
+                  )}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-600"
+            >
+              {isLoggingOut ? '退出中...' : '退出登录'}
+            </button>
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-6xl px-6 py-10" role="main">
