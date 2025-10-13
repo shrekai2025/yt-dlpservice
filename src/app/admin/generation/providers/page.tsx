@@ -6,18 +6,27 @@ import { Card } from '~/components/ui/card'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 
-interface EditingProvider {
-  id: string
-  name: string
-  apiEndpoint: string
-  encryptedAuthKey: string
-  uploadToS3: boolean
-  s3PathPrefix: string | null
+const FALLBACK_SHORT_NAMES: Record<string, string> = {
+  'flux-pro': 'Flux Pro',
+  'flux-dev': 'Flux Dev',
+  'tuzi-openai-dalle': 'GPT-4o Image',
+  'gpt-image-1-vip': 'GPT-4o Image',
+  'gpt-4o-image-vip': 'GPT-4o Image',
+  'mj_relax_imagine': 'MJ Imagine',
+  'mj_relax_video': 'MJ Video',
+  'kling-v1': 'Kling Video',
+  'kling-video-v1': 'Kling Video',
+  'pollo-veo3': 'Pollo Veo3',
+  'pollo-kling': 'Pollo Kling',
+  'replicate-minimax': 'Replicate Minimax',
+  'replicate-ltx': 'Replicate LTX',
 }
 
+type ProviderTypeFilter = 'image' | 'video' | 'stt' | 'all'
+
 export default function ProvidersPage() {
-  const [selectedType, setSelectedType] = useState<'image' | 'video' | 'stt' | 'all'>('all')
-  const [editingProvider, setEditingProvider] = useState<EditingProvider | null>(null)
+  const [selectedType, setSelectedType] = useState<ProviderTypeFilter>('all')
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('all')
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   // Fetch providers
@@ -39,7 +48,6 @@ export default function ProvidersPage() {
   const updateMutation = api.generation.updateProvider.useMutation({
     onSuccess: () => {
       setToast({ message: '供应商已更新', type: 'success' })
-      setEditingProvider(null)
       refetch()
     },
     onError: (error) => {
@@ -56,6 +64,12 @@ export default function ProvidersPage() {
     const provider = providers?.find((p) => p.id === providerId)
     if (!provider) return
 
+    const defaultShortName = provider.shortName || FALLBACK_SHORT_NAMES[provider.modelIdentifier] || provider.name
+    const shortNameInput = prompt(
+      `设置短名称（用于前端展示）。留空则使用默认值。\n\n当前: ${defaultShortName}`,
+      defaultShortName
+    )
+
     // Generate environment variable name
     const envVarName = `AI_PROVIDER_${provider.modelIdentifier.toUpperCase().replace(/-/g, '_')}_API_KEY`
 
@@ -71,11 +85,29 @@ export default function ProvidersPage() {
 
     const newApiKey = prompt(message)
 
-    if (newApiKey !== null && newApiKey.trim() !== '') {
-      updateMutation.mutate({
-        id: providerId,
-        encryptedAuthKey: newApiKey,
-      })
+    const payload: {
+      id: string
+      encryptedAuthKey?: string
+      shortName?: string | null
+    } = { id: providerId }
+
+    if (shortNameInput !== null) {
+      const trimmedShortName = shortNameInput.trim()
+      const normalizedShortName = trimmedShortName === '' ? null : trimmedShortName
+      if (normalizedShortName !== (provider.shortName ?? null)) {
+        payload.shortName = normalizedShortName
+      }
+    }
+
+    if (newApiKey !== null) {
+      const trimmedKey = newApiKey.trim()
+      if (trimmedKey !== '') {
+        payload.encryptedAuthKey = trimmedKey
+      }
+    }
+
+    if (Object.keys(payload).length > 1) {
+      updateMutation.mutate(payload)
     }
   }
 
@@ -87,6 +119,11 @@ export default function ProvidersPage() {
       </div>
     )
   }
+
+  const filteredProviders =
+    selectedProviderId === 'all'
+      ? providers ?? []
+      : (providers ?? []).filter((provider) => provider.id === selectedProviderId)
 
   return (
     <div className="space-y-6">
@@ -114,36 +151,56 @@ export default function ProvidersPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-2">
-        <Button
-          variant={selectedType === 'all' ? 'default' : 'outline'}
-          onClick={() => setSelectedType('all')}
-        >
-          全部 ({providers?.length || 0})
-        </Button>
-        <Button
-          variant={selectedType === 'image' ? 'default' : 'outline'}
-          onClick={() => setSelectedType('image')}
-        >
-          图像
-        </Button>
-        <Button
-          variant={selectedType === 'video' ? 'default' : 'outline'}
-          onClick={() => setSelectedType('video')}
-        >
-          视频
-        </Button>
-        <Button
-          variant={selectedType === 'stt' ? 'default' : 'outline'}
-          onClick={() => setSelectedType('stt')}
-        >
-          语音转录
-        </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-2">
+          <Button
+            variant={selectedType === 'all' ? 'default' : 'outline'}
+            onClick={() => setSelectedType('all')}
+          >
+            全部 ({providers?.length || 0})
+          </Button>
+          <Button
+            variant={selectedType === 'image' ? 'default' : 'outline'}
+            onClick={() => setSelectedType('image')}
+          >
+            图像
+          </Button>
+          <Button
+            variant={selectedType === 'video' ? 'default' : 'outline'}
+            onClick={() => setSelectedType('video')}
+          >
+            视频
+          </Button>
+          <Button
+            variant={selectedType === 'stt' ? 'default' : 'outline'}
+            onClick={() => setSelectedType('stt')}
+          >
+            语音转录
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor="provider-filter" className="text-sm text-neutral-600">
+            指定供应商
+          </label>
+          <select
+            id="provider-filter"
+            value={selectedProviderId}
+            onChange={(event) => setSelectedProviderId(event.target.value)}
+            className="h-9 rounded-md border border-neutral-300 px-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="all">全部供应商</option>
+            {(providers ?? []).map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.shortName || FALLBACK_SHORT_NAMES[provider.modelIdentifier] || provider.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Provider List */}
       <div className="grid gap-4">
-        {providers?.map((provider) => (
+        {filteredProviders.map((provider) => (
           <Card key={provider.id} className="p-6">
             <div className="flex items-start justify-between">
               <div className="flex-1 space-y-2">
@@ -163,6 +220,12 @@ export default function ProvidersPage() {
                     <code className="rounded bg-neutral-100 px-2 py-1 text-xs">
                       {provider.modelIdentifier}
                     </code>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">短名称:</span>{' '}
+                    <span className="font-medium">
+                      {provider.shortName || FALLBACK_SHORT_NAMES[provider.modelIdentifier] || '—'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-neutral-500">供应商:</span>{' '}
@@ -206,7 +269,7 @@ export default function ProvidersPage() {
           </Card>
         ))}
 
-        {providers?.length === 0 && (
+        {filteredProviders.length === 0 && (
           <Card className="p-12 text-center">
             <div className="text-neutral-500">暂无供应商</div>
             <div className="mt-2 text-xs text-neutral-400">

@@ -10,6 +10,9 @@ import type { ProviderConfig } from './types'
 // Import adapters (will add as we implement them)
 import { FluxAdapter } from './flux-adapter'
 import { TuziOpenAIAdapter } from './tuzi-openai-adapter'
+import { KieAdapter } from './kie-adapter'
+import { KieFluxKontextAdapter } from './kie-flux-kontext-adapter'
+import { KieMidjourneyAdapter } from './kie-midjourney-adapter'
 import { KlingAdapter } from './kling-adapter'
 import { PolloAdapter } from './pollo-adapter'
 import { PolloKlingAdapter } from './pollo-kling-adapter'
@@ -25,6 +28,9 @@ import {
 const ADAPTER_REGISTRY: Record<string, new (config: ProviderConfig) => BaseAdapter> = {
   FluxAdapter,
   TuziOpenAIAdapter,
+  KieAdapter,
+  KieFluxKontextAdapter,
+  KieMidjourneyAdapter,
   TuziMidjourneyImagineAdapter,
   TuziMidjourneyVideoAdapter,
   KlingAdapter,

@@ -60,6 +60,7 @@ export interface ProviderConfig {
   adapterName: string
   type: GenerationType
   provider: string | null
+  shortName?: string | null
   apiEndpoint: string
   apiFlavor: string
   encryptedAuthKey: string | null
@@ -78,6 +79,7 @@ export interface AdapterResponse {
   results?: GenerationResult[]
   message?: string
   task_id?: string
+  progress?: number  // Progress (0-1 or 0-100)
   error?: {
     code: string
     message: string

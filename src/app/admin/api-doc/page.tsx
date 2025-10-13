@@ -41,17 +41,17 @@ const sections: Section[] = [
   },
   {
     id: 'stt-tech',
-    label: '音视频STT技术',
-    title: '音视频STT技术 · 下载与转写',
+    label: 'URL2STT 技术',
+    title: 'URL2STT 技术 · 下载与转写',
     description: '关键模块、下载策略、元数据增强、音频压缩',
     icon: '🎙️',
     render: SttTechSection,
   },
   {
     id: 'stt-apis',
-    label: '音视频STT APIs',
-    title: '音视频STT APIs · REST 接入',
-    description: '音视频下载、转写、存储接口',
+    label: 'URL2STT APIs',
+    title: 'URL2STT APIs · REST 接入',
+    description: 'URL 下载、转写、存储接口',
     icon: '🎤',
     render: SttApiSection,
   },
@@ -122,7 +122,7 @@ function OverviewSection(): ReactElement {
           <h3 className="text-base font-semibold text-neutral-900">产品亮点</h3>
           <ul className="mt-3 space-y-2 list-disc list-inside">
             <li>多平台视频/播客下载 + AI 内容生成，支持图像、视频、STT 三大类能力。</li>
-            <li>音视频 STT：豆包、通义听悟、Google STT，多种压缩预设兼顾文件大小。</li>
+            <li>URL2STT：豆包、通义听悟、Google STT，多种压缩预设兼顾文件大小。</li>
             <li>AI 生成：FLUX 图像、Kling/Pollo 视频、Replicate 等多供应商统一接入。</li>
             <li>Web 管理台 + tRPC/REST API，实时掌握任务、日志与供应商配置。</li>
             <li>自动维护：yt-dlp 更新、临时文件清理、PM2 守护与部署脚本。</li>
@@ -133,7 +133,7 @@ function OverviewSection(): ReactElement {
           <h3 className="text-base font-semibold text-neutral-900">典型处理流程</h3>
           <div className="mt-3 space-y-3">
             <div>
-              <div className="text-sm font-semibold text-neutral-900">音视频 STT 流程：</div>
+              <div className="text-sm font-semibold text-neutral-900">URL2STT 流程：</div>
               <ol className="mt-1 space-y-1 text-xs text-neutral-700">
                 <li>1. 创建任务 → URL 标准化（短链解析、平台识别），记录为 PENDING。</li>
                 <li>2. <code className="rounded bg-neutral-100 px-1">ContentDownloader</code> 根据平台选择 yt-dlp 或自定义提取器。</li>
@@ -1362,6 +1362,142 @@ ${endpoint.notes ? `## 说明\n${endpoint.notes}` : ''}`
     }
   }
 
+  const tuziOpenAiOpenApiSpec = String.raw`# 创建图像
+
+## OpenAPI Specification
+
+\`\`\`yaml
+openapi: 3.0.1
+info:
+  title: ''
+  description: ''
+  version: 1.0.0
+paths:
+  /v1/images/generations:
+    post:
+      summary: 创建图像
+      deprecated: false
+      description: |+
+        [图片](https://platform.openai.com/docs/api-reference/images)
+
+        给定提示和/或输入图像，模型将生成新图像。
+
+        相关指南：[图像生成](https://platform.openai.com/docs/guides/images)
+
+        根据提示创建图像。
+
+      tags:
+        - openai/图像（Images）
+      parameters:
+        - name: Authorization
+          in: header
+          description: ''
+          required: false
+          example: Bearer {{YOUR_API_KEY}}
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: 用于图像生成的模型。
+                prompt:
+                  type: string
+                  description: 所需图像的文本描述。最大长度为 1000 个字符。
+                'n':
+                  type: integer
+                  description: 要生成的图像数。必须介于 1 和 10 之间。
+                size:
+                  type: string
+                  description: 生成图像的大小。必须是256x256、512x512或 1024x1024之一。
+                quality:
+                  type: string
+                  description: 将生成的图像的质量。\`hd\`创建具有更精细细节和更高一致性的图像。此参数仅支持\`dall-e-3\`.
+                response_format:
+                  type: string
+                  description: 返回生成的图像的格式。必须是 或url之一b64_json。
+                style:
+                  type: string
+                  description: >-
+                    生成图像的大小。必须是\`256x256\`、\`512x512\`或\`1024x1024\`for之一\`dall-e-2\`。对于模型来说，必须是\`1024x1024\`、\`1792x1024\`、
+                    或之一。\`1024x1792\`\`dall-e-3\`
+                user:
+                  type: string
+                  description: >-
+                    生成图像的风格。必须是
+                    或\`vivid\`之一\`natural\`。生动使模型倾向于生成超真实和戏剧性的图像。自然使模型生成更自然、不太真实的图像。此参数仅支持\`dall-e-3\`.
+              required:
+                - prompt
+              x-apifox-orders:
+                - prompt
+                - model
+                - 'n'
+                - quality
+                - response_format
+                - style
+                - user
+                - size
+            example:
+              model: gpt-4o-image-vip
+              prompt: 画一副清明上河图
+              'n': 1
+              size: 1024x1024
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                      required:
+                        - url
+                      x-apifox-orders:
+                        - url
+                required:
+                  - created
+                  - data
+                x-apifox-orders:
+                  - created
+                  - data
+              example:
+                created: 1589478378
+                data:
+                  - url: https://...
+                  - url: https://...
+          headers: {}
+          x-apifox-name: Create image
+      security:
+        - bearer: []
+      x-apifox-folder: openai/图像（Images）
+      x-apifox-status: released
+      x-run-in-apifox: https://app.apifox.com/web/project/7040782/apis/api-343647071-run
+components:
+  schemas: {}
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+servers:
+  - url: https://api.tu-zi.com
+    description: api.tu-zi.com
+security:
+  - bearer: []
+\`\`\``
+
   const generationApis = [
     {
       id: 'generation-create',
@@ -1393,7 +1529,7 @@ X-API-Key: your-api-key
 }`,
       notes: `参数说明：
 - modelIdentifier: 模型标识符（必填）
-  - 图像模型：flux-kontext-pro, flux-dev, gpt-image-1-vip
+  - 图像模型：flux-kontext-pro, flux-dev, gpt-4o-image-vip
   - 视频模型：kling-video-v1, pollo-veo3, minimax-video, ltx-video
 - prompt: 生成提示词（必填，最大5000字符）
 - numberOfOutputs: 生成数量（可选，默认：1，范围：1-4）
@@ -1405,7 +1541,7 @@ X-API-Key: your-api-key
 图像生成：
 - flux-kontext-pro: FLUX Pro 高质量图像生成（Tuzi）
 - flux-dev: FLUX Dev 快速图像生成（Tuzi）
-- gpt-image-1-vip: OpenAI DALL-E 风格图像生成（Tuzi）
+- gpt-4o-image-vip: GPT-4o 风格图像生成（Tuzi）
 
 视频生成：
 - kling-video-v1: Kling 1.5 图像转视频（Tuzi）
@@ -1492,8 +1628,8 @@ X-API-Key: your-api-key`,
     },
     {
       "id": "clyyyy",
-      "name": "Tuzi OpenAI-Style Image API",
-      "modelIdentifier": "gpt-image-1-vip",
+      "name": "Tuzi GPT-4o Image API",
+      "modelIdentifier": "gpt-4o-image-vip",
       "type": "image",
       "provider": "Tuzi",
       "isActive": true,
@@ -1663,6 +1799,19 @@ X-API-Key: your-api-key`,
         '统一的 AI 内容生成接口，支持图像、视频等多种生成任务',
         generationApis
       )}
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h3 className="text-base font-semibold text-neutral-900">Tuzi GPT-4o Image API</h3>
+        <p className="mt-3 text-sm text-neutral-600">
+          Tuzi OpenAI 风格图像生成接口示例。Base URL 为 <code className="rounded bg-neutral-100 px-1">https://api.tu-zi.com</code>，
+          生成请求需携带 Bearer Token。
+        </p>
+        <div className="mt-4">
+          <pre className="max-h-[560px] overflow-auto rounded-lg bg-neutral-900 p-4 font-mono text-[11px] text-neutral-100 leading-snug">
+{tuziOpenAiOpenApiSpec}
+          </pre>
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm">
         <h3 className="text-base font-semibold text-neutral-900">最佳实践</h3>

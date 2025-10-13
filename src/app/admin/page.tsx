@@ -165,7 +165,7 @@ export default function TaskManagementPage() {
   return (
     <div className="space-y-10">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight">任务工作台</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">URL2STT</h1>
         <div className="flex items-center gap-3 text-xs text-neutral-500">
           <span className="uppercase tracking-wide">Chromium 下载器</span>
           <Badge variant={downloaderStatus?.available ? 'success' : 'danger'}>

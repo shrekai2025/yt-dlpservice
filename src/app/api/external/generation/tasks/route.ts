@@ -20,6 +20,7 @@ function mapGenerationRequest(record: any) {
     results: record.results ? JSON.parse(record.results) : null,
     error_message: record.errorMessage,
     task_id: record.taskId,
+    progress: record.progress ?? null,
     created_at: record.createdAt.toISOString(),
     updated_at: record.updatedAt.toISOString(),
     completed_at: record.completedAt ? record.completedAt.toISOString() : null,
@@ -32,6 +33,15 @@ function mapGenerationRequest(record: any) {
           type: record.provider.type,
         }
       : null,
+    msg: (() => {
+      if (!record.responsePayload) return null
+      try {
+        const payload = JSON.parse(record.responsePayload) as any
+        return payload?.message ?? payload?.msg ?? null
+      } catch {
+        return null
+      }
+    })(),
   }
 }
 
@@ -75,15 +85,31 @@ export async function GET(request: NextRequest) {
     const clientKeyHash = hashApiKey(apiKey)
     const clientKeyPrefix = extractKeyPrefix(apiKey)
 
+    // Get list of valid provider IDs
+    const validProviderIds = await db.apiProvider.findMany({
+      select: { id: true }
+    }).then(providers => providers.map(p => p.id))
+
     const where = {
       deletedAt: null,
       clientKeyHash,
+      providerId: {
+        in: validProviderIds
+      }
     }
 
     const [records, total] = await Promise.all([
       db.generationRequest.findMany({
         where,
-        include: { provider: true },
+        include: {
+          provider: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+            }
+          }
+        },
         orderBy: { createdAt: 'desc' },
         take: limit,
         skip: offset,

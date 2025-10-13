@@ -9,7 +9,7 @@ import { cn } from '~/lib/utils/cn'
 type NavKey = 'tasks' | 'info-fetch' | 'standalone-stt' | 'generation' | 'storage' | 'config-tools' | 'docs'
 
 const NAV_ITEMS: Array<{ key: NavKey; label: string; href: string }> = [
-  { key: 'tasks', label: '音视频STT', href: '/admin' },
+  { key: 'tasks', label: 'URL2STT', href: '/admin' },
   { key: 'info-fetch', label: '信息获取', href: '/admin/info-fetch' },
   { key: 'standalone-stt', label: '独立STT', href: '/admin/standalone-stt' },
   { key: 'generation', label: 'AI生成', href: '/admin/generation/providers' },
@@ -53,47 +53,47 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 text-neutral-900">
-      <header className="sticky top-0 z-40 border-b border-neutral-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold tracking-wider text-neutral-900">多媒体工作站</span>
-              <span className="text-xs text-neutral-500">原yt-dlpservice</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <nav className="flex items-center gap-2">
-              {NAV_ITEMS.map((item) => (
-                <Link
-                  key={item.key}
-                  href={item.href}
-                  onClick={() => setActive(item.key)}
-                  className={cn(
-                    'inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors',
-                    active === item.key
-                      ? 'bg-neutral-900 text-white'
-                      : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={isLoggingOut}
-              className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-3 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-600"
-            >
-              {isLoggingOut ? '退出中...' : '退出登录'}
-            </button>
+    <div className="flex h-screen overflow-hidden bg-neutral-50 text-neutral-900">
+      <aside className="flex w-48 shrink-0 flex-col border-r border-neutral-200 bg-white/95 pb-6 pt-8 max-h-screen overflow-y-auto">
+        <div className="px-6">
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold tracking-wider text-neutral-900">多媒体工作站</span>
+            <span className="text-xs text-neutral-500">原yt-dlpservice</span>
           </div>
         </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl px-6 py-10" role="main">
-        {children}
-      </main>
+        <nav className="mt-8 flex flex-1 flex-col gap-1 px-3">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.key}
+              href={item.href}
+              onClick={() => setActive(item.key)}
+              className={cn(
+                'flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                active === item.key
+                  ? 'bg-neutral-900 text-white shadow-sm'
+                  : 'text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900',
+              )}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+        <div className="px-3">
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-600"
+          >
+            {isLoggingOut ? '退出中...' : '退出登录'}
+          </button>
+        </div>
+      </aside>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex-1 overflow-y-auto px-8 py-10" role="main">
+          <div className="mx-auto w-full max-w-6xl">{children}</div>
+        </main>
+      </div>
     </div>
   )
 }

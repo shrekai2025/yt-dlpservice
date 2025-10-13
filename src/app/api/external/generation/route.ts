@@ -9,8 +9,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '~/server/db'
 import { validateApiKey, hashApiKey, extractKeyPrefix } from '~/lib/auth/api-key'
 import { createAdapter } from '~/lib/adapters/adapter-factory'
+import type { BaseAdapter } from '~/lib/adapters/base-adapter'
 import { UnifiedGenerationRequestSchema } from '~/lib/adapters/types'
-import type { ProviderConfig } from '~/lib/adapters/types'
+import type { AdapterResponse, ProviderConfig } from '~/lib/adapters/types'
 
 /**
  * Convert database provider to ProviderConfig
@@ -22,6 +23,7 @@ function toProviderConfig(provider: {
   adapterName: string
   type: string
   provider: string | null
+  shortName?: string | null
   apiEndpoint: string
   apiFlavor: string
   encryptedAuthKey: string | null
@@ -37,6 +39,7 @@ function toProviderConfig(provider: {
     adapterName: provider.adapterName,
     type: provider.type as 'image' | 'video' | 'stt',
     provider: provider.provider,
+    shortName: provider.shortName,
     apiEndpoint: provider.apiEndpoint,
     apiFlavor: provider.apiFlavor,
     encryptedAuthKey: provider.encryptedAuthKey,
@@ -45,6 +48,124 @@ function toProviderConfig(provider: {
     s3PathPrefix: provider.s3PathPrefix,
     modelVersion: provider.modelVersion,
   }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function monitorAsyncGenerationTask({
+  adapter,
+  taskId,
+  requestId,
+  providerId,
+  startedAt,
+  pollIntervalMs = 5000,
+  maxAttempts = 120,
+}: {
+  adapter: BaseAdapter
+  taskId: string
+  requestId: string
+  providerId: string
+  startedAt: number
+  pollIntervalMs?: number
+  maxAttempts?: number
+}) {
+  const pollingFn = (adapter as unknown as { checkTaskStatus?: (taskId: string) => Promise<AdapterResponse> })
+
+  if (typeof pollingFn.checkTaskStatus !== 'function') {
+    console.warn(
+      `[External API] Adapter ${adapter.constructor.name} does not expose checkTaskStatus, skip polling`,
+    )
+    return
+  }
+
+  console.log(
+    `[External API] Start polling task ${taskId} for request ${requestId} via ${adapter.constructor.name}`,
+  )
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const currentRequest = await db.generationRequest.findUnique({
+      where: { id: requestId },
+      select: { deletedAt: true, status: true },
+    })
+
+    if (!currentRequest || currentRequest.deletedAt) {
+      console.log(`[External API] Request ${requestId} deleted, stop polling task ${taskId}`)
+      return
+    }
+
+    if (currentRequest.status !== 'PROCESSING' && currentRequest.status !== 'PENDING') {
+      console.log(
+        `[External API] Request ${requestId} status now ${currentRequest.status}, stop polling task ${taskId}`,
+      )
+      return
+    }
+    try {
+      const status = await pollingFn.checkTaskStatus.call(adapter, taskId)
+
+      if (!status) {
+        await sleep(pollIntervalMs)
+        continue
+      }
+
+      if (status.status === 'SUCCESS') {
+        await db.generationRequest.update({
+          where: { id: requestId },
+          data: {
+            status: 'SUCCESS',
+            results: JSON.stringify(status.results || []),
+            completedAt: new Date(),
+            responsePayload: JSON.stringify(status),
+            durationMs: Date.now() - startedAt,
+            progress: status.progress ?? 1,
+          },
+        })
+
+        await db.apiProvider.update({
+          where: { id: providerId },
+          data: { callCount: { increment: 1 } },
+        })
+
+        console.log(
+          `[External API] Task ${taskId} completed after ${attempt} attempts`,
+        )
+        return
+      }
+
+      if (status.status === 'ERROR') {
+        await db.generationRequest.update({
+          where: { id: requestId },
+          data: {
+            status: 'FAILED',
+            errorMessage: status.message || status.error?.message || 'Generation failed',
+            responsePayload: JSON.stringify(status),
+            durationMs: Date.now() - startedAt,
+            progress: status.progress ?? null,
+          },
+        })
+
+        console.warn(
+          `[External API] Task ${taskId} failed after ${attempt} attempts: ${status.message}`,
+        )
+        return
+      }
+
+      await db.generationRequest.update({
+        where: { id: requestId },
+        data: {
+          progress: status.progress ?? null,
+          responsePayload: JSON.stringify(status),
+        },
+      })
+    } catch (error) {
+      console.warn(`[External API] Polling error for task ${taskId} (attempt ${attempt})`, error)
+    }
+
+    await sleep(pollIntervalMs)
+  }
+
+  console.warn(
+    `[External API] Task ${taskId} did not finish within ${maxAttempts} attempts`,
+  )
 }
 
 export async function POST(request: NextRequest) {
@@ -173,16 +294,30 @@ export async function POST(request: NextRequest) {
           data: {
             status: 'PROCESSING',
             taskId: result.task_id || null,
+            progress: result.progress ?? null,
             responsePayload: JSON.stringify(result),
             durationMs: Date.now() - startedAt,
           },
         })
+
+        if (result.task_id) {
+          void monitorAsyncGenerationTask({
+            adapter,
+            taskId: result.task_id,
+            requestId: generationRequest.id,
+            providerId: provider.id,
+            startedAt,
+            pollIntervalMs: 5000,
+            maxAttempts: 180,
+          })
+        }
 
         return NextResponse.json(
           {
             id: generationRequest.id,
             status: 'PROCESSING',
             task_id: result.task_id,
+            progress: result.progress,
             message: result.message || 'Generation in progress',
             created_at: updatedRequest.createdAt.toISOString(),
             completed_at: updatedRequest.completedAt?.toISOString() || null,

@@ -146,30 +146,115 @@ export class FluxAdapter extends BaseAdapter {
 
       // 3. Call Flux API
       const response = await this.httpClient.post(apiEndpoint, payload)
+      const contentType = response.headers['content-type'] || ''
       const apiResponse = response.data
+
+      if (typeof apiResponse === 'string') {
+        const snippet = apiResponse.slice(0, 200)
+        this.logger.error(
+          { snippet, status: response.status, headers: response.headers },
+          'Flux API returned non-JSON payload'
+        )
+        return {
+          status: 'ERROR',
+          message:
+            contentType.includes('text/html')
+              ? 'Flux API returned HTML page. Please verify the endpoint and API key.'
+              : `Unexpected response from Flux API: ${snippet}`,
+        }
+      }
 
       this.logger.info('Received response from Flux API')
 
       // 4. Process response
       const results: GenerationResult[] = []
 
-      if (apiResponse?.data && Array.isArray(apiResponse.data)) {
-        const fluxUrl = apiResponse.data[0]?.url
-
-        if (fluxUrl) {
-          const finalUrl = await this.downloadAndUploadToS3(fluxUrl, 'image/png')
+      const appendResult = async (
+        imageUrl?: string | null,
+        base64Data?: string | null
+      ) => {
+        if (imageUrl) {
+          const finalUrl = await this.downloadAndUploadToS3(imageUrl, 'image/png')
           results.push({
             type: 'image',
             url: finalUrl,
           })
+          return
+        }
+
+        if (base64Data) {
+          if (this.sourceInfo.uploadToS3) {
+            try {
+              const uploadedUrl = await this.uploadBase64ToS3(base64Data)
+              results.push({
+                type: 'image',
+                url: uploadedUrl,
+              })
+            } catch (error) {
+              this.logger.error({ error }, 'Failed to upload base64 image to S3')
+              results.push({
+                type: 'image',
+                url: `data:image/png;base64,${base64Data}`,
+              })
+            }
+          } else {
+            this.logger.warn(
+              'S3 disabled, returning base64 image directly in response'
+            )
+            results.push({
+              type: 'image',
+              url: `data:image/png;base64,${base64Data}`,
+            })
+          }
+        }
+      }
+
+      if (apiResponse?.data) {
+        if (Array.isArray(apiResponse.data)) {
+          for (const item of apiResponse.data) {
+            await appendResult(
+              item?.url ?? item?.image_url ?? item?.imageUrl,
+              item?.b64_json ?? item?.base64
+            )
+          }
+        } else if (typeof apiResponse.data === 'object') {
+          const dataObj = apiResponse.data as Record<string, unknown>
+          await appendResult(
+            (dataObj.url as string) ??
+              (dataObj.image_url as string) ??
+              (dataObj.imageUrl as string),
+            (dataObj.b64_json as string) ?? (dataObj.base64 as string)
+          )
+
+          // Handle async task format: { task_id: "...", ... }
+          if (typeof dataObj.task_id === 'string' || typeof dataObj.taskId === 'string') {
+            const taskId = (dataObj.task_id as string) ?? (dataObj.taskId as string)
+            if (taskId) {
+              return {
+                status: 'PROCESSING',
+                task_id: taskId,
+                message: dataObj.msg as string ?? 'Generation in progress',
+              }
+            }
+          }
+        }
+      }
+
+      if (typeof apiResponse?.task_id === 'string' || typeof apiResponse?.taskId === 'string') {
+        const taskId = (apiResponse.task_id as string) ?? (apiResponse.taskId as string)
+        return {
+          status: 'PROCESSING',
+          task_id: taskId,
+          message: apiResponse?.message ?? 'Generation in progress',
         }
       }
 
       // Check if we got any results
       if (results.length === 0) {
+        const errorPayload = JSON.stringify(apiResponse?.data ?? apiResponse)
         return {
           status: 'ERROR',
-          message: 'No image URL found in API response',
+          message: `No image URL found in API response: ${errorPayload}`,
         }
       }
 

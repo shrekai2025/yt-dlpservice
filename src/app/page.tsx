@@ -7,7 +7,7 @@ import {
 } from "~/lib/auth/simple-admin-auth";
 
 type PageProps = {
-  searchParams?: Record<string, string | string[] | undefined>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 };
 
 function resolveNextPath(nextParam: string | string[] | undefined): string {
@@ -17,10 +17,11 @@ function resolveNextPath(nextParam: string | string[] | undefined): string {
   return "/admin";
 }
 
-export default function HomePage({ searchParams }: PageProps) {
-  const cookieStore = cookies();
+export default async function HomePage({ searchParams }: PageProps) {
+  const cookieStore = await cookies();
   const authCookie = cookieStore.get(ADMIN_AUTH_COOKIE)?.value;
-  const redirectTarget = resolveNextPath(searchParams?.next);
+  const params = await searchParams;
+  const redirectTarget = resolveNextPath(params?.next);
 
   if (isValidAdminAuthCookie(authCookie)) {
     redirect(redirectTarget);

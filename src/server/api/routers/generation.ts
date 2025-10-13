@@ -6,9 +6,11 @@
 
 import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '~/server/api/trpc'
+import type { PrismaClient } from '@prisma/client'
 import { createAdapter } from '~/lib/adapters/adapter-factory'
+import type { BaseAdapter } from '~/lib/adapters/base-adapter'
 import { UnifiedGenerationRequestSchema } from '~/lib/adapters/types'
-import type { ProviderConfig } from '~/lib/adapters/types'
+import type { AdapterResponse, ProviderConfig } from '~/lib/adapters/types'
 
 /**
  * Convert database provider to ProviderConfig
@@ -43,6 +45,127 @@ function toProviderConfig(provider: {
     s3PathPrefix: provider.s3PathPrefix,
     modelVersion: provider.modelVersion,
   }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function monitorAsyncGenerationTask({
+  adapter,
+  taskId,
+  requestId,
+  providerId,
+  db,
+  startedAt,
+  pollIntervalMs = 5000,
+  maxAttempts = 120,
+}: {
+  adapter: BaseAdapter
+  taskId: string
+  requestId: string
+  providerId: string
+  db: PrismaClient
+  startedAt: number
+  pollIntervalMs?: number
+  maxAttempts?: number
+}) {
+  const pollingFn = (adapter as unknown as { checkTaskStatus?: (taskId: string) => Promise<AdapterResponse> })
+
+  if (typeof pollingFn.checkTaskStatus !== 'function') {
+    console.warn(
+      `[Generation] Adapter ${adapter.constructor.name} does not expose checkTaskStatus, skipping polling`,
+    )
+    return
+  }
+
+  console.log(
+    `[Generation] Starting async polling for request ${requestId} (task ${taskId}) via ${adapter.constructor.name}`,
+  )
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const currentRequest = await db.generationRequest.findUnique({
+      where: { id: requestId },
+      select: { deletedAt: true, status: true },
+    })
+
+    if (!currentRequest || currentRequest.deletedAt) {
+      console.log(`[Generation] Request ${requestId} deleted, stop polling task ${taskId}`)
+      return
+    }
+
+    if (currentRequest.status !== 'PROCESSING' && currentRequest.status !== 'PENDING') {
+      console.log(
+        `[Generation] Request ${requestId} status now ${currentRequest.status}, stop polling task ${taskId}`,
+      )
+      return
+    }
+    try {
+      const status = await pollingFn.checkTaskStatus.call(adapter, taskId)
+
+      if (!status) {
+        await sleep(pollIntervalMs)
+        continue
+      }
+
+      if (status.status === 'SUCCESS') {
+        await db.generationRequest.update({
+          where: { id: requestId },
+          data: {
+            status: 'SUCCESS',
+            results: JSON.stringify(status.results || []),
+            completedAt: new Date(),
+            responsePayload: JSON.stringify(status),
+            durationMs: Date.now() - startedAt,
+            progress: status.progress ?? 1,
+          },
+        })
+
+        await db.apiProvider.update({
+          where: { id: providerId },
+          data: { callCount: { increment: 1 } },
+        })
+
+        console.log(
+          `[Generation] Task ${taskId} completed successfully after ${attempt} attempts`,
+        )
+        return
+      }
+
+      if (status.status === 'ERROR') {
+        await db.generationRequest.update({
+          where: { id: requestId },
+          data: {
+            status: 'FAILED',
+            errorMessage: status.message || status.error?.message || 'Generation failed',
+            responsePayload: JSON.stringify(status),
+            durationMs: Date.now() - startedAt,
+            progress: status.progress ?? null,
+          },
+        })
+
+        console.warn(
+          `[Generation] Task ${taskId} failed after ${attempt} attempts: ${status.message}`,
+        )
+        return
+      }
+
+      // Still processing – persist progress/message if available
+      await db.generationRequest.update({
+        where: { id: requestId },
+        data: {
+          progress: status.progress ?? null,
+          responsePayload: JSON.stringify(status),
+        },
+      })
+    } catch (error) {
+      console.warn(`[Generation] Polling error for task ${taskId} (attempt ${attempt})`, error)
+    }
+
+    await sleep(pollIntervalMs)
+  }
+
+  console.warn(
+    `[Generation] Task ${taskId} did not complete within ${maxAttempts} polling attempts`,
+  )
 }
 
 export const generationRouter = createTRPCRouter({
@@ -134,6 +257,19 @@ export const generationRouter = createTRPCRouter({
               durationMs: Date.now() - startedAt,
             },
           })
+
+          if (result.task_id) {
+            void monitorAsyncGenerationTask({
+              adapter,
+              taskId: result.task_id,
+              requestId: generationRequest.id,
+              providerId: provider.id,
+              db: ctx.db,
+              startedAt,
+              pollIntervalMs: 5000,
+              maxAttempts: 180,
+            })
+          }
 
           return {
             id: generationRequest.id,
@@ -294,6 +430,7 @@ export const generationRouter = createTRPCRouter({
         provider: p.provider,
         isActive: p.isActive,
         callCount: p.callCount,
+        shortName: p.shortName,
       }))
     }),
 
@@ -324,6 +461,7 @@ export const generationRouter = createTRPCRouter({
         apiFlavor: provider.apiFlavor,
         uploadToS3: provider.uploadToS3,
         s3PathPrefix: provider.s3PathPrefix,
+        shortName: provider.shortName,
       }
     }),
 
@@ -365,10 +503,14 @@ export const generationRouter = createTRPCRouter({
         encryptedAuthKey: z.string().optional(),
         uploadToS3: z.boolean().optional(),
         s3PathPrefix: z.string().nullable().optional(),
+        shortName: z.string().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const { id, ...updateData } = input
+      if (updateData.shortName !== undefined) {
+        updateData.shortName = updateData.shortName && updateData.shortName.trim() !== '' ? updateData.shortName.trim() : null
+      }
 
       const updated = await ctx.db.apiProvider.update({
         where: { id },

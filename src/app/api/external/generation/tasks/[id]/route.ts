@@ -28,6 +28,15 @@ function mapGenerationRequest(record: any) {
           type: record.provider.type,
         }
       : null,
+    msg: (() => {
+      if (!record.responsePayload) return null
+      try {
+        const payload = JSON.parse(record.responsePayload) as any
+        return payload?.message ?? payload?.msg ?? null
+      } catch {
+        return null
+      }
+    })(),
   }
 }
 
@@ -110,13 +119,6 @@ export async function DELETE(
 
     if (generationRequest.clientKeyHash !== clientKeyHash) {
       return new NextResponse(null, { status: 204 })
-    }
-
-    if (generationRequest.status === 'PROCESSING' || generationRequest.status === 'PENDING') {
-      return NextResponse.json(
-        { error: 'Task is still in progress and cannot be deleted' },
-        { status: 409 }
-      )
     }
 
     await db.generationRequest.update({

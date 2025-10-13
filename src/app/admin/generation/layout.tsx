@@ -8,10 +8,10 @@ import { cn } from '~/lib/utils/cn'
 type GenNavKey = 'providers' | 'requests' | 'api-keys' | 'unigen'
 
 const GEN_NAV_ITEMS: Array<{ key: GenNavKey; label: string; href: string }> = [
+  { key: 'unigen', label: 'UniGen UI', href: '/admin/generation/unigen-ui' },
   { key: 'providers', label: '供应商', href: '/admin/generation/providers' },
   { key: 'requests', label: '生成记录', href: '/admin/generation/requests' },
   { key: 'api-keys', label: 'API密钥', href: '/admin/generation/api-keys' },
-  { key: 'unigen', label: 'UniGen UI', href: '/admin/generation/unigen-ui' },
 ]
 
 export default function GenerationLayout({ children }: { children: React.ReactNode }) {
@@ -22,7 +22,7 @@ export default function GenerationLayout({ children }: { children: React.ReactNo
     if (pathname.includes('/requests')) return 'requests'
     if (pathname.includes('/api-keys')) return 'api-keys'
     if (pathname.includes('/unigen-ui')) return 'unigen'
-    return 'providers'
+    return 'unigen'
   }, [pathname])
 
   const [active, setActive] = useState<GenNavKey>(inferredKey)

@@ -2,7 +2,55 @@ import type { NextRequest } from "next/server"
 import { NextResponse } from "next/server"
 
 const ADMIN_COOKIE_NAME = "admin_auth"
+const PUBLIC_PATHS = new Set(["/"])
+const PUBLIC_PATH_PREFIXES = ["/_next/static", "/_next/webpack-hmr", "/_next/image"]
+const PUBLIC_FILE_EXCEPTIONS = ["/_next/data"]
+
 let expectedHashPromise: Promise<string> | null = null
+
+function hasFileExtension(pathname: string): boolean {
+  return /\.[^/]+$/.test(pathname)
+}
+
+function isPublicFileRequest(pathname: string): boolean {
+  if (!hasFileExtension(pathname)) {
+    return false
+  }
+
+  return !PUBLIC_FILE_EXCEPTIONS.some((prefix) => pathname.startsWith(prefix))
+}
+
+function shouldBypassAuth(pathname: string): boolean {
+  if (PUBLIC_PATHS.has(pathname)) {
+    return true
+  }
+
+  if (pathname.startsWith("/api")) {
+    return true
+  }
+
+  if (PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return true
+  }
+
+  if (pathname === "/favicon.ico" || pathname === "/robots.txt" || pathname === "/sitemap.xml") {
+    return true
+  }
+
+  if (pathname.startsWith("/.well-known")) {
+    return true
+  }
+
+  return isPublicFileRequest(pathname)
+}
+
+function shouldSetNextParam(pathname: string): boolean {
+  if (pathname.startsWith("/_next/") || pathname.startsWith("/api")) {
+    return false
+  }
+
+  return !hasFileExtension(pathname)
+}
 
 async function computeExpectedHash(): Promise<string> {
   const username = process.env.ADMIN_USERNAME ?? ""
@@ -29,7 +77,7 @@ function getExpectedHash(): Promise<string> {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (!pathname.startsWith("/admin")) {
+  if (shouldBypassAuth(pathname)) {
     return NextResponse.next()
   }
 
@@ -41,10 +89,15 @@ export async function middleware(request: NextRequest) {
   }
 
   const loginUrl = new URL("/", request.url)
-  loginUrl.searchParams.set("next", pathname)
+
+  if (shouldSetNextParam(pathname)) {
+    const target = `${pathname}${request.nextUrl.search}`
+    loginUrl.searchParams.set("next", target)
+  }
+
   return NextResponse.redirect(loginUrl)
 }
 
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)"],
 }

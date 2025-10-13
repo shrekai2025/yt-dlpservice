@@ -165,8 +165,38 @@ class DoubaoSmallSTTService {
   private initializeTOSClient(): void {
     try {
       Logger.info('🔧 初始化TOS客户端...');
-      
-      this.tosClient = new TosClient({
+
+      // 详细记录TOS配置信息（用于诊断）
+      Logger.debug('📋 TOS配置详情:');
+      Logger.debug(`  - accessKeyId: ${this.tosAccessKeyId ? `${this.tosAccessKeyId.substring(0, 8)}***` : '❌ 未设置'}`);
+      Logger.debug(`  - accessKeySecret: ${this.tosSecretAccessKey ? `${this.tosSecretAccessKey.substring(0, 8)}***` : '❌ 未设置'}`);
+      Logger.debug(`  - region: ${this.tosRegion || '❌ 未设置'}`);
+      Logger.debug(`  - endpoint: ${this.tosEndpoint || '❌ 未设置'}`);
+      Logger.debug(`  - bucket: ${this.tosBucketName || '❌ 未设置'}`);
+
+      // 检查必需参数
+      if (!this.tosAccessKeyId || this.tosAccessKeyId.trim() === '') {
+        throw new Error('TOS accessKeyId 未配置或为空');
+      }
+      if (!this.tosSecretAccessKey || this.tosSecretAccessKey.trim() === '') {
+        throw new Error('TOS accessKeySecret 未配置或为空');
+      }
+      if (!this.tosRegion || this.tosRegion.trim() === '') {
+        throw new Error('TOS region 未配置或为空');
+      }
+      if (!this.tosEndpoint || this.tosEndpoint.trim() === '') {
+        throw new Error('TOS endpoint 未配置或为空');
+      }
+      if (!this.tosBucketName || this.tosBucketName.trim() === '') {
+        throw new Error('TOS bucket 未配置或为空');
+      }
+
+      Logger.debug('✅ TOS配置参数验证通过');
+
+      // 尝试实例化TOS客户端
+      Logger.debug('📦 正在创建 TosClient 实例...');
+
+      const tosConfig = {
         accessKeyId: this.tosAccessKeyId,
         accessKeySecret: this.tosSecretAccessKey,
         region: this.tosRegion,
@@ -175,13 +205,49 @@ class DoubaoSmallSTTService {
         connectionTimeout: 30000, // 30秒连接超时
         maxRetryCount: 3, // 最大重试3次
         enableCRC: true // 启用CRC校验
-      });
-      
+      };
+
+      Logger.debug(`📝 TosClient 配置: ${JSON.stringify({
+        ...tosConfig,
+        accessKeyId: `${tosConfig.accessKeyId.substring(0, 8)}***`,
+        accessKeySecret: `${tosConfig.accessKeySecret.substring(0, 8)}***`
+      }, null, 2)}`);
+
+      this.tosClient = new TosClient(tosConfig);
+
+      // 验证实例化是否成功
+      if (!this.tosClient) {
+        throw new Error('TosClient 实例化后为 null');
+      }
+
+      Logger.debug('✅ TosClient 实例创建成功');
       Logger.info('✅ TOS客户端初始化完成');
-      
+
     } catch (error: any) {
       Logger.error(`❌ TOS客户端初始化失败: ${error.message}`);
-      throw new Error(`TOS客户端初始化失败: ${error.message}`);
+      Logger.error(`📍 错误堆栈: ${error.stack}`);
+
+      // 记录详细的错误信息
+      if (error.code) {
+        Logger.error(`  - 错误码: ${error.code}`);
+      }
+      if (error.name) {
+        Logger.error(`  - 错误类型: ${error.name}`);
+      }
+
+      // 尝试记录完整的错误对象
+      try {
+        Logger.error(`  - 完整错误对象: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+      } catch (jsonError) {
+        Logger.error(`  - 无法序列化错误对象: ${jsonError}`);
+      }
+
+      // 不抛出错误，而是将 tosClient 设为 null 并记录警告
+      Logger.warn('⚠️ TOS客户端未初始化，豆包小模型STT功能将不可用');
+      this.tosClient = null;
+
+      // 不再抛出错误，允许服务继续运行（后续在使用TOS时会检查）
+      // throw new Error(`TOS客户端初始化失败: ${error.message}`);
     }
   }
 
@@ -209,7 +275,8 @@ class DoubaoSmallSTTService {
    * 确保服务已初始化
    */
   private async ensureInitialized(): Promise<void> {
-    if (!this.appId || !this.token || !this.cluster) {
+    // 检查豆包API配置和TOS客户端是否都已初始化
+    if (!this.appId || !this.token || !this.cluster || !this.tosClient) {
       await this.initialize();
     }
   }

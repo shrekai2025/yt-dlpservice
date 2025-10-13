@@ -20,6 +20,15 @@ export class TuziOpenAIAdapter extends BaseAdapter {
     return TuziOpenAIRequestSchema
   }
 
+  private guessContentType(url: string): string {
+    const lowered = url.toLowerCase()
+    if (lowered.endsWith('.png')) return 'image/png'
+    if (lowered.endsWith('.jpg') || lowered.endsWith('.jpeg')) return 'image/jpeg'
+    if (lowered.endsWith('.webp')) return 'image/webp'
+    if (lowered.endsWith('.gif')) return 'image/gif'
+    return 'image/png'
+  }
+
   protected getHttpClient(): AxiosInstance {
     const client = axios.create({
       headers: {
@@ -60,7 +69,20 @@ export class TuziOpenAIAdapter extends BaseAdapter {
           finalUrl = `data:image/png;base64,${b64Json}`
         }
       } else if (url) {
-        finalUrl = url
+        if (uploadS3) {
+          try {
+            const contentType = this.guessContentType(url)
+            finalUrl = await this.downloadAndUploadToS3(url, contentType, s3Prefix)
+          } catch (error) {
+            this.logger.warn(
+              { error, url },
+              'Failed to upload Tuzi OpenAI image URL to S3, falling back to original URL'
+            )
+            finalUrl = url
+          }
+        } else {
+          finalUrl = url
+        }
       }
 
       if (finalUrl) {
@@ -137,19 +159,33 @@ export class TuziOpenAIAdapter extends BaseAdapter {
     const endpoint = this.sourceInfo.apiEndpoint
     const url = `${endpoint}/generations`
 
-    const userSizeInput = request.parameters?.size_or_ratio as string | undefined
-    const size = this.findBestSize(userSizeInput)
-
-    const payload = {
-      model: 'gpt-image-1-vip',
-      prompt: request.prompt,
-      n: request.number_of_outputs,
-      quality: 'auto',
-      response_format: 'b64_json',
-      size,
+    const parameters = request.parameters ?? {}
+    let prompt = request.prompt
+    if (request.input_images && request.input_images.length > 0) {
+      const imageUrls = request.input_images.join(' ')
+      prompt = `${imageUrls} ${prompt}`
+      this.logger.debug(
+        { images: request.input_images.length },
+        'Prepending reference image URLs to Tuzi prompt'
+      )
     }
 
-    this.logger.info({ url, userSizeInput, size }, 'Calling generate API')
+    const payload: Record<string, unknown> = {
+      model: 'gpt-image-1',
+      prompt,
+      n: request.number_of_outputs,
+      quality: parameters.quality ?? 'auto',
+      output_format: parameters.output_format ?? 'png',
+      size: parameters.size ?? 'auto',
+      background: parameters.background ?? 'auto',
+      moderation: parameters.moderation ?? 'auto',
+      output_compression: parameters.output_compression ?? 100,
+      partial_images: parameters.partial_images ?? 0,
+      stream: parameters.stream ?? false,
+      user: parameters.user ?? undefined,
+    }
+
+    this.logger.info({ url, payload }, 'Calling generate API')
 
     try {
       const response = await this.httpClient.post(url, payload, {

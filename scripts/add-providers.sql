@@ -1,9 +1,81 @@
 -- AI 生成供应商配置初始化脚本
 -- 使用方法: sqlite3 data/app.db < scripts/add-providers.sql
 
--- 1. FLUX Pro (图像生成)
+-- 1. Kie 4o Image (图像生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
+  apiEndpoint, apiFlavor, encryptedAuthKey,
+  isActive, uploadToS3, s3PathPrefix,
+  createdAt, updatedAt
+) VALUES (
+  'kie-4o-image-001',
+  'Kie 4o Image',
+  'kie-4o-image',
+  'KieAdapter',
+  'image',
+  'Kie.ai',
+  'Kie 4o',
+  'https://api.kie.ai',
+  'openai',
+  'REPLACE_WITH_YOUR_KIE_API_KEY',
+  1,
+  0,
+  'kie-images',
+  datetime('now'),
+  datetime('now')
+);
+
+-- 1.1 Kie Flux Kontext (图像生成)
+INSERT OR REPLACE INTO api_providers (
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
+  apiEndpoint, apiFlavor, encryptedAuthKey,
+  isActive, uploadToS3, s3PathPrefix,
+  createdAt, updatedAt
+) VALUES (
+  'kie-flux-kontext-001',
+  'Kie Flux Kontext',
+  'kie-flux-context',
+  'KieFluxKontextAdapter',
+  'image',
+  'Kie.ai',
+  'Flux Kontext',
+  'https://api.kie.ai',
+  'custom',
+  'REPLACE_WITH_YOUR_KIE_API_KEY',
+  1,
+  0,
+  'kie-flux-kontext',
+  datetime('now'),
+  datetime('now')
+);
+
+-- 1.2 Kie Midjourney (图像/视频生成)
+INSERT OR REPLACE INTO api_providers (
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
+  apiEndpoint, apiFlavor, encryptedAuthKey,
+  isActive, uploadToS3, s3PathPrefix,
+  createdAt, updatedAt
+) VALUES (
+  'kie-midjourney-001',
+  'Kie Midjourney',
+  'kie-midjourney',
+  'KieMidjourneyAdapter',
+  'image',
+  'Kie.ai',
+  'Midjourney',
+  'https://api.kie.ai',
+  'custom',
+  'REPLACE_WITH_YOUR_KIE_API_KEY',
+  1,
+  0,
+  'kie-midjourney',
+  datetime('now'),
+  datetime('now')
+);
+
+-- 2. FLUX Pro (图像生成)
+INSERT OR REPLACE INTO api_providers (
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -14,6 +86,7 @@ INSERT OR REPLACE INTO api_providers (
   'FluxAdapter',
   'image',
   'TuZi',
+  'Flux Pro',
   'https://api.tu-zi.com/flux/pro',
   'openai',
   'REPLACE_WITH_YOUR_TUZI_API_KEY',
@@ -24,9 +97,9 @@ INSERT OR REPLACE INTO api_providers (
   datetime('now')
 );
 
--- 2. FLUX Dev (图像生成)
+-- 3. FLUX Dev (图像生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -37,6 +110,7 @@ INSERT OR REPLACE INTO api_providers (
   'FluxAdapter',
   'image',
   'TuZi',
+  'Flux Dev',
   'https://api.tu-zi.com/flux/dev',
   'openai',
   'REPLACE_WITH_YOUR_TUZI_API_KEY',
@@ -49,7 +123,7 @@ INSERT OR REPLACE INTO api_providers (
 
 -- 3. Kling v1 (视频生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -60,6 +134,7 @@ INSERT OR REPLACE INTO api_providers (
   'KlingAdapter',
   'video',
   'TuZi',
+  'Kling Video',
   'https://api.tu-zi.com/kling/v1',
   'custom',
   'REPLACE_WITH_YOUR_TUZI_API_KEY',
@@ -72,7 +147,7 @@ INSERT OR REPLACE INTO api_providers (
 
 -- 4. Pollo Veo3 (视频生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -83,6 +158,7 @@ INSERT OR REPLACE INTO api_providers (
   'PolloAdapter',
   'video',
   'Pollo',
+  'Pollo Veo3',
   'https://api.pollo.ai/v1/generations',
   'custom',
   'REPLACE_WITH_YOUR_POLLO_API_KEY',
@@ -95,7 +171,7 @@ INSERT OR REPLACE INTO api_providers (
 
 -- 5. Replicate Minimax (视频生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey, modelVersion,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -106,6 +182,7 @@ INSERT OR REPLACE INTO api_providers (
   'ReplicateAdapter',
   'video',
   'Replicate',
+  'Replicate Minimax',
   'https://api.replicate.com/v1',
   'custom',
   'REPLACE_WITH_YOUR_REPLICATE_API_KEY',
@@ -119,7 +196,7 @@ INSERT OR REPLACE INTO api_providers (
 
 -- 6. Tuzi OpenAI (图像生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -130,6 +207,7 @@ INSERT OR REPLACE INTO api_providers (
   'TuziOpenAIAdapter',
   'image',
   'TuZi',
+  'GPT-4o Image',
   'https://api.tu-zi.com/v1',
   'openai',
   'REPLACE_WITH_YOUR_TUZI_API_KEY',
@@ -142,7 +220,7 @@ INSERT OR REPLACE INTO api_providers (
 
 -- 7. Tuzi Midjourney Imagine (图像生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -153,6 +231,7 @@ INSERT OR REPLACE INTO api_providers (
   'TuziMidjourneyImagineAdapter',
   'image',
   'TuZi',
+  'MJ Imagine',
   'https://api.tu-zi.com',
   'custom',
   'REPLACE_WITH_YOUR_TUZI_API_KEY',
@@ -165,7 +244,7 @@ INSERT OR REPLACE INTO api_providers (
 
 -- 8. Tuzi Midjourney Video (视频生成)
 INSERT OR REPLACE INTO api_providers (
-  id, name, modelIdentifier, adapterName, type, provider,
+  id, name, modelIdentifier, adapterName, type, provider, shortName,
   apiEndpoint, apiFlavor, encryptedAuthKey,
   isActive, uploadToS3, s3PathPrefix,
   createdAt, updatedAt
@@ -176,6 +255,7 @@ INSERT OR REPLACE INTO api_providers (
   'TuziMidjourneyVideoAdapter',
   'video',
   'TuZi',
+  'MJ Video',
   'https://api.tu-zi.com',
   'custom',
   'REPLACE_WITH_YOUR_TUZI_API_KEY',

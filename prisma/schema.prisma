@@ -152,6 +152,7 @@ model ApiProvider {
   adapterName      String   // 适配器名称 (FluxAdapter, KlingAdapter, GoogleSTTAdapter)
   type             String   // 类型: image, video, stt
   provider         String?  // 第三方平台 (Replicate, Pollo)
+  shortName        String?  // 前端展示用短名称
 
   apiEndpoint      String   // API 端点
   apiFlavor        String   // API 风格 (openai, custom)
@@ -207,6 +208,7 @@ model GenerationRequest {
   // 响应数据
   results         String?           // JSON 数组
   errorMessage    String?
+  progress        Float?            // 任务进度 (0-1)
 
   // 异步任务 ID
   taskId          String?

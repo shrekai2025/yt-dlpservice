@@ -85,6 +85,7 @@ async function migrateProviders() {
           adapterName: provider.adapter_name,
           type: provider.type,
           provider: provider.provider || provider.adapter_name,
+          shortName: provider.name,
           apiEndpoint: provider.api_endpoint,
           apiFlavor: provider.api_flavor,
           encryptedAuthKey: provider.encrypted_auth_key,
