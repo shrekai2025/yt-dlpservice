@@ -7,6 +7,9 @@
 import crypto from 'crypto'
 import { db } from '~/server/db'
 
+const GENERATED_KEY_PREFIX = 'genapi_'
+const STORED_PREFIX_LENGTH = 6
+
 /**
  * Hash API key using SHA256
  */
@@ -15,10 +18,37 @@ export function hashApiKey(apiKey: string): string {
 }
 
 /**
- * Extract key prefix (first 6 characters)
+ * Extract key prefix (first 6 random characters for lookups)
  */
 export function extractKeyPrefix(apiKey: string): string {
-  return apiKey.substring(0, 6)
+  const trimmed = apiKey.trim()
+
+  if (
+    trimmed.startsWith(GENERATED_KEY_PREFIX) &&
+    trimmed.length >= GENERATED_KEY_PREFIX.length + STORED_PREFIX_LENGTH
+  ) {
+    return trimmed.substring(
+      GENERATED_KEY_PREFIX.length,
+      GENERATED_KEY_PREFIX.length + STORED_PREFIX_LENGTH
+    )
+  }
+
+  return trimmed.substring(0, STORED_PREFIX_LENGTH)
+}
+
+/**
+ * Extract the legacy prefix that was previously stored (the literal "genapi")
+ * so old keys created before the fix continue to validate.
+ */
+function extractLegacyPrefix(apiKey: string): string | null {
+  const trimmed = apiKey.trim()
+
+  if (trimmed.startsWith(GENERATED_KEY_PREFIX)) {
+    // Legacy implementation stored the first 6 characters of the literal prefix.
+    return GENERATED_KEY_PREFIX.substring(0, STORED_PREFIX_LENGTH)
+  }
+
+  return null
 }
 
 /**
@@ -38,30 +68,42 @@ export async function validateApiKey(
   apiKey: string
 ): Promise<{ id: string; name: string } | null> {
   // Extract prefix for fast lookup
-  const prefix = extractKeyPrefix(apiKey)
+  const prefixes = new Set<string>()
+  const currentPrefix = extractKeyPrefix(apiKey)
+  prefixes.add(currentPrefix)
 
-  // Find key by prefix
-  const keyRecord = await db.apiKey.findFirst({
+  const legacyPrefix = extractLegacyPrefix(apiKey)
+  if (legacyPrefix) {
+    prefixes.add(legacyPrefix)
+  }
+
+  // Find key by possible prefixes (current + legacy)
+  const keyRecords = await db.apiKey.findMany({
     where: {
-      keyPrefix: prefix,
+      keyPrefix: {
+        in: Array.from(prefixes),
+      },
       isActive: true,
     },
   })
 
-  if (!keyRecord) {
+  if (!keyRecords.length) {
     return null
   }
 
   // Verify hash
   const hash = hashApiKey(apiKey)
-  if (hash !== keyRecord.hashedKey) {
-    return null
+
+  for (const keyRecord of keyRecords) {
+    if (hash === keyRecord.hashedKey) {
+      return {
+        id: keyRecord.id,
+        name: keyRecord.name,
+      }
+    }
   }
 
-  return {
-    id: keyRecord.id,
-    name: keyRecord.name,
-  }
+  return null
 }
 
 /**
