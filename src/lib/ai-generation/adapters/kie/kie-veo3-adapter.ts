@@ -105,8 +105,13 @@ export class KieVeo3Adapter extends BaseAdapter {
         payload.callBackUrl = request.parameters.callBackUrl
       }
 
-      // 输入图片（图生视频模式）
-      if (request.inputImages && request.inputImages.length > 0) {
+      // 输入图片（图生视频模式，优先使用参数中的image_url）
+      if (request.parameters?.image_url) {
+        // 从参数字段获取（新方式）
+        const imageUrl = request.parameters.image_url as string
+        payload.imageUrls = [imageUrl]
+      } else if (request.inputImages && request.inputImages.length > 0) {
+        // 从通用上传区域获取（旧方式，向后兼容）
         payload.imageUrls = request.inputImages
       }
 

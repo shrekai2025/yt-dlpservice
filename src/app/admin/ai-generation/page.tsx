@@ -582,13 +582,18 @@ export default function AIGenerationPage() {
             {supportsImageInput && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">输入图片（可选）</label>
+                  <label className="text-sm font-medium">
+                    {(selectedModel?.slug === 'kie-kling-v2-1-master-image-to-video' ||
+                      selectedModel?.slug === 'kie-kling-v2-1-pro')
+                      ? '输入图片（首帧必填，尾帧可选）'
+                      : '输入图片（可选）'}
+                  </label>
                   <span className="text-xs text-gray-500">
                     {uploadedImages.length}/5
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  {uploadedImages.map((image) => (
+                  {uploadedImages.map((image, index) => (
                     <div
                       key={image.url}
                       className="group relative h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-gray-50"
@@ -604,6 +609,13 @@ export default function AIGenerationPage() {
                           className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                         />
                       </button>
+                      {/* Kling v2.1 Master/Pro 首帧/尾帧标签 */}
+                      {(selectedModel?.slug === 'kie-kling-v2-1-master-image-to-video' ||
+                        selectedModel?.slug === 'kie-kling-v2-1-pro') && index < 2 && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-blue-500/90 px-1 py-0.5 text-center text-[10px] font-medium text-white">
+                          {index === 0 ? '首帧' : '尾帧'}
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => {
@@ -668,7 +680,12 @@ export default function AIGenerationPage() {
                     添加链接
                   </Button>
                 </div>
-                <p className="text-xs text-gray-500">最多上传 5 张图片，支持 PNG/JPG/WebP</p>
+                <p className="text-xs text-gray-500">
+                  {(selectedModel?.slug === 'kie-kling-v2-1-master-image-to-video' ||
+                    selectedModel?.slug === 'kie-kling-v2-1-pro')
+                    ? '第1张图片作为首帧（必填），第2张图片作为尾帧（可选），支持 PNG/JPG/WebP'
+                    : '最多上传 5 张图片，支持 PNG/JPG/WebP'}
+                </p>
                 {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
               </div>
             )}

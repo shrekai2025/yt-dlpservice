@@ -137,17 +137,19 @@ export const mediaBrowserRouter = createTRPCRouter({
         folderId: z.string().optional(),
         tagId: z.string().optional(),
         type: z.enum(['IMAGE', 'VIDEO', 'AUDIO']).optional(),
+        source: z.enum(['LOCAL', 'URL']).optional(),
         search: z.string().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, folderId, tagId, type, search } = input
+      const { page, pageSize, folderId, tagId, type, source, search } = input
       const userId = ctx.userId!
 
       const where: any = { userId }
 
       if (folderId) where.folderId = folderId
       if (type) where.type = type
+      if (source) where.source = source
       if (search) where.name = { contains: search }
       if (tagId) {
         where.tags = {
@@ -400,6 +402,50 @@ export const mediaBrowserRouter = createTRPCRouter({
         where: { id: input.id },
         data: {
           name: input.name,
+          folderId: input.folderId,
+        },
+        include: {
+          folder: true,
+          tags: true,
+        },
+      })
+
+      return updated
+    }),
+
+  /**
+   * 移动文件到文件夹（拖拽功能）
+   */
+  moveFileToFolder: userProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        folderId: z.string().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const file = await ctx.db.mediaFile.findFirst({
+        where: { id: input.fileId, userId: ctx.userId! },
+      })
+
+      if (!file) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '文件不存在' })
+      }
+
+      // 如果 folderId 不为 null，验证文件夹是否存在且属于当前用户
+      if (input.folderId) {
+        const folder = await ctx.db.mediaFolder.findFirst({
+          where: { id: input.folderId, userId: ctx.userId! },
+        })
+
+        if (!folder) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: '目标文件夹不存在' })
+        }
+      }
+
+      const updated = await ctx.db.mediaFile.update({
+        where: { id: input.fileId },
+        data: {
           folderId: input.folderId,
         },
         include: {

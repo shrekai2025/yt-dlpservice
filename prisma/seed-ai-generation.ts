@@ -573,6 +573,300 @@ async function main() {
     },
   })
 
+  // Kie Sora Watermark Remover 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-sora-watermark-remover' },
+    update: {},
+    create: {
+      name: 'Sora Watermark Remover',
+      slug: 'kie-sora-watermark-remover',
+      description: 'Sora 2 视频水印移除工具（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieSoraWatermarkRemoverAdapter',
+      inputCapabilities: JSON.stringify(['url-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['watermark-removal', 'video-processing', 'sora']),
+      functionTags: JSON.stringify(['video-processing', 'watermark-removal']),
+      pricingInfo: '10 Credits ($0.05)',
+      isActive: true, // 默认启用
+      sortOrder: 14,
+    },
+  })
+
+  // Kie Kling v2-1 Master Image to Video 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-kling-v2-1-master-image-to-video' },
+    update: {},
+    create: {
+      name: 'Kling v2.1 Master Image to Video',
+      slug: 'kie-kling-v2-1-master-image-to-video',
+      description: 'Kling v2.1 Master 图生视频（支持首帧/尾帧输入）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieKlingV2MasterImageToVideoAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input', 'multi-image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['high-quality', 'image-to-video', 'first-last-frame', 'master']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '5秒: 160 Credits ($0.80) | 10秒: 320 Credits ($1.60)',
+      isActive: true, // 默认启用
+      sortOrder: 15,
+    },
+  })
+
+  // Kie Kling v2-1 Master Text to Video 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-kling-v2-1-master-text-to-video' },
+    update: {},
+    create: {
+      name: 'Kling v2.1 Master Text to Video',
+      slug: 'kie-kling-v2-1-master-text-to-video',
+      description: 'Kling v2.1 Master 文生视频（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieKlingV2MasterTextToVideoAdapter',
+      inputCapabilities: JSON.stringify(['text-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['high-quality', 'text-to-video', 'master', 'aspect-ratio']),
+      functionTags: JSON.stringify(['text-to-video']),
+      pricingInfo: '5秒: 160 Credits ($0.80) | 10秒: 320 Credits ($1.60)',
+      isActive: true, // 默认启用
+      sortOrder: 16,
+    },
+  })
+
+  // Kie Kling v2-1 Standard 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-kling-v2-1-standard' },
+    update: {},
+    create: {
+      name: 'Kling v2.1 Standard Image to Video',
+      slug: 'kie-kling-v2-1-standard',
+      description: 'Kling v2.1 Standard 图生视频（标准质量，经济实惠）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieKlingV2StandardAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['standard-quality', 'image-to-video', 'economical']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '5秒: 25 Credits ($0.125) | 10秒: 50 Credits ($0.25)',
+      isActive: true, // 默认启用
+      sortOrder: 17,
+    },
+  })
+
+  // Kie Kling v2-1 Pro 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-kling-v2-1-pro' },
+    update: {},
+    create: {
+      name: 'Kling v2.1 Pro Image to Video',
+      slug: 'kie-kling-v2-1-pro',
+      description: 'Kling v2.1 Pro 图生视频（专业质量，支持首帧/尾帧输入）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieKlingV2ProAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input', 'multi-image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['pro-quality', 'image-to-video', 'first-last-frame']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '5秒: 50 Credits ($0.25) | 10秒: 100 Credits ($0.50)',
+      isActive: true, // 默认启用
+      sortOrder: 18,
+    },
+  })
+
+  // Kie Kling v2.5 Turbo Pro 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-kling-v2-5-turbo-pro' },
+    update: {},
+    create: {
+      name: 'Kling v2.5 Turbo Pro Image to Video',
+      slug: 'kie-kling-v2-5-turbo-pro',
+      description: 'Kling v2.5 Turbo Pro 图生视频（快速生成，专业质量）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieKlingV25TurboProAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['turbo', 'pro-quality', 'image-to-video', 'fast-generation']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '5秒: 42 Credits ($0.21) | 10秒: 84 Credits ($0.42)',
+      isActive: true, // 默认启用
+      sortOrder: 19,
+    },
+  })
+
+  // Kie Kling v2.5 Turbo Text to Video Pro 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-kling-v2-5-turbo-text-to-video-pro' },
+    update: {},
+    create: {
+      name: 'Kling v2.5 Turbo Pro Text to Video',
+      slug: 'kie-kling-v2-5-turbo-text-to-video-pro',
+      description: 'Kling v2.5 Turbo Pro 文生视频（快速生成，专业质量，支持宽高比）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieKlingV25TurboTextToVideoProAdapter',
+      inputCapabilities: JSON.stringify(['text-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['turbo', 'pro-quality', 'text-to-video', 'fast-generation', 'aspect-ratio']),
+      functionTags: JSON.stringify(['text-to-video']),
+      pricingInfo: '5秒: 42 Credits ($0.21) | 10秒: 84 Credits ($0.42)',
+      isActive: true, // 默认启用
+      sortOrder: 20,
+    },
+  })
+
+  // Kie Wan 2.2 A14B Text to Video Turbo 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-wan-2-2-a14b-text-to-video-turbo' },
+    update: {},
+    create: {
+      name: 'Wan 2.2 A14B Turbo Text to Video',
+      slug: 'kie-wan-2-2-a14b-text-to-video-turbo',
+      description: 'Wan 2.2 A14B Turbo 文生视频（快速生成，多分辨率支持）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieWan22A14bTextToVideoTurboAdapter',
+      inputCapabilities: JSON.stringify(['text-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['turbo', 'text-to-video', 'fast-generation', 'multi-resolution', 'aspect-ratio', 'prompt-expansion']),
+      functionTags: JSON.stringify(['text-to-video']),
+      pricingInfo: '720p: 12 Credits ($0.06) | 580p: 9 Credits ($0.045) | 480p: 6 Credits ($0.03)',
+      isActive: true, // 默认启用
+      sortOrder: 21,
+    },
+  })
+
+  // Kie Wan 2.2 A14B Image to Video Turbo 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-wan-2-2-a14b-image-to-video-turbo' },
+    update: {},
+    create: {
+      name: 'Wan 2.2 A14B Turbo Image to Video',
+      slug: 'kie-wan-2-2-a14b-image-to-video-turbo',
+      description: 'Wan 2.2 A14B Turbo 图生视频（快速生成，多分辨率支持）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieWan22A14bImageToVideoTurboAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['turbo', 'image-to-video', 'fast-generation', 'multi-resolution', 'auto-aspect-ratio', 'prompt-expansion']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '720p: 12 Credits ($0.06) | 580p: 9 Credits ($0.045) | 480p: 6 Credits ($0.03)',
+      isActive: true, // 默认启用
+      sortOrder: 22,
+    },
+  })
+
+  // Kie Wan 2.5 Text to Video 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-wan-2-5-text-to-video' },
+    update: {},
+    create: {
+      name: 'Wan 2.5 Text to Video',
+      slug: 'kie-wan-2-5-text-to-video',
+      description: 'Wan 2.5 文生视频（支持720p/1080p，按秒计费）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieWan25TextToVideoAdapter',
+      inputCapabilities: JSON.stringify(['text-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['text-to-video', '1080p', 'aspect-ratio', 'prompt-expansion', 'negative-prompt', 'per-second-pricing']),
+      functionTags: JSON.stringify(['text-to-video']),
+      pricingInfo: '720p: 12 Credits/秒 ($0.06/秒) | 1080p: 20 Credits/秒 ($0.10/秒)',
+      isActive: true, // 默认启用
+      sortOrder: 23,
+    },
+  })
+
+  // Kie ByteDance V1 Pro Text to Video 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-bytedance-v1-pro-text-to-video' },
+    update: {},
+    create: {
+      name: 'ByteDance Seedance V1 Pro Text to Video',
+      slug: 'kie-bytedance-v1-pro-text-to-video',
+      description: 'ByteDance Seedance V1 Pro 文生视频（支持多宽高比，480p/720p/1080p）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieByteDanceV1ProTextToVideoAdapter',
+      inputCapabilities: JSON.stringify(['text-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['text-to-video', '1080p', 'multi-aspect-ratio', 'camera-control', 'safety-checker', 'long-prompt']),
+      functionTags: JSON.stringify(['text-to-video']),
+      pricingInfo: '480p: 2.8 Credits/秒 ($0.014/秒) | 720p: 6 Credits/秒 ($0.03/秒) | 1080p: 14 Credits/秒 ($0.07/秒)',
+      isActive: true, // 默认启用
+      sortOrder: 24,
+    },
+  })
+
+  // Kie ByteDance V1 Pro Image to Video 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-bytedance-v1-pro-image-to-video' },
+    update: {},
+    create: {
+      name: 'ByteDance Seedance V1 Pro Image to Video',
+      slug: 'kie-bytedance-v1-pro-image-to-video',
+      description: 'ByteDance Seedance V1 Pro 图生视频（支持480p/720p/1080p）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieByteDanceV1ProImageToVideoAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['image-to-video', '1080p', 'camera-control', 'safety-checker', 'long-prompt']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '480p: 2.8 Credits/秒 ($0.014/秒) | 720p: 6 Credits/秒 ($0.03/秒) | 1080p: 14 Credits/秒 ($0.07/秒)',
+      isActive: true, // 默认启用
+      sortOrder: 25,
+    },
+  })
+
+  // Kie Runway 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-runway' },
+    update: {},
+    create: {
+      name: 'Runway',
+      slug: 'kie-runway',
+      description: 'Runway 视频生成（支持文生视频和图生视频，720p/1080p）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieRunwayAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['text-to-video', 'image-to-video', '1080p', 'watermark', 'aspect-ratio']),
+      functionTags: JSON.stringify(['text-to-video', 'image-to-video']),
+      pricingInfo: '5秒720p: 12 Credits ($0.06) | 5秒1080p: 30 Credits ($0.15) | 10秒720p: 30 Credits ($0.15)',
+      isActive: true, // 默认启用
+      sortOrder: 26,
+    },
+  })
+
+  // Kie Runway Extend 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-runway-extend' },
+    update: {},
+    create: {
+      name: 'Runway Extend',
+      slug: 'kie-runway-extend',
+      description: 'Runway 视频扩展（基于已有视频继续生成，固定5秒扩展）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieRunwayExtendAdapter',
+      inputCapabilities: JSON.stringify(['text-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['video-extend', '1080p', 'watermark', 'task-based']),
+      functionTags: JSON.stringify(['video-extend']),
+      pricingInfo: '720p: 12 Credits/5秒 ($0.06) | 1080p: 30 Credits/5秒 ($0.15)',
+      isActive: true, // 默认启用
+      sortOrder: 27,
+    },
+  })
+
   // Replicate 模型
   await prisma.aIModel.upsert({
     where: { slug: 'replicate-flux-pro' },

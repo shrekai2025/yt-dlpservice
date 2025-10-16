@@ -23,6 +23,20 @@ import { KieNanoBananaUpscaleAdapter } from './kie/kie-nano-banana-upscale-adapt
 import { KieSeedreamV4Adapter } from './kie/kie-seedream-v4-adapter'
 import { KieSeedreamV4EditAdapter } from './kie/kie-seedream-v4-edit-adapter'
 import { KieQwenImageEditAdapter } from './kie/kie-qwen-image-edit-adapter'
+import { KieSoraWatermarkRemoverAdapter } from './kie/kie-sora-watermark-remover-adapter'
+import { KieKlingV2MasterImageToVideoAdapter } from './kie/kie-kling-v2-master-image-to-video-adapter'
+import { KieKlingV2MasterTextToVideoAdapter } from './kie/kie-kling-v2-master-text-to-video-adapter'
+import { KieKlingV2StandardAdapter } from './kie/kie-kling-v2-standard-adapter'
+import { KieKlingV2ProAdapter } from './kie/kie-kling-v2-pro-adapter'
+import { KieKlingV25TurboProAdapter } from './kie/kie-kling-v2-5-turbo-pro-adapter'
+import { KieKlingV25TurboTextToVideoProAdapter } from './kie/kie-kling-v2-5-turbo-text-to-video-pro-adapter'
+import { KieWan22A14bTextToVideoTurboAdapter } from './kie/kie-wan-2-2-a14b-text-to-video-turbo-adapter'
+import { KieWan22A14bImageToVideoTurboAdapter } from './kie/kie-wan-2-2-a14b-image-to-video-turbo-adapter'
+import { KieWan25TextToVideoAdapter } from './kie/kie-wan-2-5-text-to-video-adapter'
+import { KieByteDanceV1ProTextToVideoAdapter } from './kie/kie-bytedance-v1-pro-text-to-video-adapter'
+import { KieByteDanceV1ProImageToVideoAdapter } from './kie/kie-bytedance-v1-pro-image-to-video-adapter'
+import { KieRunwayAdapter } from './kie/kie-runway-adapter'
+import { KieRunwayExtendAdapter } from './kie/kie-runway-extend-adapter'
 
 import { TuziKlingAdapter } from './tuzi/tuzi-kling-adapter'
 import { TuziMidjourneyAdapter } from './tuzi/tuzi-midjourney-adapter'
@@ -57,6 +71,20 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   KieSeedreamV4Adapter,
   KieSeedreamV4EditAdapter,
   KieQwenImageEditAdapter,
+  KieSoraWatermarkRemoverAdapter,
+  KieKlingV2MasterImageToVideoAdapter,
+  KieKlingV2MasterTextToVideoAdapter,
+  KieKlingV2StandardAdapter,
+  KieKlingV2ProAdapter,
+  KieKlingV25TurboProAdapter,
+  KieKlingV25TurboTextToVideoProAdapter,
+  KieWan22A14bTextToVideoTurboAdapter,
+  KieWan22A14bImageToVideoTurboAdapter,
+  KieWan25TextToVideoAdapter,
+  KieByteDanceV1ProTextToVideoAdapter,
+  KieByteDanceV1ProImageToVideoAdapter,
+  KieRunwayAdapter,
+  KieRunwayExtendAdapter,
 
   // TuZi
   TuziKlingAdapter,

@@ -1,10 +1,11 @@
 /**
- * KieSora2ImageToVideoAdapter - Kie.ai Sora 2 Image To Video Generation
+ * KieWan25TextToVideoAdapter - Kie.ai Wan 2.5 Text to Video
  *
- * 对应模型: kie-sora2-image-to-video
- * 功能: 图生视频（基于Sora 2模型）
+ * 对应模型: kie-wan-2-5-text-to-video
+ * 功能: 文生视频（Wan 2.5 版本，支持 720p 和 1080p）
  *
  * API文档: https://api.kie.ai/api/v1/jobs/createTask
+ * 定价: 720p: 12 credits/秒 ($0.06), 1080p: 20 credits/秒 ($0.10)
  */
 
 import { BaseAdapter } from '../base-adapter'
@@ -14,7 +15,7 @@ import type {
   AdapterResponse,
 } from '../types'
 
-interface KieSora2ImageToVideoTaskResponse {
+interface KieWanTaskResponse {
   code: number
   msg: string
   data: {
@@ -22,13 +23,13 @@ interface KieSora2ImageToVideoTaskResponse {
   }
 }
 
-interface KieSora2ImageToVideoStatusResponse {
+interface KieWanStatusResponse {
   code: number
   msg: string
   data: {
     taskId: string
     model: string
-    state: 'waiting' | 'generating' | 'success' | 'fail'
+    state: 'waiting' | 'success' | 'fail'
     param: string
     resultJson: string | null
     failCode: string | null
@@ -39,11 +40,11 @@ interface KieSora2ImageToVideoStatusResponse {
   }
 }
 
-interface KieSora2ImageToVideoResultJson {
+interface KieWanResultJson {
   resultUrls: string[]
 }
 
-export class KieSora2ImageToVideoAdapter extends BaseAdapter {
+export class KieWan25TextToVideoAdapter extends BaseAdapter {
   /**
    * 调度生成请求
    */
@@ -62,26 +63,14 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         }
       }
 
-      // 获取图片URL（优先使用参数中的image_url，其次使用inputImages）
-      let imageUrls: string[] = []
-
-      if (request.parameters?.image_url) {
-        // 从参数字段获取（新方式）
-        const imageUrl = request.parameters.image_url as string
-        imageUrls = [imageUrl]
-      } else if (request.inputImages && request.inputImages.length > 0) {
-        // 从通用上传区域获取（旧方式，向后兼容）
-        imageUrls = request.inputImages
-      }
-
-      // 验证输入图片
-      if (imageUrls.length === 0) {
+      // 验证 prompt 参数
+      if (!request.prompt) {
         return {
           status: 'ERROR',
-          message: 'Input image is required for Sora 2 Image to Video',
+          message: 'Missing required parameter: prompt',
           error: {
-            code: 'MISSING_INPUT_IMAGE',
-            message: 'At least one input image is required',
+            code: 'MISSING_PARAMETER',
+            message: 'prompt is required',
             isRetryable: false,
           },
         }
@@ -90,22 +79,39 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
       // 构建 input 参数对象
       const input: Record<string, unknown> = {
         prompt: request.prompt,
-        image_urls: imageUrls,
       }
 
-      // 可选参数: aspect_ratio
+      // 可选参数: aspect_ratio (16:9, 9:16, 1:1)
       if (request.parameters?.aspect_ratio) {
         input.aspect_ratio = request.parameters.aspect_ratio
       }
 
-      // 可选参数: remove_watermark
-      if (request.parameters?.remove_watermark !== undefined) {
-        input.remove_watermark = request.parameters.remove_watermark
+      // 可选参数: resolution (720p, 1080p)
+      if (request.parameters?.resolution) {
+        input.resolution = request.parameters.resolution
+      }
+
+      // 可选参数: negative_prompt (最多500字符)
+      if (request.parameters?.negative_prompt) {
+        input.negative_prompt = request.parameters.negative_prompt
+      }
+
+      // 可选参数: enable_prompt_expansion
+      if (request.parameters?.enable_prompt_expansion !== undefined) {
+        input.enable_prompt_expansion = Boolean(request.parameters.enable_prompt_expansion)
+      }
+
+      // 可选参数: seed
+      if (request.parameters?.seed !== undefined) {
+        const seed = Number(request.parameters.seed)
+        if (!isNaN(seed)) {
+          input.seed = seed
+        }
       }
 
       // 构建完整的请求体
       const payload: Record<string, unknown> = {
-        model: 'sora-2-image-to-video',
+        model: 'wan/2-5-text-to-video',
         input,
       }
 
@@ -114,10 +120,10 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         payload.callBackUrl = request.parameters.callBackUrl
       }
 
-      this.log('info', 'Creating Kie Sora 2 Image to Video task', payload)
+      this.log('info', 'Creating Kie Wan 2.5 Text to Video task', payload)
 
       // 创建任务
-      const response = await this.httpClient.post<KieSora2ImageToVideoTaskResponse>(
+      const response = await this.httpClient.post<KieWanTaskResponse>(
         '/api/v1/jobs/createTask',
         payload,
         {
@@ -139,7 +145,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         }
       }
 
-      this.log('info', `Sora 2 Image to Video task created: ${data.taskId}`)
+      this.log('info', `Wan 2.5 Text to Video task created: ${data.taskId}`)
 
       // 返回异步任务
       return {
@@ -148,7 +154,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         message: 'Video generation in progress',
       }
     } catch (error: unknown) {
-      this.log('error', 'Kie Sora 2 Image to Video dispatch failed', error)
+      this.log('error', 'Kie Wan 2.5 Text to Video dispatch failed', error)
 
       return {
         status: 'ERROR',
@@ -167,7 +173,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
    */
   async checkTaskStatus(taskId: string): Promise<AdapterResponse> {
     try {
-      const response = await this.httpClient.get<KieSora2ImageToVideoStatusResponse>(
+      const response = await this.httpClient.get<KieWanStatusResponse>(
         '/api/v1/jobs/recordInfo',
         {
           baseURL: this.getApiEndpoint() || 'https://api.kie.ai',
@@ -187,20 +193,20 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
 
       const { state, resultJson, failCode, failMsg } = data
 
-      // 等待中或生成中
-      if (state === 'waiting' || state === 'generating') {
+      // 等待中
+      if (state === 'waiting') {
         return {
           status: 'PROCESSING',
           providerTaskId: taskId,
-          message: state === 'generating' ? 'Generating video...' : 'Waiting for generation...',
+          message: 'Waiting for video generation...',
         }
       }
 
       // 成功
       if (state === 'success' && resultJson) {
-        let parsedResult: KieSora2ImageToVideoResultJson
+        let parsedResult: KieWanResultJson
         try {
-          parsedResult = JSON.parse(resultJson) as KieSora2ImageToVideoResultJson
+          parsedResult = JSON.parse(resultJson) as KieWanResultJson
         } catch {
           return {
             status: 'ERROR',
@@ -227,7 +233,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
       if (state === 'fail') {
         return {
           status: 'ERROR',
-          message: failMsg || 'Generation failed',
+          message: failMsg || 'Video generation failed',
           providerTaskId: taskId,
           error: {
             code: failCode || 'GENERATION_FAILED',
@@ -244,7 +250,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         providerTaskId: taskId,
       }
     } catch (error: unknown) {
-      this.log('error', 'Failed to check Sora 2 Image to Video task status', error)
+      this.log('error', 'Failed to check Wan 2.5 Text to Video task status', error)
 
       return {
         status: 'ERROR',
@@ -259,4 +265,3 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
     }
   }
 }
-

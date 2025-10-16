@@ -39,6 +39,14 @@ export default function MediaBrowserPage() {
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([])
+  const [draggedFile, setDraggedFile] = useState<string | null>(null)
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
+  const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+
+  // 筛选状态
+  const [filterType, setFilterType] = useState<'IMAGE' | 'VIDEO' | 'AUDIO' | undefined>(undefined)
+  const [filterSource, setFilterSource] = useState<'LOCAL' | 'URL' | undefined>(undefined)
 
   // 查询数据
   const { data: filesData, refetch: refetchFiles } = api.mediaBrowser.listFiles.useQuery({
@@ -46,9 +54,17 @@ export default function MediaBrowserPage() {
     pageSize: 50,
     folderId: selectedFolder,
     tagId: selectedTag,
+    type: filterType,
+    source: filterSource,
   })
 
-  const { data: folders } = api.mediaBrowser.listFolders.useQuery()
+  // 查询所有文件总数（用于 All 文件夹显示）
+  const { data: allFilesData } = api.mediaBrowser.listFiles.useQuery({
+    page: 1,
+    pageSize: 1, // 只需要获取总数，不需要实际文件数据
+  })
+
+  const { data: folders, refetch: refetchFolders } = api.mediaBrowser.listFolders.useQuery()
   const { data: tags } = api.mediaBrowser.listTags.useQuery()
 
   // Mutations
@@ -59,6 +75,75 @@ export default function MediaBrowserPage() {
   const deleteFileMutation = api.mediaBrowser.deleteFile.useMutation({
     onSuccess: () => refetchFiles(),
   })
+  const moveFileToFolderMutation = api.mediaBrowser.moveFileToFolder.useMutation({
+    onSuccess: () => {
+      refetchFiles()
+      refetchFolders()
+    },
+  })
+  const createFolderMutation = api.mediaBrowser.createFolder.useMutation({
+    onSuccess: () => {
+      refetchFolders()
+      setCreateFolderDialogOpen(false)
+      setNewFolderName('')
+    },
+  })
+
+  // 处理拖拽
+  const handleDragStart = (e: React.DragEvent, fileId: string) => {
+    setDraggedFile(fileId)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragEnd = () => {
+    setDraggedFile(null)
+    setDragOverFolder(null)
+  }
+
+  const handleDragOver = (e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverFolder(folderId)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverFolder(null)
+  }
+
+  const handleDrop = async (e: React.DragEvent, targetFolderId: string | null) => {
+    e.preventDefault()
+    if (!draggedFile) return
+
+    try {
+      await moveFileToFolderMutation.mutateAsync({
+        fileId: draggedFile,
+        folderId: targetFolderId,
+      })
+    } catch (error) {
+      console.error('Move file failed:', error)
+      alert('移动文件失败')
+    } finally {
+      setDraggedFile(null)
+      setDragOverFolder(null)
+    }
+  }
+
+  // 处理创建文件夹
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) {
+      alert('请输入文件夹名称')
+      return
+    }
+
+    try {
+      await createFolderMutation.mutateAsync({
+        name: newFolderName.trim(),
+      })
+    } catch (error) {
+      console.error('Create folder failed:', error)
+      alert('创建文件夹失败')
+    }
+  }
 
   // 处理添加 URL
   const handleAddUrls = async () => {
@@ -146,6 +231,8 @@ export default function MediaBrowserPage() {
       const file = fileArray[i]
       const task = tasks[i]
 
+      if (!file || !task) continue
+
       try {
         // 更新为上传中
         setUploadTasks((prev) =>
@@ -157,7 +244,7 @@ export default function MediaBrowserPage() {
           const reader = new FileReader()
           reader.onload = (e) => {
             const base64 = e.target?.result as string
-            resolve(base64.split(',')[1]) // 移除 data:image/png;base64, 前缀
+            resolve(base64.split(',')[1] || '') // 移除 data:image/png;base64, 前缀
           }
           reader.onerror = reject
           reader.readAsDataURL(file)
@@ -240,11 +327,11 @@ export default function MediaBrowserPage() {
   const getMediaIcon = (type: string) => {
     switch (type) {
       case 'IMAGE':
-        return <Image className="h-5 w-5" alt="" />
+        return <Image className="h-5 w-5" />
       case 'VIDEO':
-        return <Video className="h-5 w-5" alt="" />
+        return <Video className="h-5 w-5" />
       case 'AUDIO':
-        return <Music className="h-5 w-5" alt="" />
+        return <Music className="h-5 w-5" />
       default:
         return null
     }
@@ -340,29 +427,132 @@ export default function MediaBrowserPage() {
 
           {/* Filters */}
           <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold mb-2">筛选</h3>
-              <button
-                onClick={() => {
-                  setSelectedFolder(undefined)
-                  setSelectedTag(undefined)
-                }}
-                className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
-                  !selectedFolder && !selectedTag
-                    ? 'bg-neutral-900 text-white'
-                    : 'hover:bg-neutral-100'
-                }`}
-              >
-                全部文件
-              </button>
+            {/* Type and Source Filters */}
+            <div className="mb-4 space-y-3">
+              {/* Type Filter */}
+              <div>
+                <h3 className="text-xs font-semibold text-neutral-500 mb-2">类型</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setFilterType(undefined)}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterType === undefined
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilterType('IMAGE')}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterType === 'IMAGE'
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    图片
+                  </button>
+                  <button
+                    onClick={() => setFilterType('VIDEO')}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterType === 'VIDEO'
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    视频
+                  </button>
+                  <button
+                    onClick={() => setFilterType('AUDIO')}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterType === 'AUDIO'
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    音频
+                  </button>
+                </div>
+              </div>
+
+              {/* Source Filter */}
+              <div>
+                <h3 className="text-xs font-semibold text-neutral-500 mb-2">存储</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    onClick={() => setFilterSource(undefined)}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterSource === undefined
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setFilterSource('LOCAL')}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterSource === 'LOCAL'
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    本地
+                  </button>
+                  <button
+                    onClick={() => setFilterSource('URL')}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      filterSource === 'URL'
+                        ? 'bg-neutral-900 text-white'
+                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                    }`}
+                  >
+                    URL
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold mb-2 flex items-center gap-1">
-                <Folder className="h-4 w-4" />
-                文件夹
-              </h3>
+            <div className="mb-4 border-t border-neutral-200 pt-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1">
+                  <Folder className="h-4 w-4" />
+                  文件夹
+                </h3>
+                <button
+                  onClick={() => setCreateFolderDialogOpen(true)}
+                  className="text-neutral-600 hover:text-neutral-900"
+                  title="添加文件夹"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
               <div className="space-y-1">
+                {/* All 文件夹 - 显示所有文件 */}
+                <button
+                  onClick={() => {
+                    setSelectedFolder(undefined)
+                    setSelectedTag(undefined)
+                  }}
+                  onDragOver={(e) => handleDragOver(e, null)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, null)}
+                  className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
+                    !selectedFolder && !selectedTag
+                      ? 'bg-neutral-900 text-white'
+                      : dragOverFolder === null
+                      ? 'bg-blue-100 hover:bg-blue-200'
+                      : 'hover:bg-neutral-100'
+                  }`}
+                >
+                  All
+                  <span className="ml-2 text-xs opacity-60">
+                    ({allFilesData?.pagination.total || 0})
+                  </span>
+                </button>
+
+                {/* 用户创建的文件夹 */}
                 {folders?.map((folder) => (
                   <button
                     key={folder.id}
@@ -370,9 +560,14 @@ export default function MediaBrowserPage() {
                       setSelectedFolder(folder.id)
                       setSelectedTag(undefined)
                     }}
+                    onDragOver={(e) => handleDragOver(e, folder.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, folder.id)}
                     className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
                       selectedFolder === folder.id
                         ? 'bg-neutral-900 text-white'
+                        : dragOverFolder === folder.id
+                        ? 'bg-blue-100 hover:bg-blue-200'
                         : 'hover:bg-neutral-100'
                     }`}
                   >
@@ -429,7 +624,7 @@ export default function MediaBrowserPage() {
           {filesData?.files.length === 0 ? (
             <div className="rounded-lg border border-neutral-200 bg-white p-12 text-center">
               <div className="flex flex-col items-center justify-center">
-                <Image className="h-12 w-12 text-neutral-400 mb-4" alt="" />
+                <Image className="h-12 w-12 text-neutral-400 mb-4" />
                 <h3 className="text-lg font-medium text-neutral-900">暂无媒体文件</h3>
                 <p className="text-sm text-neutral-500 mt-1">
                   点击「添加 URL」开始添加媒体文件
@@ -452,11 +647,16 @@ export default function MediaBrowserPage() {
                 {filesData?.files.map((file) => (
                   <div
                     key={file.id}
-                    className="masonry-item group relative rounded-lg border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition-shadow"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, file.id)}
+                    onDragEnd={handleDragEnd}
+                    className={`masonry-item group relative rounded-lg border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition-shadow ${
+                      draggedFile === file.id ? 'opacity-50' : ''
+                    }`}
                   >
                     {/* Thumbnail */}
                     <div
-                      className="w-full bg-neutral-100 flex items-center justify-center cursor-pointer overflow-hidden"
+                      className="w-full bg-neutral-100 flex items-center justify-center cursor-move overflow-hidden"
                       onClick={() => setPreviewFile(file as MediaFile)}
                     >
                       {getThumbnailUrl(file as MediaFile) ? (
@@ -564,6 +764,50 @@ export default function MediaBrowserPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Create Folder Dialog */}
+      <Dialog open={createFolderDialogOpen} onOpenChange={setCreateFolderDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>创建文件夹</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">文件夹名称</label>
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="请输入文件夹名称"
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateFolder()
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setCreateFolderDialogOpen(false)
+                  setNewFolderName('')
+                }}
+                className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                disabled={createFolderMutation.isPending}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {createFolderMutation.isPending ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Upload Progress Float */}
       {uploadTasks.length > 0 && (
         <div className="fixed bottom-6 right-6 z-40 w-96 max-h-[70vh] overflow-hidden flex flex-col rounded-lg border border-neutral-200 bg-white shadow-2xl">
@@ -649,22 +893,24 @@ export default function MediaBrowserPage() {
                                 folderId: selectedFolder,
                               })
                               const urlResult = result.results[0]
-                              setUploadTasks((prev) =>
-                                prev.map((t) =>
-                                  t.id === task.id
-                                    ? {
-                                        ...t,
-                                        status: urlResult.success ? 'success' : 'error',
-                                        error: urlResult.error,
-                                      }
-                                    : t
+                              if (urlResult) {
+                                setUploadTasks((prev) =>
+                                  prev.map((t) =>
+                                    t.id === task.id
+                                      ? {
+                                          ...t,
+                                          status: urlResult.success ? 'success' : 'error',
+                                          error: urlResult.error,
+                                        }
+                                      : t
+                                  )
                                 )
-                              )
-                              if (urlResult.success) {
-                                refetchFiles()
-                                setTimeout(() => {
-                                  setUploadTasks((prev) => prev.filter((t) => t.id !== task.id))
-                                }, 3000)
+                                if (urlResult.success) {
+                                  refetchFiles()
+                                  setTimeout(() => {
+                                    setUploadTasks((prev) => prev.filter((t) => t.id !== task.id))
+                                  }, 3000)
+                                }
                               }
                             }
                           } catch (error) {

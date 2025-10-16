@@ -1,10 +1,11 @@
 /**
- * KieSora2ImageToVideoAdapter - Kie.ai Sora 2 Image To Video Generation
+ * KieSoraWatermarkRemoverAdapter - Kie.ai Sora Watermark Remover
  *
- * 对应模型: kie-sora2-image-to-video
- * 功能: 图生视频（基于Sora 2模型）
+ * 对应模型: kie-sora-watermark-remover
+ * 功能: 移除 Sora 2 视频水印
  *
  * API文档: https://api.kie.ai/api/v1/jobs/createTask
+ * 定价: 10 credits ($0.05) per use
  */
 
 import { BaseAdapter } from '../base-adapter'
@@ -14,7 +15,7 @@ import type {
   AdapterResponse,
 } from '../types'
 
-interface KieSora2ImageToVideoTaskResponse {
+interface KieSoraWatermarkRemoverTaskResponse {
   code: number
   msg: string
   data: {
@@ -22,13 +23,13 @@ interface KieSora2ImageToVideoTaskResponse {
   }
 }
 
-interface KieSora2ImageToVideoStatusResponse {
+interface KieSoraWatermarkRemoverStatusResponse {
   code: number
   msg: string
   data: {
     taskId: string
     model: string
-    state: 'waiting' | 'generating' | 'success' | 'fail'
+    state: 'waiting' | 'success' | 'fail'
     param: string
     resultJson: string | null
     failCode: string | null
@@ -39,11 +40,11 @@ interface KieSora2ImageToVideoStatusResponse {
   }
 }
 
-interface KieSora2ImageToVideoResultJson {
+interface KieSoraWatermarkRemoverResultJson {
   resultUrls: string[]
 }
 
-export class KieSora2ImageToVideoAdapter extends BaseAdapter {
+export class KieSoraWatermarkRemoverAdapter extends BaseAdapter {
   /**
    * 调度生成请求
    */
@@ -62,26 +63,28 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         }
       }
 
-      // 获取图片URL（优先使用参数中的image_url，其次使用inputImages）
-      let imageUrls: string[] = []
-
-      if (request.parameters?.image_url) {
-        // 从参数字段获取（新方式）
-        const imageUrl = request.parameters.image_url as string
-        imageUrls = [imageUrl]
-      } else if (request.inputImages && request.inputImages.length > 0) {
-        // 从通用上传区域获取（旧方式，向后兼容）
-        imageUrls = request.inputImages
-      }
-
-      // 验证输入图片
-      if (imageUrls.length === 0) {
+      // 验证 video_url 参数
+      const videoUrl = request.parameters?.video_url as string
+      if (!videoUrl) {
         return {
           status: 'ERROR',
-          message: 'Input image is required for Sora 2 Image to Video',
+          message: 'Missing required parameter: video_url',
           error: {
-            code: 'MISSING_INPUT_IMAGE',
-            message: 'At least one input image is required',
+            code: 'MISSING_PARAMETER',
+            message: 'video_url is required',
+            isRetryable: false,
+          },
+        }
+      }
+
+      // 验证 video_url 格式
+      if (!videoUrl.startsWith('https://sora.chatgpt.com/')) {
+        return {
+          status: 'ERROR',
+          message: 'Invalid video_url: must be a Sora 2 video URL from sora.chatgpt.com',
+          error: {
+            code: 'INVALID_PARAMETER',
+            message: 'video_url must start with https://sora.chatgpt.com/',
             isRetryable: false,
           },
         }
@@ -89,23 +92,12 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
 
       // 构建 input 参数对象
       const input: Record<string, unknown> = {
-        prompt: request.prompt,
-        image_urls: imageUrls,
-      }
-
-      // 可选参数: aspect_ratio
-      if (request.parameters?.aspect_ratio) {
-        input.aspect_ratio = request.parameters.aspect_ratio
-      }
-
-      // 可选参数: remove_watermark
-      if (request.parameters?.remove_watermark !== undefined) {
-        input.remove_watermark = request.parameters.remove_watermark
+        video_url: videoUrl,
       }
 
       // 构建完整的请求体
       const payload: Record<string, unknown> = {
-        model: 'sora-2-image-to-video',
+        model: 'sora-watermark-remover',
         input,
       }
 
@@ -114,10 +106,10 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         payload.callBackUrl = request.parameters.callBackUrl
       }
 
-      this.log('info', 'Creating Kie Sora 2 Image to Video task', payload)
+      this.log('info', 'Creating Kie Sora Watermark Remover task', payload)
 
       // 创建任务
-      const response = await this.httpClient.post<KieSora2ImageToVideoTaskResponse>(
+      const response = await this.httpClient.post<KieSoraWatermarkRemoverTaskResponse>(
         '/api/v1/jobs/createTask',
         payload,
         {
@@ -139,16 +131,16 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         }
       }
 
-      this.log('info', `Sora 2 Image to Video task created: ${data.taskId}`)
+      this.log('info', `Sora Watermark Remover task created: ${data.taskId}`)
 
       // 返回异步任务
       return {
         status: 'PROCESSING',
         providerTaskId: data.taskId,
-        message: 'Video generation in progress',
+        message: 'Watermark removal in progress',
       }
     } catch (error: unknown) {
-      this.log('error', 'Kie Sora 2 Image to Video dispatch failed', error)
+      this.log('error', 'Kie Sora Watermark Remover dispatch failed', error)
 
       return {
         status: 'ERROR',
@@ -167,7 +159,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
    */
   async checkTaskStatus(taskId: string): Promise<AdapterResponse> {
     try {
-      const response = await this.httpClient.get<KieSora2ImageToVideoStatusResponse>(
+      const response = await this.httpClient.get<KieSoraWatermarkRemoverStatusResponse>(
         '/api/v1/jobs/recordInfo',
         {
           baseURL: this.getApiEndpoint() || 'https://api.kie.ai',
@@ -187,20 +179,20 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
 
       const { state, resultJson, failCode, failMsg } = data
 
-      // 等待中或生成中
-      if (state === 'waiting' || state === 'generating') {
+      // 等待中
+      if (state === 'waiting') {
         return {
           status: 'PROCESSING',
           providerTaskId: taskId,
-          message: state === 'generating' ? 'Generating video...' : 'Waiting for generation...',
+          message: 'Waiting for watermark removal...',
         }
       }
 
       // 成功
       if (state === 'success' && resultJson) {
-        let parsedResult: KieSora2ImageToVideoResultJson
+        let parsedResult: KieSoraWatermarkRemoverResultJson
         try {
-          parsedResult = JSON.parse(resultJson) as KieSora2ImageToVideoResultJson
+          parsedResult = JSON.parse(resultJson) as KieSoraWatermarkRemoverResultJson
         } catch {
           return {
             status: 'ERROR',
@@ -218,7 +210,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
           return {
             status: 'SUCCESS',
             results,
-            message: 'Video generation completed',
+            message: 'Watermark removal completed',
           }
         }
       }
@@ -227,7 +219,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
       if (state === 'fail') {
         return {
           status: 'ERROR',
-          message: failMsg || 'Generation failed',
+          message: failMsg || 'Watermark removal failed',
           providerTaskId: taskId,
           error: {
             code: failCode || 'GENERATION_FAILED',
@@ -244,7 +236,7 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
         providerTaskId: taskId,
       }
     } catch (error: unknown) {
-      this.log('error', 'Failed to check Sora 2 Image to Video task status', error)
+      this.log('error', 'Failed to check Sora Watermark Remover task status', error)
 
       return {
         status: 'ERROR',
@@ -259,4 +251,3 @@ export class KieSora2ImageToVideoAdapter extends BaseAdapter {
     }
   }
 }
-

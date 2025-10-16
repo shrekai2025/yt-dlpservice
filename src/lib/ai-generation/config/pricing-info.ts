@@ -148,6 +148,165 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
   'kie-veo3': '250 Credits ≈ $1.25 (Quality)',
 
   'kie-veo3-fast': '100 Credits ≈ $0.50 (Fast)',
+
+  'kie-sora-watermark-remover': '10 Credits ≈ $0.05',
+
+  'kie-kling-v2-1-master-image-to-video': (params) => {
+    const duration = params.duration as string || '5'
+    if (duration === '10') {
+      return '320 Credits/10秒 ≈ $1.60'
+    }
+    return '160 Credits/5秒 ≈ $0.80'
+  },
+
+  'kie-kling-v2-1-master-text-to-video': (params) => {
+    const duration = params.duration as string || '5'
+    if (duration === '10') {
+      return '320 Credits/10秒 ≈ $1.60'
+    }
+    return '160 Credits/5秒 ≈ $0.80'
+  },
+
+  'kie-kling-v2-1-standard': (params) => {
+    const duration = params.duration as string || '5'
+    if (duration === '10') {
+      return '50 Credits/10秒 ≈ $0.25'
+    }
+    return '25 Credits/5秒 ≈ $0.125'
+  },
+
+  'kie-kling-v2-1-pro': (params) => {
+    const duration = params.duration as string || '5'
+    if (duration === '10') {
+      return '100 Credits/10秒 ≈ $0.50'
+    }
+    return '50 Credits/5秒 ≈ $0.25'
+  },
+
+  'kie-kling-v2-5-turbo-pro': (params) => {
+    const duration = params.duration as string || '5'
+    if (duration === '10') {
+      return '84 Credits/10秒 ≈ $0.42'
+    }
+    return '42 Credits/5秒 ≈ $0.21'
+  },
+
+  'kie-kling-v2-5-turbo-text-to-video-pro': (params) => {
+    const duration = params.duration as string || '5'
+    if (duration === '10') {
+      return '84 Credits/10秒 ≈ $0.42'
+    }
+    return '42 Credits/5秒 ≈ $0.21'
+  },
+
+  'kie-wan-2-2-a14b-text-to-video-turbo': (params) => {
+    const resolution = params.resolution as string || '720p'
+    const pricingMap: Record<string, { credits: number; cost: string }> = {
+      '720p': { credits: 12, cost: '0.06' },
+      '580p': { credits: 9, cost: '0.045' },
+      '480p': { credits: 6, cost: '0.03' },
+    }
+    const pricing = pricingMap[resolution] || { credits: 12, cost: '0.06' }
+    return `${pricing.credits} Credits/${resolution} ≈ $${pricing.cost}`
+  },
+
+  'kie-wan-2-2-a14b-image-to-video-turbo': (params) => {
+    const resolution = params.resolution as string || '720p'
+    const pricingMap: Record<string, { credits: number; cost: string }> = {
+      '720p': { credits: 12, cost: '0.06' },
+      '580p': { credits: 9, cost: '0.045' },
+      '480p': { credits: 6, cost: '0.03' },
+    }
+    const pricing = pricingMap[resolution] || { credits: 12, cost: '0.06' }
+    return `${pricing.credits} Credits/${resolution} ≈ $${pricing.cost}`
+  },
+
+  'kie-wan-2-5-text-to-video': (params) => {
+    const resolution = params.resolution as string || '1080p'
+    const pricingMap: Record<string, { creditsPerSec: number; costPerSec: string }> = {
+      '720p': { creditsPerSec: 12, costPerSec: '0.06' },
+      '1080p': { creditsPerSec: 20, costPerSec: '0.10' },
+    }
+    const pricing = pricingMap[resolution] || { creditsPerSec: 20, costPerSec: '0.10' }
+    return `${pricing.creditsPerSec} Credits/秒 ≈ $${pricing.costPerSec}/秒 (${resolution})`
+  },
+
+  'kie-bytedance-v1-pro-text-to-video': (params) => {
+    const duration = params.duration as string || '5'
+    const resolution = params.resolution as string || '720p'
+
+    // 每秒定价
+    const pricingPerSec: Record<string, { creditsPerSec: number; costPerSec: string }> = {
+      '480p': { creditsPerSec: 2.8, costPerSec: '0.014' },
+      '720p': { creditsPerSec: 6, costPerSec: '0.03' },
+      '1080p': { creditsPerSec: 14, costPerSec: '0.07' },
+    }
+
+    const pricing = pricingPerSec[resolution] || pricingPerSec['720p']
+    const durationNum = duration === '10' ? 10 : 5
+    const totalCredits = pricing.creditsPerSec * durationNum
+    const totalCost = (parseFloat(pricing.costPerSec) * durationNum).toFixed(2)
+
+    return `${totalCredits} Credits/${durationNum}秒 ≈ $${totalCost} (${resolution})`
+  },
+
+  'kie-bytedance-v1-pro-image-to-video': (params) => {
+    const duration = params.duration as string || '5'
+    const resolution = params.resolution as string || '720p'
+
+    // 每秒定价（与文生视频相同）
+    const pricingPerSec: Record<string, { creditsPerSec: number; costPerSec: string }> = {
+      '480p': { creditsPerSec: 2.8, costPerSec: '0.014' },
+      '720p': { creditsPerSec: 6, costPerSec: '0.03' },
+      '1080p': { creditsPerSec: 14, costPerSec: '0.07' },
+    }
+
+    const pricing = pricingPerSec[resolution] || pricingPerSec['720p']
+    const durationNum = duration === '10' ? 10 : 5
+    const totalCredits = pricing.creditsPerSec * durationNum
+    const totalCost = (parseFloat(pricing.costPerSec) * durationNum).toFixed(2)
+
+    return `${totalCredits} Credits/${durationNum}秒 ≈ $${totalCost} (${resolution})`
+  },
+
+  'kie-runway': (params) => {
+    const duration = params.duration as number || 5
+    const quality = params.quality as string || '720p'
+
+    // Runway 定价矩阵
+    const pricingMatrix: Record<string, Record<string, { credits: number; cost: string }>> = {
+      '5': {
+        '720p': { credits: 12, cost: '0.06' },
+        '1080p': { credits: 30, cost: '0.15' },
+      },
+      '10': {
+        '720p': { credits: 30, cost: '0.15' },
+        // 10秒不支持1080p
+      },
+    }
+
+    const durationKey = String(duration)
+    const pricing = pricingMatrix[durationKey]?.[quality] || { credits: 12, cost: '0.06' }
+
+    if (duration === 10 && quality === '1080p') {
+      return '10秒不支持1080p，请选择720p'
+    }
+
+    return `${pricing.credits} Credits/${duration}秒 ≈ $${pricing.cost} (${quality})`
+  },
+
+  'kie-runway-extend': (params) => {
+    const quality = params.quality as string || '720p'
+
+    // Runway Extend 定价（固定5秒扩展）
+    const pricingMap: Record<string, { credits: number; cost: string }> = {
+      '720p': { credits: 12, cost: '0.06' },
+      '1080p': { credits: 30, cost: '0.15' },
+    }
+
+    const pricing = pricingMap[quality] || pricingMap['720p']
+    return `${pricing.credits} Credits/5秒 ≈ $${pricing.cost} (${quality})`
+  },
 }
 
 /**

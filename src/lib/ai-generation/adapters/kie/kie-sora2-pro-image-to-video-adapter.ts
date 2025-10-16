@@ -62,8 +62,20 @@ export class KieSora2ProImageToVideoAdapter extends BaseAdapter {
         }
       }
 
+      // 获取图片URL（优先使用参数中的image_url，其次使用inputImages）
+      let imageUrls: string[] = []
+
+      if (request.parameters?.image_url) {
+        // 从参数字段获取（新方式）
+        const imageUrl = request.parameters.image_url as string
+        imageUrls = [imageUrl]
+      } else if (request.inputImages && request.inputImages.length > 0) {
+        // 从通用上传区域获取（旧方式，向后兼容）
+        imageUrls = request.inputImages
+      }
+
       // 验证输入图片
-      if (!request.inputImages || request.inputImages.length === 0) {
+      if (imageUrls.length === 0) {
         return {
           status: 'ERROR',
           message: 'Input image is required for Sora 2 Pro Image to Video',
@@ -78,7 +90,7 @@ export class KieSora2ProImageToVideoAdapter extends BaseAdapter {
       // 构建 input 参数对象
       const input: Record<string, unknown> = {
         prompt: request.prompt,
-        image_urls: request.inputImages,
+        image_urls: imageUrls,
       }
 
       // 可选参数: aspect_ratio
