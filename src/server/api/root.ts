@@ -9,6 +9,7 @@ import { apiKeysRouter } from "~/server/api/routers/api-keys"
 import { storageRouter } from "~/server/api/routers/storage"
 import { storageAdminRouter } from "~/server/api/routers/storage-admin"
 import { userRouter } from "~/server/api/routers/user"
+import { mediaBrowserRouter } from "~/server/api/routers/media-browser"
 
 /**
  * This is the primary router for your server.
@@ -26,6 +27,7 @@ export const appRouter = createTRPCRouter({
   storage: storageRouter,
   storageAdmin: storageAdminRouter,
   user: userRouter,
+  mediaBrowser: mediaBrowserRouter,
 })
 
 // export type definition of API

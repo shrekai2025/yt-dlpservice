@@ -70,3 +70,28 @@ export async function isValidAdminAuthCookie(
     return false
   }
 }
+
+/**
+ * 从 Cookie 获取用户ID
+ * 返回用户ID，如果未找到则返回 null
+ */
+export async function getUserIdFromCookie(
+  cookieValue: string | undefined
+): Promise<string | null> {
+  if (!cookieValue) return null
+
+  try {
+    // 获取所有用户
+    const users = await db.user.findMany({
+      select: { id: true, username: true }
+    })
+
+    // 查找匹配的用户
+    const matchedUser = users.find((user) => buildAdminAuthHash(user.username) === cookieValue)
+
+    return matchedUser?.id || null
+  } catch (error) {
+    console.error('Failed to get user from cookie:', error)
+    return null
+  }
+}

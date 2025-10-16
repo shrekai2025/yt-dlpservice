@@ -688,52 +688,41 @@ export default function TaskManagementPage() {
       </Card>
 
       {/* 转录文本弹窗 */}
-      {showTranscriptionModal && selectedTranscription && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-8">
-          <div className="flex w-full max-w-4xl max-h-[80vh] flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4">
-              <h3 className="text-base font-semibold text-neutral-900">
-                转录文本 · {selectedTranscription.taskId.slice(0, 8)}…
-              </h3>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                onClick={() => setShowTranscriptionModal(false)}
-                aria-label="关闭"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </Button>
-            </div>
-            <div className="flex-1 overflow-auto px-6 py-5">
-              <div className="space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
-                <div className="text-xs text-neutral-500">
-                  文本长度：{selectedTranscription.text.length} 字符
-                </div>
-                <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-neutral-800">
-{selectedTranscription.text}
-                </pre>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 bg-neutral-50 px-6 py-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(selectedTranscription.text)
-                  showToast('文本已复制到剪贴板', 'success')
-                }}
-              >
-                复制文本
-              </Button>
-              <Button variant="subtle" onClick={() => setShowTranscriptionModal(false)}>
-                关闭
-              </Button>
+      <Dialog open={showTranscriptionModal} onOpenChange={setShowTranscriptionModal}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>
+              转录文本 · {selectedTranscription?.taskId.slice(0, 8)}…
+            </DialogTitle>
+            <DialogDescription>
+              文本长度：{selectedTranscription?.text.length} 字符
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto">
+            <div className="space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+              <pre className="whitespace-pre-wrap break-words font-mono text-sm leading-6 text-neutral-800">
+{selectedTranscription?.text}
+              </pre>
             </div>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (selectedTranscription) {
+                  navigator.clipboard.writeText(selectedTranscription.text)
+                  showToast('文本已复制到剪贴板', 'success')
+                }
+              }}
+            >
+              复制文本
+            </Button>
+            <Button variant="subtle" onClick={() => setShowTranscriptionModal(false)}>
+              关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

@@ -347,10 +347,111 @@ model User {
   id        String   @id @default(cuid())
   username  String   @unique // 用户名（唯一）
   password  String   // 密码（明文存储）
+
+  // 媒体文件关联
+  mediaFiles   MediaFile[]
+  mediaFolders MediaFolder[]
+  mediaTags    MediaTag[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("users")
+}
+
+// ============================================
+// 媒体文件管理
+// ============================================
+
+// 媒体文件类型枚举
+enum MediaFileType {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+// 媒体文件来源枚举
+enum MediaFileSource {
+  URL
+  LOCAL
+}
+
+// 媒体文件表
+model MediaFile {
+  id            String          @id @default(cuid())
+  userId        String          // 所属用户ID
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // 文件基本信息
+  name          String          // 文件名称
+  type          MediaFileType   // 类型: IMAGE, VIDEO, AUDIO
+  source        MediaFileSource // 来源: URL, LOCAL
+  sourceUrl     String?         // 远程URL（如果是URL来源）
+  localPath     String?         // 本地文件路径（如果是本地上传）
+
+  // 缩略图/封面
+  thumbnailPath String?         // 缩略图本地路径
+
+  // 元数据
+  fileSize      Int?            // 文件大小（字节）
+  mimeType      String?         // MIME类型
+  width         Int?            // 宽度（图片/视频）
+  height        Int?            // 高度（图片/视频）
+  duration      Float?          // 时长（视频/音频，秒）
+
+  // 组织结构
+  folderId      String?
+  folder        MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  tags          MediaTag[]
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([userId])
+  @@index([folderId])
+  @@index([type])
+  @@index([source])
+  @@map("media_files")
+}
+
+// 文件夹表（单层）
+model MediaFolder {
+  id        String      @id @default(cuid())
+  userId    String      // 所属用户ID
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String      // 文件夹名称
+  color     String?     // 文件夹颜色（可选）
+  icon      String?     // 文件夹图标（可选）
+  sortOrder Int         @default(0)
+
+  files     MediaFile[]
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("media_folders")
+}
+
+// 标签表
+model MediaTag {
+  id        String      @id @default(cuid())
+  userId    String      // 所属用户ID
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String      // 标签名称
+  color     String      @default("#gray") // 标签颜色
+
+  files     MediaFile[]
+
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("media_tags")
 }
 
 // ============================================

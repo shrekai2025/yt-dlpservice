@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronLeft, Menu } from 'lucide-react'
 
 import { cn } from '~/lib/utils/cn'
 
@@ -48,9 +48,29 @@ const SINGLE_NAV_ITEMS = [
   { id: 'api-doc', label: 'API文档', href: '/admin/api-doc' },
 ]
 
+const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
+
+  // 侧边栏展开/收起状态
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  // 从 localStorage 加载状态
+  useEffect(() => {
+    const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY)
+    if (saved) {
+      setIsSidebarCollapsed(saved === 'true')
+    }
+  }, [])
+
+  // 保存到 localStorage
+  const toggleSidebar = () => {
+    const newState = !isSidebarCollapsed
+    setIsSidebarCollapsed(newState)
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(newState))
+  }
 
   // 推断当前展开的分组和激活的项
   const { activeGroup, activeItem } = useMemo(() => {
@@ -120,13 +140,44 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-50 text-neutral-900">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-neutral-200 bg-white/95 pb-6 pt-8 max-h-screen overflow-y-auto">
-        <div className="px-6">
+      <aside
+        className={cn(
+          'flex shrink-0 flex-col border-r border-neutral-200 bg-white/95 pb-6 pt-8 max-h-screen overflow-y-auto transition-all duration-300',
+          isSidebarCollapsed ? 'w-16' : 'w-56'
+        )}
+      >
+        <div className={cn('px-6', isSidebarCollapsed && 'px-4')}>
           <div className="flex flex-col">
-            <span className="text-sm font-semibold tracking-wider text-neutral-900">多媒体工作站</span>
-            <span className="text-xs text-neutral-500">原yt-dlpservice</span>
+            {!isSidebarCollapsed && (
+              <>
+                <span className="text-sm font-semibold tracking-wider text-neutral-900">
+                  多媒体工作站
+                </span>
+                <span className="text-xs text-neutral-500">原yt-dlpservice</span>
+              </>
+            )}
           </div>
         </div>
+
+        {/* Toggle Button */}
+        <div className={cn('px-3 mt-4', isSidebarCollapsed && 'px-2')}>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="flex w-full items-center justify-center rounded-md px-3 py-2 text-sm text-neutral-600 hover:bg-neutral-100 transition-colors"
+            title={isSidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+          >
+            {isSidebarCollapsed ? (
+              <Menu className="h-5 w-5" />
+            ) : (
+              <>
+                <ChevronLeft className="h-4 w-4 mr-2" />
+                <span>收起</span>
+              </>
+            )}
+          </button>
+        </div>
+
         <nav className="mt-8 flex flex-1 flex-col gap-0.5 px-3">
           {/* 分组导航 */}
           {NAV_GROUPS.map((group) => {
@@ -141,16 +192,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     activeGroup === group.id
                       ? 'bg-neutral-100 text-neutral-900'
                       : 'text-neutral-700 hover:bg-neutral-50 hover:text-neutral-900',
+                    isSidebarCollapsed && 'justify-center'
                   )}
+                  title={isSidebarCollapsed ? group.label : undefined}
                 >
-                  <span>{group.label}</span>
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 text-neutral-500" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-neutral-500" />
-                  )}
+                  {!isSidebarCollapsed && <span>{group.label}</span>}
+                  {!isSidebarCollapsed &&
+                    (isExpanded ? (
+                      <ChevronDown className="h-4 w-4 text-neutral-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-neutral-500" />
+                    ))}
+                  {isSidebarCollapsed && <span className="text-xs">{group.label[0]}</span>}
                 </button>
-                {isExpanded && (
+                {isExpanded && !isSidebarCollapsed && (
                   <div className="mt-0.5 space-y-0.5 pl-3">
                     {group.items.map((item) => (
                       <Link
@@ -182,9 +237,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 activeItem === item.id
                   ? 'bg-neutral-900 text-white shadow-sm'
                   : 'text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900',
+                isSidebarCollapsed && 'justify-center'
               )}
+              title={isSidebarCollapsed ? item.label : undefined}
             >
-              {item.label}
+              {isSidebarCollapsed ? <span className="text-xs">{item.label[0]}</span> : item.label}
             </Link>
           ))}
         </nav>
@@ -193,15 +250,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             type="button"
             onClick={handleLogout}
             disabled={isLoggingOut}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-600"
+            className={cn(
+              'mt-4 inline-flex w-full items-center justify-center rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-600',
+              isSidebarCollapsed && 'px-2'
+            )}
+            title={isSidebarCollapsed ? '退出登录' : undefined}
           >
-            {isLoggingOut ? '退出中...' : '退出登录'}
+            {isLoggingOut ? '...' : isSidebarCollapsed ? '出' : '退出登录'}
           </button>
         </div>
       </aside>
       <div className="flex flex-1 flex-col overflow-hidden">
         <main className="flex-1 overflow-y-auto px-8 py-10" role="main">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
+          {children}
         </main>
       </div>
     </div>

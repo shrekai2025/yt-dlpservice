@@ -50,6 +50,14 @@ next-env.d.ts
 # 浏览器数据（隐私相关）
 /data/browser_data/
 
+# 媒体文件（media-browser功能）
+/data/media-uploads/*
+!/data/media-uploads/.gitkeep
+/data/media-thumbnails/*
+!/data/media-thumbnails/.gitkeep
+/data/exports/*
+!/data/exports/.gitkeep
+
 # 系统文件
 /data/.DS_Store
 
