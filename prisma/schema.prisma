@@ -38,12 +38,15 @@ model Task {
   // 文件路径 (可能只有其中一个或两个都有)
   videoPath     String?    // 下载的视频文件路径
   audioPath     String?    // 提取的音频文件路径
+  originalVideoPath String? // 压缩前的原始视频路径 (用于S3转存原文件)
+  originalAudioPath String? // 压缩前的原始音频路径 (用于S3转存原文件)
   
   // 转录相关
   transcription String?    // 转录文本
   tingwuTaskId  String?    // 通义转录任务ID
   sttProvider   String?    // STT服务提供商 (google, doubao, doubao-small, tingwu)
   googleSttLanguage String?  // Google STT语言代码 (cmn-Hans-CN, en-US)
+  enableTranscription Boolean @default(true)  // 是否启用语音识别
 
   // 元数据
   duration      Int?       // 视频时长（秒）
@@ -64,7 +67,14 @@ model Task {
   
   // 额外元数据（JSON格式存储平台特定数据和评论等）
   extraMetadata String?    // JSON格式存储额外元数据
-  
+
+  // S3转存相关
+  s3Url         String?    // S3存储URL (如果已转存)
+  s3TransferStatus String? @default("none") // 转存状态: none, pending, uploading, completed, failed
+  s3TransferFileType String? @default("none") // 转存文件类型: none, compressed, original
+  s3TransferProgress String? // 转存进度信息或错误消息
+  s3TransferredAt DateTime? // 转存完成时间
+
   // 时间戳
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
@@ -133,49 +143,169 @@ model SttJob {
 }
 
 // ============================================
-// GenAPIHub 模型 - AI 内容生成服务
+// AI 内容生成服务 - V2 架构
 // ============================================
 
-// 生成请求状态枚举
-enum GenerationStatus {
+// 平台表（第三方平台：TuZi, Replicate, Pollo 等）
+model AIPlatform {
+  id          String      @id @default(cuid())
+  name        String      @unique // "TuZi", "Replicate", "Pollo"
+  slug        String      @unique // "tuzi", "replicate", "pollo"
+  description String?
+  website     String?     // 官网
+
+  providers   AIProvider[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([slug])
+  @@map("ai_platforms")
+}
+
+// 供应商表
+model AIProvider {
+  id              String      @id @default(cuid())
+  name            String      // "Kie.ai", "OpenAI", "TuZi", "Replicate"
+  slug            String      @unique // "kie-ai", "openai", "tuzi", "replicate"
+  description     String?
+
+  // 平台关联（可选，官方供应商没有平台）
+  platformId      String?
+  platform        AIPlatform? @relation(fields: [platformId], references: [id])
+
+  // API 配置（供应商级别）
+  apiEndpoint     String?     // 基础 API 端点
+  apiKey          String?     // API Key（明文存储，系统安全性要求不高）
+
+  // S3存储配置（可选，用于自动上传生成结果）
+  uploadToS3      Boolean     @default(false) // 是否自动上传到S3
+  s3PathPrefix    String?     // S3路径前缀，如 "ai-generation/kie/"
+
+  // 关联模型
+  models          AIModel[]
+
+  isActive        Boolean     @default(true)
+  sortOrder       Int         @default(0) // 前端排序
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([slug])
+  @@index([isActive])
+  @@map("ai_providers")
+}
+
+// 输出类型枚举
+enum AIOutputType {
+  IMAGE
+  VIDEO
+  AUDIO
+}
+
+// 模型表
+model AIModel {
+  id              String       @id @default(cuid())
+  name            String       // "4o Image", "Flux Kontext", "Midjourney"
+  slug            String       @unique // "4o-image", "flux-kontext", "midjourney"
+  description     String?
+
+  // 供应商关联
+  providerId      String
+  provider        AIProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  // 输出类型
+  outputType      AIOutputType // IMAGE, VIDEO, AUDIO
+
+  // 适配器配置
+  adapterName     String       // "KieImageAdapter", "KieFluxKontextAdapter"
+
+  // 能力标签（JSON 数组字符串）
+  inputCapabilities  String?   // ["text-input", "image-input", "video-input"]
+  outputCapabilities String?   // ["image-output", "video-output"]
+  featureTags        String?   // ["high-quality", "fast", "low-cost", "4k", "hd"]
+  functionTags       String?   // ["text-to-image", "image-to-image", "text-to-video"]
+
+  // 使用统计
+  usageCount      Int          @default(0)
+
+  // 费用说明
+  pricingInfo     String?      // 费用说明（可选，显示在生成按钮下方）
+
+  // 状态
+  isActive        Boolean      @default(true)
+  sortOrder       Int          @default(0) // 前端排序
+
+  // 关联任务
+  tasks           AIGenerationTask[]
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([slug])
+  @@index([providerId])
+  @@index([outputType])
+  @@index([isActive])
+  @@map("ai_models")
+}
+
+// 任务状态枚举
+enum AITaskStatus {
   PENDING      // 等待处理
   PROCESSING   // 处理中
   SUCCESS      // 成功
   FAILED       // 失败
+  CANCELLED    // 已取消
 }
 
-// AI 生成服务供应商配置表
-model ApiProvider {
-  id               String   @id @default(cuid())
-  name             String   // 供应商名称 (如 "FLUX Pro", "Kling Video", "Google STT")
-  modelIdentifier  String   @unique // 模型唯一标识符
-  adapterName      String   // 适配器名称 (FluxAdapter, KlingAdapter, GoogleSTTAdapter)
-  type             String   // 类型: image, video, stt
-  provider         String?  // 第三方平台 (Replicate, Pollo)
-  shortName        String?  // 前端展示用短名称
+// 生成任务表
+model AIGenerationTask {
+  id              String       @id @default(cuid())
 
-  apiEndpoint      String   // API 端点
-  apiFlavor        String   // API 风格 (openai, custom)
-  encryptedAuthKey String?  // 加密的认证密钥
+  // 模型关联
+  modelId         String
+  model           AIModel      @relation(fields: [modelId], references: [id], onDelete: Cascade)
 
-  isActive         Boolean  @default(true)
-  callCount        Int      @default(0)
+  // 请求信息
+  prompt          String
+  inputImages     String?      // JSON 数组: ["url1", "url2"]
+  numberOfOutputs Int          @default(1)
+  parameters      String?      // JSON 对象（动态参数）
 
-  uploadToS3       Boolean  @default(false)
-  s3PathPrefix     String?
-  modelVersion     String?  // Replicate 模型版本
+  // 状态
+  status          AITaskStatus @default(PENDING)
+  progress        Float?       // 0-1
 
-  requests         GenerationRequest[]
+  // 结果
+  results         String?      // JSON: [{type, url, metadata}]
+  errorMessage    String?
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  // 供应商任务ID（用于轮询）
+  providerTaskId  String?
 
-  @@index([type])
-  @@index([isActive])
-  @@map("api_providers")
+  // 元数据（可选，用于调试）
+  requestPayload  String?
+  responsePayload String?
+
+  // 统计
+  durationMs      Int?
+
+  // 时间戳
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  completedAt     DateTime?
+
+  // 软删除
+  deletedAt       DateTime?
+
+  @@index([status])
+  @@index([modelId])
+  @@index([createdAt])
+  @@index([deletedAt])
+  @@map("ai_generation_tasks")
 }
 
-// API 密钥管理表
+// API 密钥管理表（保留用于访问控制）
 model ApiKey {
   id           String   @id @default(cuid())
   name         String   // 密钥描述
@@ -188,49 +318,6 @@ model ApiKey {
 
   @@index([keyPrefix])
   @@map("api_keys")
-}
-
-// 生成任务请求日志表
-model GenerationRequest {
-  id              String            @id @default(cuid())
-  providerId      String
-  provider        ApiProvider       @relation(fields: [providerId], references: [id])
-
-  modelIdentifier String
-  status          GenerationStatus  @default(PENDING)
-
-  // 请求参数
-  prompt          String
-  inputImages     String?           // JSON 数组
-  numberOfOutputs Int               @default(1)
-  parameters      String?           // JSON 对象
-
-  // 响应数据
-  results         String?           // JSON 数组
-  errorMessage    String?
-  progress        Float?            // 任务进度 (0-1)
-
-  // 异步任务 ID
-  taskId          String?
-
-  // 调用来源与原始数据
-  clientKeyPrefix String?
-  clientKeyHash   String?
-  requestPayload  String?
-  responsePayload String?
-
-  // 统计与软删除
-  durationMs      Int?
-  deletedAt       DateTime?
-
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  completedAt     DateTime?
-
-  @@index([status])
-  @@index([createdAt])
-  @@index([providerId])
-  @@map("generation_requests")
 }
 
 // S3 存储文件记录表
@@ -249,6 +336,21 @@ model StorageFile {
 
   @@index([createdAt])
   @@map("storage_files")
+}
+
+// ============================================
+// 用户管理
+// ============================================
+
+// 用户表
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique // 用户名（唯一）
+  password  String   // 密码（明文存储）
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
 }
 
 // ============================================

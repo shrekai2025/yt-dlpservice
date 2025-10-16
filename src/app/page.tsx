@@ -23,7 +23,8 @@ export default async function HomePage({ searchParams }: PageProps) {
   const params = await searchParams;
   const redirectTarget = resolveNextPath(params?.next);
 
-  if (isValidAdminAuthCookie(authCookie)) {
+  const isValid = await isValidAdminAuthCookie(authCookie);
+  if (isValid) {
     redirect(redirectTarget);
   }
 

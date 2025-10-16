@@ -3,6 +3,7 @@ import { YouTubePlatform } from './youtube/youtube-platform'
 import { BilibiliPlatform } from './bilibili/bilibili-platform'
 import { XiaoyuzhouPlatform } from './xiaoyuzhou/xiaoyuzhou-platform'
 import { ApplePodcastsPlatform } from './applepodcasts/applepodcasts-platform'
+import { TwitterPlatform } from './twitter/twitter-platform'
 
 // 导出接口和基类
 export * from './base/platform-interface'
@@ -14,6 +15,7 @@ export { YouTubePlatform } from './youtube/youtube-platform'
 export { BilibiliPlatform } from './bilibili/bilibili-platform'
 export { XiaoyuzhouPlatform } from './xiaoyuzhou/xiaoyuzhou-platform'
 export { ApplePodcastsPlatform } from './applepodcasts/applepodcasts-platform'
+export { TwitterPlatform } from './twitter/twitter-platform'
 
 /**
  * 初始化所有平台
@@ -35,6 +37,10 @@ export function initializePlatforms(ytDlpPath?: string): void {
   // 注册Apple播客平台
   const applePodcastsPlatform = new ApplePodcastsPlatform(ytDlpPath)
   platformRegistry.register(applePodcastsPlatform)
+
+  // 注册Twitter平台
+  const twitterPlatform = new TwitterPlatform(ytDlpPath)
+  platformRegistry.register(twitterPlatform)
 }
 
 // 便捷访问

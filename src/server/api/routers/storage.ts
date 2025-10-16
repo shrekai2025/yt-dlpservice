@@ -6,7 +6,8 @@
 
 import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '~/server/api/trpc'
-import { s3Uploader } from '~/lib/adapters/utils/s3-uploader'
+import { s3Uploader } from '~/lib/services/s3-uploader'
+import { db } from '~/server/db'
 
 export const storageRouter = createTRPCRouter({
   /**
@@ -38,6 +39,34 @@ export const storageRouter = createTRPCRouter({
         input.contentType,
         input.fileName
       )
+
+      // Extract stored filename and S3 key
+      const urlParts = url.split('/')
+      const storedName = urlParts[urlParts.length - 1]
+      if (!storedName) {
+        throw new Error('Failed to extract filename from S3 URL')
+      }
+
+      const pathPrefix = input.pathPrefix ?? 'uploads'
+      const s3Key = `${pathPrefix}/${storedName}`
+
+      // Record upload details to database (mirrors external storage API behavior)
+      try {
+        await db.storageFile.create({
+          data: {
+            fileName: input.fileName ?? storedName,
+            storedName,
+            s3Url: url,
+            s3Key,
+            fileSize: buffer.length,
+            mimeType: input.contentType ?? null,
+            pathPrefix,
+          },
+        })
+      } catch (error) {
+        console.error('[Storage Router] Failed to persist storage record:', error)
+        // We don't throw here so the upload response still succeeds, but logging helps trace issues.
+      }
 
       return {
         success: true,

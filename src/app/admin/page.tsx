@@ -28,8 +28,10 @@ export default function TaskManagementPage() {
   const [url, setUrl] = useState("")
   const [downloadType, setDownloadType] = useState<"AUDIO_ONLY" | "VIDEO_ONLY" | "BOTH">("AUDIO_ONLY")
   const [compressionPreset, setCompressionPreset] = useState<"none" | "light" | "standard" | "heavy">("none")
-  const [sttProvider, setSttProvider] = useState<"google" | "doubao" | "doubao-small" | "tingwu" | undefined>(undefined)
+  const [sttProvider, setSttProvider] = useState<"google" | "doubao" | "doubao-small" | "tingwu" | "none" | undefined>(undefined)
   const [googleSttLanguage, setGoogleSttLanguage] = useState<"cmn-Hans-CN" | "en-US">("cmn-Hans-CN")
+  const [s3TransferFileType, setS3TransferFileType] = useState<"none" | "compressed" | "original">("none")
+  const [enableTranscription, setEnableTranscription] = useState(true)
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false)
   const [selectedTranscription, setSelectedTranscription] = useState<{taskId: string, text: string} | null>(null)
   const [toast, setToast] = useState<{ message: string; tone?: 'default' | 'success' | 'error' } | null>(null)
@@ -47,7 +49,11 @@ export default function TaskManagementPage() {
 
 
   // 数据查询
-  const { data: tasks, refetch: refetchTasks } = api.task.list.useQuery({})
+  const {
+    data: tasks,
+    refetch: refetchTasks,
+    isFetching: isFetchingTasks,
+  } = api.task.list.useQuery({})
   const { data: stats } = api.task.stats.useQuery()
   const { data: downloaderStatus } = api.task.checkDownloader.useQuery()
 
@@ -59,6 +65,8 @@ export default function TaskManagementPage() {
       setCompressionPreset("none")
       setSttProvider(undefined)
       setGoogleSttLanguage("cmn-Hans-CN")
+      setS3TransferFileType("none")
+      setEnableTranscription(true)
       refetchTasks()
       showToast('任务创建成功', 'success')
     },
@@ -97,8 +105,10 @@ export default function TaskManagementPage() {
         url: url.trim(),
         downloadType,
         compressionPreset,
-        sttProvider,
-        googleSttLanguage: sttProvider === 'google' ? googleSttLanguage : undefined
+        sttProvider: sttProvider === 'none' ? undefined : sttProvider,
+        googleSttLanguage: sttProvider === 'google' ? googleSttLanguage : undefined,
+        s3TransferFileType,
+        enableTranscription
       })
     } catch (error) {
       console.error("Failed to create task:", error)
@@ -272,7 +282,7 @@ export default function TaskManagementPage() {
                 className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
                 required
               />
-              <p className="text-xs text-neutral-500">支持 YouTube、Bilibili、小宇宙、Apple 播客等平台。</p>
+              <p className="text-xs text-neutral-500">支持 YouTube、Bilibili、小宇宙、Apple 播客、Twitter。</p>
             </div>
 
             <div className="space-y-2">
@@ -324,26 +334,34 @@ export default function TaskManagementPage() {
 
             <div className="space-y-2">
               <span className="text-sm font-medium text-neutral-700">语音识别服务</span>
-              <div className="grid gap-2 sm:grid-cols-4">
-                {[{ value: undefined, label: '遵循默认' }, { value: 'doubao', label: '豆包' }, { value: 'doubao-small', label: '豆包小模型' }, { value: 'google', label: 'Google' }, { value: 'tingwu', label: '通义听悟' }].map(
-                  (option) => (
-                    <button
-                      key={option.label}
-                      type="button"
-                      onClick={() => setSttProvider(option.value as typeof sttProvider)}
-                      className={cn(
-                        'rounded-md border border-neutral-200 px-3 py-2 text-sm transition-colors',
-                        sttProvider === option.value
-                          ? 'border-neutral-900 bg-neutral-900 text-white'
-                          : 'hover:border-neutral-300 hover:bg-neutral-100',
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  ),
-                )}
+              <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-6">
+                {[
+                  { value: undefined, label: '遵循默认' },
+                  { value: 'doubao', label: '豆包' },
+                  { value: 'doubao-small', label: '豆包小模型' },
+                  { value: 'google', label: 'Google' },
+                  { value: 'tingwu', label: '通义听悟' },
+                  { value: 'none', label: '不识别' }
+                ].map((option) => (
+                  <button
+                    key={option.label}
+                    type="button"
+                    onClick={() => {
+                      setSttProvider(option.value as typeof sttProvider)
+                      setEnableTranscription(option.value !== 'none')
+                    }}
+                    className={cn(
+                      'rounded-md border border-neutral-200 px-3 py-2 text-sm transition-colors',
+                      sttProvider === option.value
+                        ? 'border-neutral-900 bg-neutral-900 text-white'
+                        : 'hover:border-neutral-300 hover:bg-neutral-100',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
               </div>
-              <p className="text-xs text-neutral-500">留空表示使用系统默认语音服务配置。</p>
+              <p className="text-xs text-neutral-500">选择"不识别"将跳过语音转录,仅下载和处理媒体文件。</p>
             </div>
 
             {sttProvider === 'google' && (
@@ -363,6 +381,40 @@ export default function TaskManagementPage() {
                 <p className="text-xs text-neutral-500">默认：简体中文 | 位置：us-central1 | 模型：chirp_2</p>
               </div>
             )}
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-neutral-700">S3 转存设置</span>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { value: 'none', label: '不转存', desc: '不上传到 S3' },
+                  { value: 'compressed', label: '转存处理后文件', desc: '上传经过压缩/处理的文件' },
+                  { value: 'original', label: '转存原始文件', desc: '上传下载的原始文件' }
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setS3TransferFileType(option.value as typeof s3TransferFileType)}
+                    className={cn(
+                      'rounded-md border border-neutral-200 px-3 py-2 text-sm transition-colors text-left',
+                      s3TransferFileType === option.value
+                        ? 'border-neutral-900 bg-neutral-900 text-white'
+                        : 'hover:border-neutral-300 hover:bg-neutral-100',
+                    )}
+                  >
+                    <div className="font-medium">{option.label}</div>
+                    <div className={cn(
+                      "text-xs mt-1",
+                      s3TransferFileType === option.value ? 'text-neutral-300' : 'text-neutral-500'
+                    )}>
+                      {option.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-neutral-500">
+                S3转存在任务完成后并行执行,不阻塞转录流程。"处理后文件"体积更小节省成本,"原始文件"保持下载时的质量。
+              </p>
+            </div>
 
             <Separator />
 
@@ -400,7 +452,17 @@ export default function TaskManagementPage() {
             <CardTitle>任务列表</CardTitle>
             <CardDescription>查看任务状态、压缩信息与转录结果。</CardDescription>
           </div>
-          <span className="text-xs text-neutral-500">共 {tasks?.total ?? 0} 条</span>
+          <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <span>共 {tasks?.total ?? 0} 条</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void refetchTasks()}
+              disabled={isFetchingTasks}
+            >
+              {isFetchingTasks ? '刷新中…' : '刷新'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -413,6 +475,7 @@ export default function TaskManagementPage() {
                   <th className="px-5 py-3 text-left font-medium">下载类型</th>
                   <th className="px-5 py-3 text-left font-medium">压缩</th>
                   <th className="px-5 py-3 text-left font-medium">状态</th>
+                  <th className="px-5 py-3 text-left font-medium">S3转存</th>
                   <th className="px-5 py-3 text-left font-medium">文件</th>
                   <th className="px-5 py-3 text-left font-medium">创建时间</th>
                   <th className="px-5 py-3 text-left font-medium">错误</th>
@@ -468,6 +531,70 @@ export default function TaskManagementPage() {
                       </td>
                       <td className="px-5 py-4">
                         <Badge variant={statusBadgeVariant}>{task.status}</Badge>
+                      </td>
+                      <td className="px-5 py-4">
+                        {(() => {
+                          const s3Status = (task as any).s3TransferStatus as string | undefined
+                          const s3Url = (task as any).s3Url as string | undefined
+                          const s3Progress = (task as any).s3TransferProgress as string | undefined
+                          const s3FileType = (task as any).s3TransferFileType as string | undefined
+
+                          if (!s3Status || s3Status === 'none') {
+                            return <span className="text-xs text-neutral-400">未启用</span>
+                          }
+
+                          if (s3Status === 'completed' && s3Url) {
+                            return (
+                              <div className="space-y-1">
+                                <Badge variant="success">已转存</Badge>
+                                {s3FileType && s3FileType !== 'none' && (
+                                  <div className="text-xs text-neutral-500">
+                                    {s3FileType === 'original' ? '原文件' : '压缩文件'}
+                                  </div>
+                                )}
+                                <a
+                                  href={s3Url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block text-xs text-blue-600 hover:underline truncate max-w-[200px]"
+                                  title={s3Url}
+                                >
+                                  查看文件
+                                </a>
+                              </div>
+                            )
+                          }
+
+                          if (s3Status === 'failed') {
+                            return (
+                              <div className="space-y-1">
+                                <Badge variant="danger">转存失败</Badge>
+                                {s3Progress && (
+                                  <div className="text-xs text-red-600 max-w-[200px] truncate" title={s3Progress}>
+                                    {s3Progress}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          }
+
+                          if (s3Status === 'uploading') {
+                            return (
+                              <div className="space-y-1">
+                                <Badge variant="outline">上传中</Badge>
+                                {s3Progress && (
+                                  <div className="text-xs text-neutral-500">{s3Progress}</div>
+                                )}
+                              </div>
+                            )
+                          }
+
+                          if (s3Status === 'pending') {
+                            return <Badge variant="outline">等待转存</Badge>
+                          }
+
+                          return <span className="text-xs text-neutral-400">-</span>
+                        })()}
                       </td>
                       <td className="px-5 py-4 text-xs text-neutral-500">
                         {task.videoPath && <div className="truncate" title={task.videoPath}>视频: {task.videoPath.split('/').pop()}</div>}

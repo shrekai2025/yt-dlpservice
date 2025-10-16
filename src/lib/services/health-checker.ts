@@ -5,7 +5,7 @@
  */
 
 import { db } from '~/server/db'
-import { s3Uploader } from '~/lib/adapters/utils/s3-uploader'
+import { s3Uploader } from '~/lib/services/s3-uploader'
 import { logger } from '~/lib/logger'
 
 export interface ComponentHealth {

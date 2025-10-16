@@ -43,7 +43,12 @@ export const taskRouter = createTRPCRouter({
             compressionPreset: input.compressionPreset,
             sttProvider: input.sttProvider,
             googleSttLanguage: input.googleSttLanguage,
-            status: 'PENDING'
+            enableTranscription: input.enableTranscription,
+            status: 'PENDING',
+            // S3转存相关字段
+            s3TransferFileType: input.s3TransferFileType,
+            s3TransferStatus: input.s3TransferFileType !== 'none' ? 'pending' : 'none',
+            s3TransferProgress: input.s3TransferFileType !== 'none' ? '等待任务完成后转存' : '未启用'
           }
         })
 

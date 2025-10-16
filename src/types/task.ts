@@ -1,5 +1,5 @@
 // 平台类型
-export type Platform = 'youtube' | 'bilibili' | 'xiaoyuzhou' | 'applepodcasts' | 'other'
+export type Platform = 'youtube' | 'bilibili' | 'xiaoyuzhou' | 'applepodcasts' | 'twitter' | 'other'
 
 // 任务状态类型
 export type TaskStatus = 'PENDING' | 'EXTRACTING' | 'TRANSCRIBING' | 'COMPLETED' | 'FAILED'
@@ -8,7 +8,7 @@ export type TaskStatus = 'PENDING' | 'EXTRACTING' | 'TRANSCRIBING' | 'COMPLETED'
 export type DownloadType = 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH'
 
 // STT服务提供商类型
-export type SttProvider = 'google' | 'doubao' | 'doubao-small' | 'tingwu'
+export type SttProvider = 'google' | 'doubao' | 'doubao-small' | 'tingwu' | 'none'
 
 // 视频信息接口
 export interface VideoInfo {
@@ -24,12 +24,20 @@ export interface VideoInfo {
   formats: any[]
 }
 
+// S3转存状态类型
+export type S3TransferStatus = 'none' | 'pending' | 'uploading' | 'completed' | 'failed'
+
+// S3转存文件类型
+export type S3TransferFileType = 'none' | 'compressed' | 'original'
+
 // 创建任务输入接口
 export interface CreateTaskInput {
   url: string
   downloadType?: DownloadType // 新增下载类型参数，默认为 AUDIO_ONLY
   compressionPreset?: CompressionPreset // 音频压缩预设，默认为 none
   sttProvider?: SttProvider // STT服务提供商，默认为全局配置
+  s3TransferFileType?: S3TransferFileType // S3转存文件类型，默认为 none
+  enableTranscription?: boolean // 是否启用语音识别，默认为 true
 }
 
 // 压缩预设类型
@@ -111,6 +119,15 @@ export interface ApplePodcastsData {
   explicit?: boolean          // 是否包含敏感内容
 }
 
+export interface TwitterData {
+  viewCount?: number           // 观看次数
+  likeCount?: number           // 点赞数
+  retweetCount?: number        // 转发数
+  replyCount?: number          // 回复数
+  quoteCount?: number          // 引用转发数
+  bookmarkCount?: number       // 书签数
+}
+
 // 平台额外元数据接口
 export interface PlatformExtraMetadata {
   // 公共字段
@@ -124,7 +141,7 @@ export interface PlatformExtraMetadata {
   viewCount?: number
   
   // 平台特定字段
-  platformData?: BilibiliData | YouTubeData | XiaoyuzhouData | ApplePodcastsData
+  platformData?: BilibiliData | YouTubeData | XiaoyuzhouData | ApplePodcastsData | TwitterData
   
   // 评论数据
   comments?: Comment[]

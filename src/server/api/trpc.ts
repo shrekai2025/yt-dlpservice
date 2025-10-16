@@ -4,6 +4,7 @@ import superjson from 'superjson'
 import { ZodError } from 'zod'
 
 import { db } from '~/server/db'
+import { isValidAdminAuthCookie, ADMIN_AUTH_COOKIE } from '~/lib/auth/simple-admin-auth'
 
 /**
  * 创建tRPC上下文
@@ -51,7 +52,7 @@ export const publicProcedure = t.procedure
  */
 export const loggedProcedure = publicProcedure.use(({ path, type, next }) => {
   const start = Date.now()
-  
+
   return next({
     ctx: {
       // 可以在这里添加额外的上下文
@@ -62,6 +63,43 @@ export const loggedProcedure = publicProcedure.use(({ path, type, next }) => {
     return result
   })
 })
+
+/**
+ * 认证中间件
+ * 验证用户是否已登录
+ */
+const authMiddleware = t.middleware(async ({ ctx, next }) => {
+  // 从 cookies 中获取认证 token
+  const cookies = ctx.req.headers.cookie?.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.trim().split('=')
+    if (key && value) acc[key] = value
+    return acc
+  }, {} as Record<string, string>) ?? {}
+
+  const authCookie = cookies[ADMIN_AUTH_COOKIE]
+
+  // 验证 cookie
+  const isValid = await isValidAdminAuthCookie(authCookie)
+
+  if (!isValid) {
+    throw new TRPCError({
+      code: 'UNAUTHORIZED',
+      message: '未授权，请先登录',
+    })
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      // 可以在这里添加用户信息到 context
+    },
+  })
+})
+
+/**
+ * 受保护的过程（需要登录）
+ */
+export const protectedProcedure = publicProcedure.use(authMiddleware)
 
 /**
  * 中间件：验证任务存在

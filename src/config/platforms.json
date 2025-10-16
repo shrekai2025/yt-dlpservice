@@ -60,5 +60,24 @@
     "requiresAuth": false,
     "downloadMethod": "custom",
     "note": "Apple播客使用网页解析方式下载音频，自动选择最小音质以减少文件大小"
+  },
+  "twitter": {
+    "name": "Twitter/X",
+    "domains": [
+      "twitter.com",
+      "www.twitter.com",
+      "x.com",
+      "www.x.com",
+      "m.twitter.com",
+      "mobile.twitter.com"
+    ],
+    "urlPatterns": [
+      "^https?://(www\\.|m\\.|mobile\\.)?(twitter|x)\\.com/.+/status/\\d+",
+      "^https?://(www\\.)?(twitter|x)\\.com/i/spaces/[a-zA-Z0-9]+"
+    ],
+    "contentTypes": ["video", "audio"],
+    "requiresAuth": false,
+    "downloadMethod": "yt-dlp",
+    "note": "Twitter/X平台支持推文中的视频、图片下载。部分内容可能需要登录才能访问。"
   }
 } 

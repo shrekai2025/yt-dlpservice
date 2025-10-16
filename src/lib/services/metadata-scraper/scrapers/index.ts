@@ -3,6 +3,7 @@ import { YouTubeScraper } from './youtube'
 import { BilibiliScraper } from './bilibili'
 import { XiaoyuzhouScraper } from './xiaoyuzhou'
 import { ApplePodcastsScraper } from './applepodcasts'
+import { TwitterScraper } from './twitter'
 import { Logger } from '~/lib/utils/logger'
 
 /**
@@ -12,16 +13,19 @@ export function initializeScrapers(): void {
   try {
     // 注册YouTube爬虫
     metadataScraperService.registerScraper(new YouTubeScraper())
-    
+
     // 注册Bilibili爬虫
     metadataScraperService.registerScraper(new BilibiliScraper())
-    
+
     // 注册小宇宙爬虫
     metadataScraperService.registerScraper(new XiaoyuzhouScraper())
-    
+
     // 注册Apple播客爬虫
     metadataScraperService.registerScraper(new ApplePodcastsScraper())
-    
+
+    // 注册Twitter爬虫
+    metadataScraperService.registerScraper(new TwitterScraper())
+
     Logger.info('MetadataScraperService: 所有平台爬虫初始化完成')
   } catch (error: any) {
     Logger.error(`MetadataScraperService: 爬虫初始化失败: ${error.message}`)
@@ -34,4 +38,5 @@ export { YouTubeScraper } from './youtube'
 export { BilibiliScraper } from './bilibili'
 export { XiaoyuzhouScraper } from './xiaoyuzhou'
 export { ApplePodcastsScraper } from './applepodcasts'
+export { TwitterScraper } from './twitter'
 export { BasePlatformScraper } from './base'

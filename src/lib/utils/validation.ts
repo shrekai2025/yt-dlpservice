@@ -14,8 +14,9 @@ const taskStatusEnum = z.enum(['PENDING', 'EXTRACTING', 'TRANSCRIBING', 'COMPLET
 // 下载类型枚举
 const downloadTypeEnum = z.enum(['AUDIO_ONLY', 'VIDEO_ONLY', 'BOTH'])
 const compressionPresetEnum = z.enum(['none', 'light', 'standard', 'heavy'])
-const sttProviderEnum = z.enum(['google', 'doubao', 'doubao-small', 'tingwu'])
+const sttProviderEnum = z.enum(['google', 'doubao', 'doubao-small', 'tingwu', 'none'])
 const googleSttLanguageEnum = z.enum(['cmn-Hans-CN', 'en-US'])
+const s3TransferFileTypeEnum = z.enum(['none', 'compressed', 'original'])
 
 // 创建任务验证
 export const createTaskSchema = z.object({
@@ -23,7 +24,9 @@ export const createTaskSchema = z.object({
   downloadType: downloadTypeEnum.default('AUDIO_ONLY'),
   compressionPreset: compressionPresetEnum.default('none'),
   sttProvider: sttProviderEnum.optional(),
-  googleSttLanguage: googleSttLanguageEnum.optional()
+  googleSttLanguage: googleSttLanguageEnum.optional(),
+  s3TransferFileType: s3TransferFileTypeEnum.default('none'), // S3转存文件类型: none(不转存), compressed(压缩文件), original(原文件)
+  enableTranscription: z.boolean().default(true) // 是否启用语音识别,默认启用
 })
 
 // 更新任务验证

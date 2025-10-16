@@ -6,7 +6,7 @@
 
 import { z } from 'zod'
 import { createTRPCRouter, publicProcedure } from '~/server/api/trpc'
-import { s3Uploader } from '~/lib/adapters/utils/s3-uploader'
+import { s3Uploader } from '~/lib/services/s3-uploader'
 
 export const storageAdminRouter = createTRPCRouter({
   /**
@@ -80,12 +80,13 @@ export const storageAdminRouter = createTRPCRouter({
         throw new Error('File not found')
       }
 
-      // Delete from S3
+      // Delete from AWS S3
       try {
         await s3Uploader.deleteFile(file.s3Key)
+        console.log(`Successfully deleted S3 file: ${file.s3Key}`)
       } catch (error) {
-        console.error('Failed to delete from S3:', error)
-        throw new Error(`Failed to delete file from S3: ${error}`)
+        console.error(`Failed to delete S3 file: ${file.s3Key}`, error)
+        // 继续删除数据库记录，即使S3删除失败
       }
 
       // Delete from database
@@ -93,6 +94,6 @@ export const storageAdminRouter = createTRPCRouter({
         where: { id: input.id },
       })
 
-      return { success: true, message: 'Record and file deleted successfully' }
+      return { success: true, message: 'Record and S3 file deleted successfully' }
     }),
 })

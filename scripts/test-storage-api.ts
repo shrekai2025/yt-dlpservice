@@ -4,7 +4,7 @@
  * Tests S3 upload functionality (requires S3 configuration)
  */
 
-import { s3Uploader } from '~/lib/adapters/utils/s3-uploader'
+import { s3Uploader } from '~/lib/services/s3-uploader'
 import { createApiKey } from '~/lib/auth/api-key'
 import { db } from '~/server/db'
 

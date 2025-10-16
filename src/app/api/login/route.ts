@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import {
   ADMIN_AUTH_COOKIE,
   ADMIN_AUTH_MAX_AGE,
-  getExpectedAdminAuthHash,
-  verifyAdminCredentials,
+  buildAdminAuthHash,
+  verifyUserCredentials,
 } from "~/lib/auth/simple-admin-auth"
 
 type LoginRequestBody = {
@@ -33,7 +33,8 @@ export async function POST(request: Request) {
     )
   }
 
-  const isValid = verifyAdminCredentials(username, password)
+  // 使用数据库验证用户凭证
+  const isValid = await verifyUserCredentials(username, password)
 
   if (!isValid) {
     return NextResponse.json(
@@ -52,9 +53,10 @@ export async function POST(request: Request) {
     },
   )
 
+  // 设置 Cookie（使用用户名哈希）
   response.cookies.set({
     name: ADMIN_AUTH_COOKIE,
-    value: getExpectedAdminAuthHash(),
+    value: buildAdminAuthHash(username),
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

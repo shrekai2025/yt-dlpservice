@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const { url, downloadType, compressionPreset, sttProvider, googleSttLanguage } = validation.data
+    const { url, downloadType, compressionPreset, sttProvider, googleSttLanguage, s3TransferFileType, enableTranscription } = validation.data
 
     // 验证URL和获取平台信息
     const urlValidation = await validateVideoUrl(url)
@@ -66,7 +66,12 @@ export async function POST(request: NextRequest) {
         compressionPreset,
         sttProvider,
         googleSttLanguage,
-        status: 'PENDING'
+        enableTranscription,
+        status: 'PENDING',
+        // S3转存相关字段
+        s3TransferFileType,
+        s3TransferStatus: s3TransferFileType !== 'none' ? 'pending' : 'none',
+        s3TransferProgress: s3TransferFileType !== 'none' ? '等待任务完成后转存' : '未启用'
       }
     })
 

@@ -16,7 +16,8 @@ const config = {
   },
   // Skip static generation for error pages
   skipTrailingSlashRedirect: true,
-  skipMiddlewareUrlNormalize: true,
+  // Use standalone output to bypass static page generation issues
+  output: 'standalone',
 };
 
 export default config;

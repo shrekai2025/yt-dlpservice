@@ -5,8 +5,7 @@ const ADMIN_COOKIE_NAME = "admin_auth"
 const PUBLIC_PATHS = new Set(["/"])
 const PUBLIC_PATH_PREFIXES = ["/_next/static", "/_next/webpack-hmr", "/_next/image"]
 const PUBLIC_FILE_EXCEPTIONS = ["/_next/data"]
-
-let expectedHashPromise: Promise<string> | null = null
+const PUBLIC_API_PATHS = ["/api/login", "/api/logout"]
 
 function hasFileExtension(pathname: string): boolean {
   return /\.[^/]+$/.test(pathname)
@@ -25,8 +24,14 @@ function shouldBypassAuth(pathname: string): boolean {
     return true
   }
 
-  if (pathname.startsWith("/api")) {
+  // 只放行登录/登出相关的 API
+  if (PUBLIC_API_PATHS.some((path) => pathname.startsWith(path))) {
     return true
+  }
+
+  // 其他所有 API 都需要验证
+  if (pathname.startsWith("/api")) {
+    return false
   }
 
   if (PUBLIC_PATH_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
@@ -52,42 +57,27 @@ function shouldSetNextParam(pathname: string): boolean {
   return !hasFileExtension(pathname)
 }
 
-async function computeExpectedHash(): Promise<string> {
-  const username = process.env.ADMIN_USERNAME ?? ""
-  const password = process.env.ADMIN_PASSWORD ?? ""
-
-  if (!username || !password) {
-    throw new Error("Admin credentials must be configured for authentication middleware to work.")
-  }
-
-  const encoder = new TextEncoder()
-  const data = encoder.encode(`${username}:${password}`)
-  const digest = await crypto.subtle.digest("SHA-256", data)
-  const hashArray = Array.from(new Uint8Array(digest))
-  return hashArray.map((byte) => byte.toString(16).padStart(2, "0")).join("")
-}
-
-function getExpectedHash(): Promise<string> {
-  if (!expectedHashPromise) {
-    expectedHashPromise = computeExpectedHash()
-  }
-  return expectedHashPromise
-}
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+  console.log(`[Middleware] pathname: ${pathname}`)
 
   if (shouldBypassAuth(pathname)) {
+    console.log(`[Middleware] bypassing auth for: ${pathname}`)
     return NextResponse.next()
   }
 
-  const authCookie = request.cookies.get(ADMIN_COOKIE_NAME)?.value ?? ""
-  const expectedHash = await getExpectedHash()
+  // 简单检查 Cookie 是否存在且格式正确（Edge Runtime 限制，无法查询数据库）
+  // Cookie 应该是 64 位十六进制字符串（SHA256 哈希）
+  // 真正的验证在 tRPC context 和 Server Components 中进行
+  const authCookie = request.cookies.get(ADMIN_COOKIE_NAME)?.value
+  const HASH_REGEX = /^[a-f0-9]{64}$/i
+  console.log(`[Middleware] authCookie: ${authCookie ? 'exists' : 'missing'}, valid: ${authCookie && HASH_REGEX.test(authCookie)}`)
 
-  if (authCookie === expectedHash) {
+  if (authCookie && HASH_REGEX.test(authCookie)) {
     return NextResponse.next()
   }
 
+  console.log(`[Middleware] REDIRECTING: ${pathname} -> /`)
   const loginUrl = new URL("/", request.url)
 
   if (shouldSetNextParam(pathname)) {
@@ -95,9 +85,19 @@ export async function middleware(request: NextRequest) {
     loginUrl.searchParams.set("next", target)
   }
 
-  return NextResponse.redirect(loginUrl)
+  const response = NextResponse.redirect(loginUrl)
+  console.log(`[Middleware] Redirect response created`)
+  return response
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml).*)"],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!_next/static|_next/image|favicon.ico).*)',
+  ],
 }

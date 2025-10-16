@@ -7,7 +7,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { validateApiKey } from '~/lib/auth/api-key'
-import { s3Uploader } from '~/lib/adapters/utils/s3-uploader'
+import { s3Uploader } from '~/lib/services/s3-uploader'
 import { db } from '~/server/db'
 
 export async function POST(request: NextRequest) {

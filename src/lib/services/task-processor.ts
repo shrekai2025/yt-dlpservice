@@ -8,6 +8,7 @@ import { cleanupManager } from './cleanup-manager'
 import { audioCompressor } from './audio-compressor'
 import { metadataScraperService } from './metadata-scraper'
 import { initializeScrapers } from './metadata-scraper/scrapers'
+import { s3TransferService } from './s3-transfer'
 import { env } from '~/env'
 import { ConfigManager } from '~/lib/utils/config'
 import { GlobalInit } from '~/lib/utils/global-init'
@@ -77,6 +78,11 @@ export class TaskProcessor {
         videoPath: downloadResult.videoPath,
         audioPath: downloadResult.audioPath
       }
+
+      // 如果需要转存原文件到S3,同时保存原始视频路径(用于未来可能的视频压缩功能)
+      if (task.s3TransferFileType === 'original' && downloadResult.videoPath) {
+        updateData.originalVideoPath = downloadResult.videoPath
+      }
       
       // 如果有元数据，更新额外信息
       if (downloadResult.metadata) {
@@ -131,7 +137,27 @@ export class TaskProcessor {
           )
         } else {
           Logger.info(`🗜️ 跳过音频压缩: 预设为 none，平台=${task.platform}`)
+
+          // 如果不压缩但需要转存原文件到S3,保存原始路径以便后续使用
+          const needOriginalFile = task.s3TransferFileType === 'original'
+          if (needOriginalFile) {
+            await db.task.update({
+              where: { id: taskId },
+              data: { originalAudioPath: audioPathForTranscription }
+            })
+            Logger.info(`📦 保存原始文件路径用于S3转存: ${audioPathForTranscription}`)
+          }
         }
+      }
+
+      // 检查是否需要进行音频转录
+      if (!task.enableTranscription) {
+        Logger.info(`⏭️ 跳过音频转录(用户未启用): ${taskId}`)
+        await this.updateTaskStatus(taskId, 'COMPLETED')
+
+        // 处理S3转存（如果需要）
+        await this.handleS3Transfer(taskId)
+        return
       }
 
       // 处理音频转录（所有类型都需要转录）
@@ -143,6 +169,9 @@ export class TaskProcessor {
         // audioPathForTranscription = await this.extractAudioFromVideo(downloadResult.videoPath)
         Logger.warn(`⚠️ 视频转音频功能尚未实现，任务 ${taskId} 暂时跳过转录`)
         await this.updateTaskStatus(taskId, 'COMPLETED')
+
+        // 处理S3转存（如果需要）
+        await this.handleS3Transfer(taskId)
         return
       }
 
@@ -153,7 +182,7 @@ export class TaskProcessor {
       }
 
       Logger.info(`🎯 音频文件路径: ${taskId} - ${audioPathForTranscription}`)
-      
+
       // 检查音频文件是否存在
       try {
         const stats = await fs.stat(audioPathForTranscription)
@@ -305,6 +334,13 @@ export class TaskProcessor {
         return audioPath
       }
       
+      // 检查是否需要保留原文件(用于S3转存)
+      const task = await db.task.findUnique({
+        where: { id: taskId },
+        select: { s3TransferFileType: true }
+      })
+      const needOriginalFile = task?.s3TransferFileType === 'original'
+
       // 压缩成功，更新数据库记录
       await db.task.update({
         where: { id: taskId },
@@ -313,24 +349,31 @@ export class TaskProcessor {
           compressedFileSize: result.compressedSize,
           compressionRatio: result.compressionRatio,
           compressionDuration: result.duration,
-          compressionPreset: preset
+          compressionPreset: preset,
+          // 保存原始文件路径(用于S3转存原文件)
+          originalAudioPath: audioPath
         }
       })
-      
+
       const compressedSizeMB = result.compressedSize ? bytesToMB(result.compressedSize) : 0
       Logger.info(`✅ 音频压缩完成: ${taskId}`)
       Logger.info(`  📉 大小变化: ${formatFileSize(result.originalSize)} → ${formatFileSize(result.compressedSize || 0)}`)
       Logger.info(`  📊 压缩比例: ${result.compressionRatio ? (result.compressionRatio * 100).toFixed(1) : '0'}%`)
       Logger.info(`  ⏱️ 压缩耗时: ${((result.duration || 0) / 1000).toFixed(1)}s`)
-      
-      // 删除原文件，使用压缩后的文件
-      try {
-        await fs.unlink(audioPath)
-        Logger.debug(`🗑️ 已删除原始音频文件: ${audioPath}`)
-      } catch (error) {
-        Logger.warn(`清理原始文件失败: ${error}`)
+
+      // 根据S3转存设置决定是否删除原文件
+      if (needOriginalFile) {
+        Logger.info(`📦 保留原始文件用于S3转存: ${audioPath}`)
+      } else {
+        // 删除原文件，使用压缩后的文件
+        try {
+          await fs.unlink(audioPath)
+          Logger.debug(`🗑️ 已删除原始音频文件: ${audioPath}`)
+        } catch (error) {
+          Logger.warn(`清理原始文件失败: ${error}`)
+        }
       }
-      
+
       return result.compressedPath || audioPath
       
     } catch (error: any) {
@@ -363,8 +406,8 @@ export class TaskProcessor {
       })
 
       let provider: string;
-      if (task?.sttProvider) {
-        // 优先使用任务级别的配置
+      if (task?.sttProvider && task.sttProvider !== 'none') {
+        // 优先使用任务级别的配置（排除'none'）
         provider = task.sttProvider;
         Logger.info(`📌 使用任务级别的STT服务提供商: ${taskId} - ${provider}`)
       } else {
@@ -465,9 +508,12 @@ export class TaskProcessor {
           extraMetadata: JSON.stringify(finalExtraMetadata)
         }
       })
-      
+
       // 删除重复日志 - 豆包服务中已输出详细转录完成信息
       Logger.info(`🎉 任务 ${taskId} 转录处理完成`)
+
+      // 检查是否需要转存到S3（并行处理，不阻塞主流程）
+      await this.handleS3Transfer(taskId)
       
     } catch (error: any) {
       Logger.error(`音频转录失败: ${taskId}, 错误: ${error.message}`)
@@ -721,6 +767,58 @@ export class TaskProcessor {
     } catch (error) {
       Logger.error(`更新任务 ${taskId} 进度失败: ${error}`)
       throw error
+    }
+  }
+
+  /**
+   * 处理S3转存（异步并行处理）
+   */
+  private async handleS3Transfer(taskId: string): Promise<void> {
+    try {
+      // 获取任务信息
+      const task = await db.task.findUnique({
+        where: { id: taskId },
+        select: {
+          videoPath: true,
+          audioPath: true,
+          downloadType: true,
+          s3TransferStatus: true
+        }
+      })
+
+      if (!task) {
+        Logger.warn(`任务 ${taskId} 不存在，跳过S3转存`)
+        return
+      }
+
+      // 检查是否需要转存（状态为pending表示用户选择了转存）
+      if (task.s3TransferStatus !== 'pending') {
+        Logger.debug(`任务 ${taskId} 不需要S3转存，状态: ${task.s3TransferStatus}`)
+        return
+      }
+
+      // 优先转存视频，如果没有视频则转存音频
+      const filePath = task.videoPath || task.audioPath
+
+      if (!filePath) {
+        Logger.warn(`任务 ${taskId} 无可用文件路径，跳过S3转存`)
+        await db.task.update({
+          where: { id: taskId },
+          data: {
+            s3TransferStatus: 'failed',
+            s3TransferProgress: '无可用文件路径'
+          }
+        })
+        return
+      }
+
+      // 异步转存到S3（不阻塞主流程）
+      Logger.info(`任务 ${taskId} 开始S3转存（异步）: ${filePath}`)
+      s3TransferService.transferToS3Async(taskId, filePath)
+
+    } catch (error) {
+      Logger.error(`任务 ${taskId} S3转存处理失败: ${error}`)
+      // 不抛出错误，避免影响主流程
     }
   }
 
