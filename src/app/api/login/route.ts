@@ -54,12 +54,17 @@ export async function POST(request: Request) {
   )
 
   // 设置 Cookie（使用用户名哈希）
+  // 注意：如果远程服务器使用 HTTP，需要在 .env 中设置 FORCE_SECURE_COOKIE=false
+  const isSecure = process.env.FORCE_SECURE_COOKIE === 'false'
+    ? false
+    : process.env.NODE_ENV === "production"
+
   response.cookies.set({
     name: ADMIN_AUTH_COOKIE,
     value: buildAdminAuthHash(username),
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: isSecure,
     path: "/",
     maxAge: ADMIN_AUTH_MAX_AGE,
   })
