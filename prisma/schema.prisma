@@ -352,6 +352,7 @@ model User {
   mediaFiles   MediaFile[]
   mediaFolders MediaFolder[]
   mediaTags    MediaTag[]
+  mediaActors  MediaActor[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -372,8 +373,9 @@ enum MediaFileType {
 
 // 媒体文件来源枚举
 enum MediaFileSource {
-  URL
-  LOCAL
+  URL       // 远程URL
+  LOCAL     // 复制到服务端
+  LOCAL_REF // 引用本地文件（不复制）
 }
 
 // 媒体文件表
@@ -384,10 +386,12 @@ model MediaFile {
 
   // 文件基本信息
   name          String          // 文件名称
+  remark        String?         // 备注名称（用户自定义显示名称）
   type          MediaFileType   // 类型: IMAGE, VIDEO, AUDIO
-  source        MediaFileSource // 来源: URL, LOCAL
+  source        MediaFileSource // 来源: URL, LOCAL, LOCAL_REF
   sourceUrl     String?         // 远程URL（如果是URL来源）
-  localPath     String?         // 本地文件路径（如果是本地上传）
+  localPath     String?         // 本地文件路径（LOCAL=复制到服务端，LOCAL_REF=引用原始路径）
+  originalPath  String?         // 原始文件绝对路径（仅用于LOCAL_REF模式）
 
   // 缩略图/封面
   thumbnailPath String?         // 缩略图本地路径
@@ -402,6 +406,8 @@ model MediaFile {
   // 组织结构
   folderId      String?
   folder        MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  actorId       String?
+  actor         MediaActor?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
   tags          MediaTag[]
 
   createdAt     DateTime        @default(now())
@@ -409,6 +415,7 @@ model MediaFile {
 
   @@index([userId])
   @@index([folderId])
+  @@index([actorId])
   @@index([type])
   @@index([source])
   @@map("media_files")
@@ -435,7 +442,28 @@ model MediaFolder {
   @@map("media_folders")
 }
 
-// 标签表
+// 演员表
+model MediaActor {
+  id          String      @id @default(cuid())
+  userId      String      // 所属用户ID
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String      // 演员昵称
+  avatarUrl   String?     // 头像URL
+  bio         String?     // 演员个性与背景
+  sortOrder   Int         @default(0)
+
+  files       MediaFile[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("media_actors")
+}
+
+// 标签表（已废弃，保留以兼容现有数据）
 model MediaTag {
   id        String      @id @default(cuid())
   userId    String      // 所属用户ID

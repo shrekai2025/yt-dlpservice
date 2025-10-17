@@ -1,21 +1,38 @@
 "use client"
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import NextImage from 'next/image'
 import { api } from '~/components/providers/trpc-provider'
-import { Plus, Download, Grid3x3, List, Image, Video, Music, Folder, X, Upload, AlertCircle, RefreshCw, Trash2, Loader2 } from 'lucide-react'
+import { Plus, Download, Grid3x3, List, Image, Video, Music, Folder, X, Upload, AlertCircle, RefreshCw, Trash2, Loader2, User, Edit2, Check, ChevronLeft, ChevronRight, Copy, Search } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+
+// LocalStorage keys
+const STORAGE_KEYS = {
+  VIEW_TAB: 'media-browser-view-tab',
+  VIEW_MODE: 'media-browser-view-mode',
+  FILTER_TYPE: 'media-browser-filter-type',
+  FILTER_SOURCE: 'media-browser-filter-source',
+  COLUMN_WIDTH: 'media-browser-column-width',
+  ACTOR_PANEL_COLLAPSED: 'media-browser-actor-panel-collapsed',
+  LEFT_SIDEBAR_COLLAPSED: 'media-browser-left-sidebar-collapsed',
+  SELECTED_FOLDER: 'media-browser-selected-folder',
+  SELECTED_ACTOR: 'media-browser-selected-actor',
+}
 
 type MediaFile = {
   id: string
   name: string
+  remark: string | null
   type: string
   source: string
   sourceUrl: string | null
   localPath: string | null
+  originalPath: string | null
   thumbnailPath: string | null
   fileSize: number | null
   duration: number | null
   folder?: { name: string } | null
+  actor?: { id: string; name: string; avatarUrl: string | null; bio: string | null } | null
 }
 
 type UploadTask = {
@@ -30,10 +47,18 @@ type UploadTask = {
   mimeType?: string
 }
 
+type ViewTab = 'folders' | 'actors'
+
 export default function MediaBrowserPage() {
+  // 使用 mounted 状态防止 hydration 不匹配
+  const [mounted, setMounted] = useState(false)
+
+  // 从 localStorage 初始化状态 - 使用默认值直到 mounted
+  const [viewTab, setViewTab] = useState<ViewTab>('folders')
   const [selectedFolder, setSelectedFolder] = useState<string | undefined>(undefined)
-  const [selectedTag, setSelectedTag] = useState<string | undefined>(undefined)
+  const [selectedActor, setSelectedActor] = useState<string | undefined>(undefined)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
+
   const [addUrlDialogOpen, setAddUrlDialogOpen] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null)
@@ -41,35 +66,152 @@ export default function MediaBrowserPage() {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([])
   const [draggedFile, setDraggedFile] = useState<string | null>(null)
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null)
+  const [dragOverActor, setDragOverActor] = useState<string | null>(null)
   const [createFolderDialogOpen, setCreateFolderDialogOpen] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
+  const [createActorDialogOpen, setCreateActorDialogOpen] = useState(false)
+  const [newActorName, setNewActorName] = useState('')
+  const [addLocalPathDialogOpen, setAddLocalPathDialogOpen] = useState(false)
+  const [localPathInput, setLocalPathInput] = useState('')
 
   // 筛选状态
   const [filterType, setFilterType] = useState<'IMAGE' | 'VIDEO' | 'AUDIO' | undefined>(undefined)
   const [filterSource, setFilterSource] = useState<'LOCAL' | 'URL' | undefined>(undefined)
 
+  // 演员资料编辑状态
+  const [editingActorName, setEditingActorName] = useState(false)
+  const [editingActorBio, setEditingActorBio] = useState(false)
+  const [tempActorName, setTempActorName] = useState('')
+  const [tempActorBio, setTempActorBio] = useState('')
+  const [tempActorAvatarUrl, setTempActorAvatarUrl] = useState('')
+  const [showAvatarUrlDialog, setShowAvatarUrlDialog] = useState(false)
+
+  const [actorPanelCollapsed, setActorPanelCollapsed] = useState(false)
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false)
+  const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null)
+  const [columnWidth, setColumnWidth] = useState(280)
+
+  // 文件详情面板状态
+  const [selectedFileForDetails, setSelectedFileForDetails] = useState<MediaFile | null>(null)
+  const [editingFileRemark, setEditingFileRemark] = useState(false)
+  const [tempFileRemark, setTempFileRemark] = useState('')
+
+  // Inline editing state for list view
+  const [editingInlineFileId, setEditingInlineFileId] = useState<string | null>(null)
+  const [tempInlineRemark, setTempInlineRemark] = useState('')
+
+  // 从 localStorage 恢复状态（仅在客户端 mount 后执行一次）
+  useEffect(() => {
+    setMounted(true)
+
+    const savedViewTab = localStorage.getItem(STORAGE_KEYS.VIEW_TAB) as ViewTab
+    if (savedViewTab) setViewTab(savedViewTab)
+
+    const savedFolder = localStorage.getItem(STORAGE_KEYS.SELECTED_FOLDER)
+    if (savedFolder) setSelectedFolder(savedFolder)
+
+    const savedActor = localStorage.getItem(STORAGE_KEYS.SELECTED_ACTOR)
+    if (savedActor) setSelectedActor(savedActor)
+
+    const savedViewMode = localStorage.getItem(STORAGE_KEYS.VIEW_MODE) as 'grid' | 'list'
+    if (savedViewMode) setViewMode(savedViewMode)
+
+    const savedFilterType = localStorage.getItem(STORAGE_KEYS.FILTER_TYPE) as 'IMAGE' | 'VIDEO' | 'AUDIO'
+    if (savedFilterType) setFilterType(savedFilterType)
+
+    const savedFilterSource = localStorage.getItem(STORAGE_KEYS.FILTER_SOURCE) as 'LOCAL' | 'URL'
+    if (savedFilterSource) setFilterSource(savedFilterSource)
+
+    const savedColumnWidth = localStorage.getItem(STORAGE_KEYS.COLUMN_WIDTH)
+    if (savedColumnWidth) setColumnWidth(Number(savedColumnWidth))
+
+    const savedCollapsed = localStorage.getItem(STORAGE_KEYS.ACTOR_PANEL_COLLAPSED)
+    if (savedCollapsed) setActorPanelCollapsed(savedCollapsed === 'true')
+
+    const savedLeftSidebarCollapsed = localStorage.getItem(STORAGE_KEYS.LEFT_SIDEBAR_COLLAPSED)
+    if (savedLeftSidebarCollapsed) setLeftSidebarCollapsed(savedLeftSidebarCollapsed === 'true')
+  }, [])
+
+  // 持久化状态到 localStorage（仅在 mounted 后保存，避免首次渲染保存默认值）
+  useEffect(() => {
+    if (mounted) localStorage.setItem(STORAGE_KEYS.VIEW_TAB, viewTab)
+  }, [viewTab, mounted])
+
+  useEffect(() => {
+    if (!mounted) return
+    if (selectedFolder) {
+      localStorage.setItem(STORAGE_KEYS.SELECTED_FOLDER, selectedFolder)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SELECTED_FOLDER)
+    }
+  }, [selectedFolder, mounted])
+
+  useEffect(() => {
+    if (!mounted) return
+    if (selectedActor) {
+      localStorage.setItem(STORAGE_KEYS.SELECTED_ACTOR, selectedActor)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.SELECTED_ACTOR)
+    }
+  }, [selectedActor, mounted])
+
+  useEffect(() => {
+    if (mounted) localStorage.setItem(STORAGE_KEYS.VIEW_MODE, viewMode)
+  }, [viewMode, mounted])
+
+  useEffect(() => {
+    if (!mounted) return
+    if (filterType) {
+      localStorage.setItem(STORAGE_KEYS.FILTER_TYPE, filterType)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.FILTER_TYPE)
+    }
+  }, [filterType, mounted])
+
+  useEffect(() => {
+    if (!mounted) return
+    if (filterSource) {
+      localStorage.setItem(STORAGE_KEYS.FILTER_SOURCE, filterSource)
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.FILTER_SOURCE)
+    }
+  }, [filterSource, mounted])
+
+  useEffect(() => {
+    if (mounted) localStorage.setItem(STORAGE_KEYS.COLUMN_WIDTH, String(columnWidth))
+  }, [columnWidth, mounted])
+
+  useEffect(() => {
+    if (mounted) localStorage.setItem(STORAGE_KEYS.ACTOR_PANEL_COLLAPSED, String(actorPanelCollapsed))
+  }, [actorPanelCollapsed, mounted])
+
+  useEffect(() => {
+    if (mounted) localStorage.setItem(STORAGE_KEYS.LEFT_SIDEBAR_COLLAPSED, String(leftSidebarCollapsed))
+  }, [leftSidebarCollapsed, mounted])
+
   // 查询数据
   const { data: filesData, refetch: refetchFiles } = api.mediaBrowser.listFiles.useQuery({
     page: 1,
     pageSize: 50,
-    folderId: selectedFolder,
-    tagId: selectedTag,
+    folderId: viewTab === 'folders' ? selectedFolder : undefined,
+    actorId: viewTab === 'actors' ? selectedActor : undefined,
     type: filterType,
     source: filterSource,
   })
 
-  // 查询所有文件总数（用于 All 文件夹显示）
+  // 查询所有文件总数（用于 All 显示）
   const { data: allFilesData } = api.mediaBrowser.listFiles.useQuery({
     page: 1,
-    pageSize: 1, // 只需要获取总数，不需要实际文件数据
+    pageSize: 1,
   })
 
   const { data: folders, refetch: refetchFolders } = api.mediaBrowser.listFolders.useQuery()
-  const { data: tags } = api.mediaBrowser.listTags.useQuery()
+  const { data: actors, refetch: refetchActors } = api.mediaBrowser.listActors.useQuery()
 
   // Mutations
   const addUrlsMutation = api.mediaBrowser.addUrls.useMutation()
   const uploadLocalMutation = api.mediaBrowser.uploadLocal.useMutation()
+  const addLocalReferenceMutation = api.mediaBrowser.addLocalReference.useMutation()
 
   const exportMutation = api.mediaBrowser.exportMedia.useMutation()
   const deleteFileMutation = api.mediaBrowser.deleteFile.useMutation({
@@ -81,6 +223,12 @@ export default function MediaBrowserPage() {
       refetchFolders()
     },
   })
+  const moveFileToActorMutation = api.mediaBrowser.moveFileToActor.useMutation({
+    onSuccess: () => {
+      refetchFiles()
+      refetchActors()
+    },
+  })
   const createFolderMutation = api.mediaBrowser.createFolder.useMutation({
     onSuccess: () => {
       refetchFolders()
@@ -88,6 +236,26 @@ export default function MediaBrowserPage() {
       setNewFolderName('')
     },
   })
+  const createActorMutation = api.mediaBrowser.createActor.useMutation({
+    onSuccess: () => {
+      refetchActors()
+      setCreateActorDialogOpen(false)
+      setNewActorName('')
+    },
+  })
+  const updateActorMutation = api.mediaBrowser.updateActor.useMutation({
+    onSuccess: () => {
+      refetchActors()
+    },
+  })
+  const updateFileMutation = api.mediaBrowser.updateFile.useMutation({
+    onSuccess: () => {
+      refetchFiles()
+    },
+  })
+
+  // 获取当前选中的演员信息
+  const selectedActorData = actors?.find((a) => a.id === selectedActor)
 
   // 处理拖拽
   const handleDragStart = (e: React.DragEvent, fileId: string) => {
@@ -98,19 +266,27 @@ export default function MediaBrowserPage() {
   const handleDragEnd = () => {
     setDraggedFile(null)
     setDragOverFolder(null)
+    setDragOverActor(null)
   }
 
-  const handleDragOver = (e: React.DragEvent, folderId: string | null) => {
+  const handleDragOverFolder = (e: React.DragEvent, folderId: string | null) => {
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     setDragOverFolder(folderId)
   }
 
-  const handleDragLeave = () => {
-    setDragOverFolder(null)
+  const handleDragOverActor = (e: React.DragEvent, actorId: string | null) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverActor(actorId)
   }
 
-  const handleDrop = async (e: React.DragEvent, targetFolderId: string | null) => {
+  const handleDragLeave = () => {
+    setDragOverFolder(null)
+    setDragOverActor(null)
+  }
+
+  const handleDropToFolder = async (e: React.DragEvent, targetFolderId: string | null) => {
     e.preventDefault()
     if (!draggedFile) return
 
@@ -128,10 +304,35 @@ export default function MediaBrowserPage() {
     }
   }
 
+  const handleDropToActor = async (e: React.DragEvent, targetActorId: string | null) => {
+    e.preventDefault()
+    if (!draggedFile) return
+
+    try {
+      await moveFileToActorMutation.mutateAsync({
+        fileId: draggedFile,
+        actorId: targetActorId,
+      })
+    } catch (error) {
+      console.error('Move file to actor failed:', error)
+      alert('移动文件失败')
+    } finally {
+      setDraggedFile(null)
+      setDragOverActor(null)
+    }
+  }
+
   // 处理创建文件夹
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
       alert('请输入文件夹名称')
+      return
+    }
+
+    // 检查重名
+    const duplicate = folders?.find((f) => f.name === newFolderName.trim())
+    if (duplicate) {
+      alert('文件夹名称已存在，请使用其他名称')
       return
     }
 
@@ -141,7 +342,250 @@ export default function MediaBrowserPage() {
       })
     } catch (error) {
       console.error('Create folder failed:', error)
-      alert('创建文件夹失败')
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('Unique constraint')) {
+        alert('文件夹名称已存在，请使用其他名称')
+      } else {
+        alert(`创建文件夹失败: ${errorMessage}`)
+      }
+    }
+  }
+
+  // 处理创建演员
+  const handleCreateActor = async () => {
+    if (!newActorName.trim()) {
+      alert('请输入演员名称')
+      return
+    }
+
+    // 检查重名
+    const duplicate = actors?.find((a) => a.name === newActorName.trim())
+    if (duplicate) {
+      alert('演员名称已存在，请使用其他名称')
+      return
+    }
+
+    try {
+      await createActorMutation.mutateAsync({
+        name: newActorName.trim(),
+      })
+    } catch (error) {
+      console.error('Create actor failed:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('Unique constraint')) {
+        alert('演员名称已存在，请使用其他名称')
+      } else {
+        alert(`创建演员失败: ${errorMessage}`)
+      }
+    }
+  }
+
+  // 处理演员名称编辑
+  const handleActorNameEdit = async () => {
+    if (!selectedActor || !tempActorName.trim()) return
+
+    // 检查是否与其他演员重名
+    const duplicate = actors?.find((a) => a.id !== selectedActor && a.name === tempActorName.trim())
+    if (duplicate) {
+      alert('演员名称已存在，请使用其他名称')
+      return
+    }
+
+    try {
+      await updateActorMutation.mutateAsync({
+        id: selectedActor,
+        name: tempActorName.trim(),
+      })
+      setEditingActorName(false)
+    } catch (error) {
+      console.error('Update actor name failed:', error)
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      if (errorMessage.includes('Unique constraint')) {
+        alert('演员名称已存在，请使用其他名称')
+      } else {
+        alert(`更新演员名称失败: ${errorMessage}`)
+      }
+    }
+  }
+
+  // 处理演员简介编辑
+  const handleActorBioEdit = async () => {
+    if (!selectedActor) return
+
+    try {
+      await updateActorMutation.mutateAsync({
+        id: selectedActor,
+        bio: tempActorBio.trim() || undefined,
+      })
+      setEditingActorBio(false)
+    } catch (error) {
+      console.error('Update actor bio failed:', error)
+      alert('更新演员简介失败')
+    }
+  }
+
+  // 处理演员头像更新
+  const handleActorAvatarUpdate = async () => {
+    if (!selectedActor) return
+
+    try {
+      await updateActorMutation.mutateAsync({
+        id: selectedActor,
+        avatarUrl: tempActorAvatarUrl.trim() || undefined,
+      })
+      setShowAvatarUrlDialog(false)
+      setTempActorAvatarUrl('')
+    } catch (error) {
+      console.error('Update actor avatar failed:', error)
+      alert('更新演员头像失败')
+    }
+  }
+
+  // 处理文件备注编辑
+  const handleFileRemarkEdit = async () => {
+    if (!selectedFileForDetails) return
+
+    try {
+      const updated = await updateFileMutation.mutateAsync({
+        id: selectedFileForDetails.id,
+        remark: tempFileRemark.trim() || null,
+      })
+      setSelectedFileForDetails(updated)
+      setEditingFileRemark(false)
+    } catch (error) {
+      console.error('Update file remark failed:', error)
+      alert('更新备注失败')
+    }
+  }
+
+  // 处理列表内联备注编辑
+  const handleInlineRemarkEdit = async (fileId: string) => {
+    try {
+      await updateFileMutation.mutateAsync({
+        id: fileId,
+        remark: tempInlineRemark.trim() || null,
+      })
+      setEditingInlineFileId(null)
+      void refetchFiles()
+    } catch (error) {
+      console.error('Update file remark failed:', error)
+      alert('更新备注失败')
+    }
+  }
+
+  // 处理复制到剪贴板
+  const handleCopyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      alert('已复制到剪贴板')
+    } catch (error) {
+      console.error('Copy to clipboard failed:', error)
+      alert('复制失败')
+    }
+  }
+
+  // 处理下载文件
+  const handleDownloadFile = (file: MediaFile) => {
+    const downloadUrl = file.localPath
+      ? `/api/media-file/${file.localPath.replace('data/media-uploads/', '')}`
+      : file.sourceUrl
+
+    if (downloadUrl) {
+      const link = document.createElement('a')
+      link.href = downloadUrl
+      link.download = file.name
+      link.click()
+    }
+  }
+
+  // 处理添加本地文件路径
+  const handleAddLocalPaths = async () => {
+    const paths = localPathInput
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0)
+
+    if (paths.length === 0) {
+      alert('请输入至少一个文件路径')
+      return
+    }
+
+    setAddLocalPathDialogOpen(false)
+    setLocalPathInput('')
+
+    const tasks: UploadTask[] = paths.map((filePath) => {
+      const fileName = filePath.split(/[/\\]/).pop() || filePath
+      return {
+        id: `local-ref-${Date.now()}-${Math.random()}`,
+        name: fileName,
+        status: 'uploading',
+        url: filePath,
+      }
+    })
+    setUploadTasks(tasks)
+
+    for (const task of tasks) {
+      const filePath = task.url!
+      const fileName = task.name
+
+      // 推断 MIME 类型
+      const ext = fileName.split('.').pop()?.toLowerCase()
+      const mimeType =
+        ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' :
+        ext === 'png' ? 'image/png' :
+        ext === 'gif' ? 'image/gif' :
+        ext === 'webp' ? 'image/webp' :
+        ext === 'mp4' ? 'video/mp4' :
+        ext === 'webm' ? 'video/webm' :
+        ext === 'mov' ? 'video/quicktime' :
+        ext === 'mp3' ? 'audio/mpeg' :
+        ext === 'wav' ? 'audio/wav' :
+        ext === 'ogg' ? 'audio/ogg' :
+        'application/octet-stream'
+
+      try {
+        const result = await addLocalReferenceMutation.mutateAsync({
+          filePath,
+          fileName,
+          mimeType,
+          folderId: viewTab === 'folders' ? selectedFolder : undefined,
+        })
+
+        if (!result.success && result.isDuplicate) {
+          setUploadTasks((prev) =>
+            prev.map((t) =>
+              t.id === task.id
+                ? { ...t, status: 'success', isDuplicate: true, error: result.error }
+                : t
+            )
+          )
+          setTimeout(() => {
+            setUploadTasks((prev) => prev.filter((t) => t.id !== task.id))
+          }, 3000)
+          continue
+        }
+
+        setUploadTasks((prev) =>
+          prev.map((t) => (t.id === task.id ? { ...t, status: 'success' } : t))
+        )
+
+        refetchFiles()
+
+        setTimeout(() => {
+          setUploadTasks((prev) => prev.filter((t) => t.id !== task.id))
+        }, 3000)
+      } catch (error) {
+        console.error('Error adding local reference:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+
+        setUploadTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id
+              ? { ...t, status: 'error', error: errorMessage }
+              : t
+          )
+        )
+      }
     }
   }
 
@@ -157,11 +601,9 @@ export default function MediaBrowserPage() {
       return
     }
 
-    // 关闭对话框
     setAddUrlDialogOpen(false)
     setUrlInput('')
 
-    // 创建任务
     const tasks: UploadTask[] = urls.map((url) => ({
       id: `url-${Date.now()}-${Math.random()}`,
       name: url,
@@ -171,9 +613,11 @@ export default function MediaBrowserPage() {
     setUploadTasks(tasks)
 
     try {
-      const result = await addUrlsMutation.mutateAsync({ urls, folderId: selectedFolder })
+      const result = await addUrlsMutation.mutateAsync({
+        urls,
+        folderId: viewTab === 'folders' ? selectedFolder : undefined
+      })
 
-      // 更新任务状态
       setUploadTasks((prev) =>
         prev.map((task) => {
           const urlResult = result.results.find((r) => r.url === task.url)
@@ -189,16 +633,13 @@ export default function MediaBrowserPage() {
         })
       )
 
-      // 刷新文件列表
       refetchFiles()
 
-      // 3秒后移除成功的任务
       setTimeout(() => {
         setUploadTasks((prev) => prev.filter((t) => t.status !== 'success'))
       }, 3000)
     } catch (error) {
       console.error('Add URLs error:', error)
-      // 全部标记为失败
       setUploadTasks((prev) =>
         prev.map((task) => ({
           ...task,
@@ -216,7 +657,6 @@ export default function MediaBrowserPage() {
 
     const fileArray = Array.from(files)
 
-    // 创建任务
     const tasks: UploadTask[] = fileArray.map((file) => ({
       id: `local-${Date.now()}-${Math.random()}`,
       name: file.name,
@@ -226,7 +666,6 @@ export default function MediaBrowserPage() {
     }))
     setUploadTasks((prev) => [...prev, ...tasks])
 
-    // 逐个上传文件
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i]
       const task = tasks[i]
@@ -234,33 +673,28 @@ export default function MediaBrowserPage() {
       if (!file || !task) continue
 
       try {
-        // 更新为上传中
         setUploadTasks((prev) =>
           prev.map((t) => (t.id === task.id ? { ...t, status: 'uploading' } : t))
         )
 
-        // 读取文件为 base64
         const base64Data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = (e) => {
             const base64 = e.target?.result as string
-            resolve(base64.split(',')[1] || '') // 移除 data:image/png;base64, 前缀
+            resolve(base64.split(',')[1] || '')
           }
           reader.onerror = reject
           reader.readAsDataURL(file)
         })
 
-        // 上传
         const result = await uploadLocalMutation.mutateAsync({
           fileData: base64Data,
           fileName: file.name,
           mimeType: file.type,
-          folderId: selectedFolder,
+          folderId: viewTab === 'folders' ? selectedFolder : undefined,
         })
 
-        // 检查是否重复
         if (!result.success && result.isDuplicate) {
-          // 标记为重复（使用 success 状态但带有 isDuplicate 标记）
           setUploadTasks((prev) =>
             prev.map((t) =>
               t.id === task.id
@@ -268,22 +702,18 @@ export default function MediaBrowserPage() {
                 : t
             )
           )
-          // 3秒后移除
           setTimeout(() => {
             setUploadTasks((prev) => prev.filter((t) => t.id !== task.id))
           }, 3000)
           continue
         }
 
-        // 标记为成功
         setUploadTasks((prev) =>
           prev.map((t) => (t.id === task.id ? { ...t, status: 'success' } : t))
         )
 
-        // 刷新文件列表
         refetchFiles()
 
-        // 3秒后移除成功的任务
         setTimeout(() => {
           setUploadTasks((prev) => prev.filter((t) => t.id !== task.id))
         }, 3000)
@@ -307,7 +737,6 @@ export default function MediaBrowserPage() {
       }
     }
 
-    // 重置 input
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -339,17 +768,15 @@ export default function MediaBrowserPage() {
 
   // 获取缩略图URL（用于列表显示）
   const getThumbnailUrl = (file: MediaFile) => {
-    // 音频文件不显示图片，返回 null
     if (file.type === 'AUDIO') return null
 
     if (file.thumbnailPath) {
-      // Convert data/media-thumbnails/userId/fileId.jpg to /api/media-thumbnail/userId/fileId.jpg
       const thumbnailPath = file.thumbnailPath.replace('data/media-thumbnails/', '')
       return `/api/media-thumbnail/${thumbnailPath}`
     }
+    if (file.source === 'LOCAL_REF') return `/api/media-ref/${file.id}`
     if (file.sourceUrl && file.source === 'URL') return file.sourceUrl
     if (file.localPath) {
-      // Convert data/media-uploads/userId/fileId.jpg to /api/media-file/userId/fileId.jpg
       const localPath = file.localPath.replace('data/media-uploads/', '')
       return `/api/media-file/${localPath}`
     }
@@ -358,17 +785,14 @@ export default function MediaBrowserPage() {
 
   // 获取原始图片URL（用于预览显示）
   const getOriginalImageUrl = (file: MediaFile) => {
-    // 音频文件不显示图片，返回 null
     if (file.type === 'AUDIO') return null
 
-    // 优先使用本地原始文件
+    if (file.source === 'LOCAL_REF') return `/api/media-ref/${file.id}`
     if (file.localPath) {
       const localPath = file.localPath.replace('data/media-uploads/', '')
       return `/api/media-file/${localPath}`
     }
-    // 其次使用源URL
     if (file.sourceUrl && file.source === 'URL') return file.sourceUrl
-    // 最后才使用缩略图
     if (file.thumbnailPath) {
       const thumbnailPath = file.thumbnailPath.replace('data/media-thumbnails/', '')
       return `/api/media-thumbnail/${thumbnailPath}`
@@ -376,11 +800,42 @@ export default function MediaBrowserPage() {
     return null
   }
 
+  // 获取视频URL（用于悬停预览）
+  const getVideoUrl = (file: MediaFile) => {
+    if (file.type !== 'VIDEO') return null
+
+    if (file.source === 'LOCAL_REF') return `/api/media-ref/${file.id}`
+    if (file.localPath) {
+      const localPath = file.localPath.replace('data/media-uploads/', '')
+      return `/api/media-file/${localPath}`
+    }
+    if (file.sourceUrl && file.source === 'URL') return file.sourceUrl
+    return null
+  }
+
   return (
-    <div className="flex gap-6 h-screen overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       {/* Left Sidebar - Fixed */}
-      <div className="w-64 shrink-0 h-screen overflow-y-auto">
-        <div className="py-4">
+      <div className={`shrink-0 flex flex-col border-r border-neutral-200 bg-neutral-50 transition-all duration-300 ${
+        leftSidebarCollapsed ? 'w-12' : 'w-64'
+      }`}>
+        {/* Collapse/Expand Button */}
+        <div className="border-b border-neutral-200">
+          <button
+            onClick={() => setLeftSidebarCollapsed(!leftSidebarCollapsed)}
+            className="w-full h-12 flex items-center justify-center hover:bg-neutral-100 transition-colors"
+            title={leftSidebarCollapsed ? '展开控制面板' : '收起控制面板'}
+          >
+            {leftSidebarCollapsed ? (
+              <ChevronRight className="h-5 w-5 text-neutral-600" />
+            ) : (
+              <ChevronLeft className="h-5 w-5 text-neutral-600" />
+            )}
+          </button>
+        </div>
+
+        {!leftSidebarCollapsed && (
+          <div className="flex-1 overflow-y-auto px-4 py-4">
           {/* Action Buttons */}
           <div className="mb-4 space-y-2">
             <button
@@ -391,12 +846,19 @@ export default function MediaBrowserPage() {
               添加 URL
             </button>
             <button
+              onClick={() => setAddLocalPathDialogOpen(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
+            >
+              <Folder className="h-4 w-4" />
+              引用本地文件
+            </button>
+            <button
               onClick={() => fileInputRef.current?.click()}
               disabled={uploadLocalMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 rounded-md border border-neutral-300 px-4 py-2.5 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
             >
               <Upload className="h-4 w-4" />
-              {uploadLocalMutation.isPending ? '上传中...' : '上传本地'}
+              {uploadLocalMutation.isPending ? '上传中...' : '上传到服务器'}
             </button>
             <input
               ref={fileInputRef}
@@ -514,111 +976,216 @@ export default function MediaBrowserPage() {
               </div>
             </div>
 
+            {/* View Tabs */}
             <div className="mb-4 border-t border-neutral-200 pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-semibold flex items-center gap-1">
-                  <Folder className="h-4 w-4" />
-                  文件夹
-                </h3>
-                <button
-                  onClick={() => setCreateFolderDialogOpen(true)}
-                  className="text-neutral-600 hover:text-neutral-900"
-                  title="添加文件夹"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="space-y-1">
-                {/* All 文件夹 - 显示所有文件 */}
+              <div className="flex gap-2 mb-3">
                 <button
                   onClick={() => {
-                    setSelectedFolder(undefined)
-                    setSelectedTag(undefined)
+                    setViewTab('folders')
+                    setSelectedActor(undefined)
+                    // 重置编辑状态
+                    setEditingActorName(false)
+                    setEditingActorBio(false)
                   }}
-                  onDragOver={(e) => handleDragOver(e, null)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, null)}
-                  className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
-                    !selectedFolder && !selectedTag
+                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm rounded transition-colors ${
+                    viewTab === 'folders'
                       ? 'bg-neutral-900 text-white'
-                      : dragOverFolder === null
-                      ? 'bg-blue-100 hover:bg-blue-200'
-                      : 'hover:bg-neutral-100'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
                   }`}
                 >
-                  All
-                  <span className="ml-2 text-xs opacity-60">
-                    ({allFilesData?.pagination.total || 0})
-                  </span>
+                  <Folder className="h-4 w-4" />
+                  文件夹
                 </button>
+                <button
+                  onClick={() => {
+                    setViewTab('actors')
+                    setSelectedFolder(undefined)
+                  }}
+                  className={`flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm rounded transition-colors ${
+                    viewTab === 'actors'
+                      ? 'bg-neutral-900 text-white'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                  }`}
+                >
+                  <User className="h-4 w-4" />
+                  演员表
+                </button>
+              </div>
+            </div>
 
-                {/* 用户创建的文件夹 */}
-                {folders?.map((folder) => (
+            {/* Folders View */}
+            {viewTab === 'folders' && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold flex items-center gap-1">
+                    <Folder className="h-4 w-4" />
+                    文件夹
+                  </h3>
                   <button
-                    key={folder.id}
-                    onClick={() => {
-                      setSelectedFolder(folder.id)
-                      setSelectedTag(undefined)
-                    }}
-                    onDragOver={(e) => handleDragOver(e, folder.id)}
+                    onClick={() => setCreateFolderDialogOpen(true)}
+                    className="text-neutral-600 hover:text-neutral-900"
+                    title="添加文件夹"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setSelectedFolder(undefined)}
+                    onDragOver={(e) => handleDragOverFolder(e, null)}
                     onDragLeave={handleDragLeave}
-                    onDrop={(e) => handleDrop(e, folder.id)}
+                    onDrop={(e) => handleDropToFolder(e, null)}
                     className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
-                      selectedFolder === folder.id
+                      !selectedFolder
                         ? 'bg-neutral-900 text-white'
-                        : dragOverFolder === folder.id
+                        : dragOverFolder === null
                         ? 'bg-blue-100 hover:bg-blue-200'
                         : 'hover:bg-neutral-100'
                     }`}
                   >
-                    {folder.name}
+                    All
                     <span className="ml-2 text-xs opacity-60">
-                      ({(folder as any)._count?.files || 0})
+                      ({allFilesData?.pagination.total || 0})
                     </span>
                   </button>
-                ))}
-              </div>
-            </div>
 
-            <div>
-              <h3 className="text-sm font-semibold mb-2">标签</h3>
-              <div className="space-y-1">
-                {tags?.map((tag) => (
+                  {folders?.map((folder) => (
+                    <button
+                      key={folder.id}
+                      onClick={() => setSelectedFolder(folder.id)}
+                      onDragOver={(e) => handleDragOverFolder(e, folder.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDropToFolder(e, folder.id)}
+                      className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
+                        selectedFolder === folder.id
+                          ? 'bg-neutral-900 text-white'
+                          : dragOverFolder === folder.id
+                          ? 'bg-blue-100 hover:bg-blue-200'
+                          : 'hover:bg-neutral-100'
+                      }`}
+                    >
+                      {folder.name}
+                      <span className="ml-2 text-xs opacity-60">
+                        ({(folder as any)._count?.files || 0})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Actors View */}
+            {viewTab === 'actors' && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold flex items-center gap-1">
+                    <User className="h-4 w-4" />
+                    演员
+                  </h3>
                   <button
-                    key={tag.id}
-                    onClick={() => {
-                      setSelectedTag(tag.id)
-                      setSelectedFolder(undefined)
-                    }}
+                    onClick={() => setCreateActorDialogOpen(true)}
+                    className="text-neutral-600 hover:text-neutral-900"
+                    title="添加演员"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setSelectedActor(undefined)}
+                    onDragOver={(e) => handleDragOverActor(e, null)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDropToActor(e, null)}
                     className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors ${
-                      selectedTag === tag.id
+                      !selectedActor
                         ? 'bg-neutral-900 text-white'
+                        : dragOverActor === null
+                        ? 'bg-blue-100 hover:bg-blue-200'
                         : 'hover:bg-neutral-100'
                     }`}
                   >
-                    <span className="inline-block w-2 h-2 rounded-full mr-2" style={{ backgroundColor: tag.color }} />
-                    {tag.name}
+                    All
                     <span className="ml-2 text-xs opacity-60">
-                      ({(tag as any)._count?.files || 0})
+                      ({allFilesData?.pagination.total || 0})
                     </span>
                   </button>
-                ))}
+
+                  {actors?.map((actor) => (
+                    <button
+                      key={actor.id}
+                      onClick={() => {
+                        setSelectedActor(actor.id)
+                        setTempActorName(actor.name)
+                        setTempActorBio(actor.bio || '')
+                        // 重置编辑状态
+                        setEditingActorName(false)
+                        setEditingActorBio(false)
+                      }}
+                      onDragOver={(e) => handleDragOverActor(e, actor.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDropToActor(e, actor.id)}
+                      className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors flex items-center gap-2 ${
+                        selectedActor === actor.id
+                          ? 'bg-neutral-900 text-white'
+                          : dragOverActor === actor.id
+                          ? 'bg-blue-100 hover:bg-blue-200'
+                          : 'hover:bg-neutral-100'
+                      }`}
+                    >
+                      {actor.avatarUrl ? (
+                        <NextImage
+                          src={actor.avatarUrl}
+                          alt={`${actor.name}的头像`}
+                          width={24}
+                          height={24}
+                          className="w-6 h-6 rounded object-cover flex-shrink-0"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded bg-neutral-300 flex items-center justify-center flex-shrink-0">
+                          <User className="h-4 w-4 text-neutral-600" />
+                        </div>
+                      )}
+                      <span className="flex-1 truncate">{actor.name}</span>
+                      <span className="text-xs opacity-60">
+                        ({(actor as any)._count?.files || 0})
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 min-w-0 h-screen overflow-y-auto">
-        <div className="py-4">
-          {/* File count badge */}
-          <div className="mb-4">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-neutral-100 text-neutral-700">
-              共 {filesData?.pagination.total || 0} 个文件
-            </span>
-          </div>
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Fixed Header - File count badge and column width slider */}
+        <div className="shrink-0 border-b border-neutral-200 bg-white px-6 py-2.5 flex items-center gap-4">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">
+            共 {filesData?.pagination.total || 0} 个文件
+          </span>
 
+          {viewMode === 'grid' && (
+            <div className="flex items-center gap-3 ml-auto">
+              <span className="text-xs text-neutral-500">列宽</span>
+              <input
+                type="range"
+                min="140"
+                max="420"
+                value={columnWidth}
+                onChange={(e) => setColumnWidth(Number(e.target.value))}
+                className="w-32 h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-neutral-900"
+              />
+              <span className="text-xs text-neutral-500 w-12">{columnWidth}px</span>
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable Content Area */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
           {/* Media Grid/List */}
           <div>
           {filesData?.files.length === 0 ? (
@@ -635,7 +1202,7 @@ export default function MediaBrowserPage() {
             <>
               <style jsx>{`
                 .masonry-grid {
-                  column-width: 280px;
+                  column-width: ${columnWidth}px;
                   column-gap: 1rem;
                 }
                 .masonry-item {
@@ -650,21 +1217,39 @@ export default function MediaBrowserPage() {
                     draggable
                     onDragStart={(e) => handleDragStart(e, file.id)}
                     onDragEnd={handleDragEnd}
+                    onMouseEnter={() => {
+                      if (file.type === 'VIDEO') {
+                        setHoveredVideoId(file.id)
+                      }
+                    }}
+                    onMouseLeave={() => {
+                      if (file.type === 'VIDEO') {
+                        setHoveredVideoId(null)
+                      }
+                    }}
                     className={`masonry-item group relative rounded-lg border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition-shadow ${
                       draggedFile === file.id ? 'opacity-50' : ''
                     }`}
                   >
                     {/* Thumbnail */}
                     <div
-                      className="w-full bg-neutral-100 flex items-center justify-center cursor-move overflow-hidden"
-                      onClick={() => setPreviewFile(file as MediaFile)}
+                      className="w-full bg-neutral-100 flex items-center justify-center cursor-pointer overflow-hidden relative"
+                      onClick={() => {
+                        setSelectedFileForDetails(file as MediaFile)
+                        setTempFileRemark((file as MediaFile).remark || (file as MediaFile).name)
+                        setEditingFileRemark(false)
+                      }}
                     >
+                      {/* 缩略图层 - 始终渲染作为背景 */}
                       {getThumbnailUrl(file as MediaFile) ? (
-                        <img
+                        <NextImage
                           src={getThumbnailUrl(file as MediaFile)!}
                           alt={file.name}
+                          width={columnWidth}
+                          height={columnWidth}
                           className="w-full object-cover"
                           style={{ display: 'block', height: 'auto' }}
+                          unoptimized
                         />
                       ) : file.type === 'AUDIO' ? (
                         <div className="w-full aspect-square bg-neutral-200 flex flex-col items-center justify-center">
@@ -676,27 +1261,93 @@ export default function MediaBrowserPage() {
                           <div className="text-neutral-400">{getMediaIcon(file.type)}</div>
                         </div>
                       )}
+
+                      {/* 视频预览层 - 悬停时覆盖在缩略图上方 */}
+                      {file.type === 'VIDEO' && getVideoUrl(file as MediaFile) && (
+                        <video
+                          src={getVideoUrl(file as MediaFile)!}
+                          loop
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-200 ${
+                            hoveredVideoId === file.id ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                          }`}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.currentTime = 0
+                            e.currentTarget.play().catch(() => {
+                              // 忽略自动播放错误
+                            })
+                          }}
+                        />
+                      )}
+
+                      {/* Type Icon Badge */}
+                      <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm rounded-md p-1.5 z-10">
+                        {file.type === 'IMAGE' && <Image className="h-4 w-4 text-white" />}
+                        {file.type === 'VIDEO' && <Video className="h-4 w-4 text-white" />}
+                        {file.type === 'AUDIO' && <Music className="h-4 w-4 text-white" />}
+                      </div>
                     </div>
 
                     {/* Info */}
                     <div className="p-3">
-                      <p className="text-sm font-medium truncate">{file.name}</p>
+                      {editingInlineFileId === file.id ? (
+                        <input
+                          type="text"
+                          value={tempInlineRemark}
+                          onChange={(e) => setTempInlineRemark(e.target.value)}
+                          onBlur={() => handleInlineRemarkEdit(file.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              void handleInlineRemarkEdit(file.id)
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingInlineFileId(null)
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                          className="w-full text-sm font-medium px-2 py-1 border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                        />
+                      ) : (
+                        <p
+                          className="text-sm font-medium truncate cursor-text hover:bg-neutral-100 px-2 py-1 rounded -mx-2"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditingInlineFileId(file.id)
+                            setTempInlineRemark(file.remark || file.name)
+                          }}
+                        >
+                          {file.remark || file.name}
+                        </p>
+                      )}
                       <p className="text-xs text-neutral-500 mt-1">
                         {file.type === 'VIDEO' || file.type === 'AUDIO'
-                          ? `${Math.round((file.duration || 0) / 60)}分钟`
+                          ? file.duration && file.duration > 0
+                            ? file.duration < 60
+                              ? `${Math.round(file.duration)}秒`
+                              : `${Math.round(file.duration / 60)}分钟`
+                            : file.fileSize
+                            ? `${Math.round(file.fileSize / 1024)}KB`
+                            : '-'
                           : file.fileSize
-                          ? `${Math.round((file.fileSize || 0) / 1024)}KB`
+                          ? `${Math.round(file.fileSize / 1024)}KB`
                           : '-'}
                       </p>
                     </div>
 
-                    {/* Actions */}
+                    {/* Preview Button */}
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
-                        onClick={() => deleteFileMutation.mutate({ id: file.id })}
-                        className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setPreviewFile(file as MediaFile)
+                        }}
+                        className="rounded-full bg-black/60 backdrop-blur-sm p-2 text-white hover:bg-black/80 transition-colors"
+                        title="预览"
                       >
-                        删除
+                        <Search className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
@@ -706,19 +1357,62 @@ export default function MediaBrowserPage() {
           ) : (
             <div className="rounded-lg border border-neutral-200 bg-white divide-y">
               {filesData?.files.map((file) => (
-                <div key={file.id} className="flex items-center gap-4 p-4 hover:bg-neutral-50">
+                <div
+                  key={file.id}
+                  className="flex items-center gap-4 p-4 hover:bg-neutral-50 cursor-pointer"
+                  onClick={() => {
+                    if (editingInlineFileId !== file.id) {
+                      setSelectedFileForDetails(file as MediaFile)
+                      setTempFileRemark((file as MediaFile).remark || (file as MediaFile).name)
+                      setEditingFileRemark(false)
+                    }
+                  }}
+                >
                   <div className="flex-shrink-0">{getMediaIcon(file.type)}</div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{file.name}</p>
+                    {editingInlineFileId === file.id ? (
+                      <input
+                        type="text"
+                        value={tempInlineRemark}
+                        onChange={(e) => setTempInlineRemark(e.target.value)}
+                        onBlur={() => handleInlineRemarkEdit(file.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            void handleInlineRemarkEdit(file.id)
+                          }
+                          if (e.key === 'Escape') {
+                            setEditingInlineFileId(null)
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                        className="w-full text-sm font-medium px-2 py-1 border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                      />
+                    ) : (
+                      <p
+                        className="text-sm font-medium truncate cursor-text hover:bg-neutral-100 px-2 py-1 rounded -mx-2"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setEditingInlineFileId(file.id)
+                          setTempInlineRemark(file.remark || file.name)
+                        }}
+                      >
+                        {file.remark || file.name}
+                      </p>
+                    )}
                     <p className="text-xs text-neutral-500">
-                      {file.folder?.name || '未分类'} • {file.type}
+                      {file.folder?.name || file.actor?.name || '未分类'} • {file.type}
                     </p>
                   </div>
                   <button
-                    onClick={() => deleteFileMutation.mutate({ id: file.id })}
-                    className="text-sm text-red-600 hover:text-red-800"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setPreviewFile(file as MediaFile)
+                    }}
+                    className="rounded-full bg-neutral-100 p-2 text-neutral-600 hover:bg-neutral-200 transition-colors"
+                    title="预览"
                   >
-                    删除
+                    <Search className="h-4 w-4" />
                   </button>
                 </div>
               ))}
@@ -727,6 +1421,338 @@ export default function MediaBrowserPage() {
           </div>
         </div>
       </div>
+
+      {/* Right Sidebar - Actor Profile (only show when actor is selected) */}
+      {viewTab === 'actors' && selectedActor && selectedActorData && (
+        <div className={`shrink-0 flex flex-col border-l border-neutral-200 bg-white transition-all duration-300 ${
+          actorPanelCollapsed ? 'w-12' : 'w-80'
+        }`}>
+          {/* Collapse/Expand Button */}
+          <div className="border-b border-neutral-200">
+            <button
+              onClick={() => setActorPanelCollapsed(!actorPanelCollapsed)}
+              className="w-full h-12 flex items-center justify-center hover:bg-neutral-50 transition-colors"
+              title={actorPanelCollapsed ? '展开演员信息' : '收起演员信息'}
+            >
+              {actorPanelCollapsed ? (
+                <ChevronLeft className="h-5 w-5 text-neutral-600" />
+              ) : (
+                <ChevronRight className="h-5 w-5 text-neutral-600" />
+              )}
+            </button>
+          </div>
+
+          {/* Actor Info - Hidden when collapsed */}
+          {!actorPanelCollapsed && (
+            <div className="flex-1 overflow-y-auto p-6">
+            {/* Actor Avatar */}
+            <div className="mb-6">
+              <div
+                className="w-full aspect-square rounded-lg bg-neutral-200 flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => {
+                  setTempActorAvatarUrl(selectedActorData.avatarUrl || '')
+                  setShowAvatarUrlDialog(true)
+                }}
+              >
+                {selectedActorData.avatarUrl ? (
+                  <NextImage
+                    src={selectedActorData.avatarUrl}
+                    alt={`${selectedActorData.name}的头像`}
+                    width={320}
+                    height={320}
+                    className="w-full h-full object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-neutral-400">
+                    <User className="h-16 w-16" />
+                    <span className="text-sm">点击添加头像</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actor Name */}
+            <div className="mb-4">
+              {editingActorName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={tempActorName}
+                    onChange={(e) => setTempActorName(e.target.value)}
+                    onBlur={handleActorNameEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleActorNameEdit()
+                      if (e.key === 'Escape') setEditingActorName(false)
+                    }}
+                    autoFocus
+                    className="flex-1 px-2 py-1 text-lg font-semibold border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                  />
+                  <button
+                    onClick={handleActorNameEdit}
+                    className="p-1 text-green-600 hover:text-green-700"
+                  >
+                    <Check className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-2 cursor-pointer group"
+                  onClick={() => setEditingActorName(true)}
+                >
+                  <h2 className="text-lg font-semibold">{selectedActorData.name}</h2>
+                  <Edit2 className="h-4 w-4 text-neutral-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+              )}
+            </div>
+
+            {/* Actor Bio */}
+            <div className="mb-6">
+              <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                个性与背景
+              </label>
+              {editingActorBio ? (
+                <div>
+                  <textarea
+                    value={tempActorBio}
+                    onChange={(e) => setTempActorBio(e.target.value)}
+                    onBlur={handleActorBioEdit}
+                    placeholder="添加演员个性与背景..."
+                    autoFocus
+                    rows={4}
+                    className="w-full px-3 py-2 text-sm border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                  />
+                </div>
+              ) : (
+                <div
+                  className="min-h-[60px] px-3 py-2 text-sm text-neutral-700 bg-neutral-50 rounded cursor-pointer hover:bg-neutral-100 transition-colors"
+                  onClick={() => setEditingActorBio(true)}
+                >
+                  {selectedActorData.bio || (
+                    <span className="text-neutral-400">点击添加个性与背景...</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-neutral-200 pt-4">
+              <h3 className="text-sm font-semibold mb-3">演员资料</h3>
+              <div className="text-xs text-neutral-500">
+                共 {(selectedActorData as any)._count?.files || 0} 个作品
+              </div>
+            </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Right Sidebar - File Details (show when file is selected) */}
+      {selectedFileForDetails && (
+        <div className="shrink-0 w-80 flex flex-col border-l border-neutral-200 bg-white">
+          {/* Header */}
+          <div className="border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold">文件详情</h2>
+            <button
+              onClick={() => setSelectedFileForDetails(null)}
+              className="text-neutral-500 hover:text-neutral-700"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Thumbnail */}
+            <div className="w-full aspect-square rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden">
+              {getThumbnailUrl(selectedFileForDetails) ? (
+                <NextImage
+                  src={getThumbnailUrl(selectedFileForDetails)!}
+                  alt={selectedFileForDetails.name}
+                  width={320}
+                  height={320}
+                  className="w-full h-full object-cover"
+                  unoptimized
+                />
+              ) : selectedFileForDetails.type === 'AUDIO' ? (
+                <Music className="h-16 w-16 text-neutral-400" />
+              ) : (
+                getMediaIcon(selectedFileForDetails.type)
+              )}
+            </div>
+
+            {/* Original Filename */}
+            <div>
+              <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                原文件名称
+              </label>
+              <div className="px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 break-all">
+                {selectedFileForDetails.name}
+              </div>
+            </div>
+
+            {/* Remark (Editable) */}
+            <div>
+              <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                备注名称
+              </label>
+              {editingFileRemark ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={tempFileRemark}
+                    onChange={(e) => setTempFileRemark(e.target.value)}
+                    onBlur={handleFileRemarkEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleFileRemarkEdit()
+                      if (e.key === 'Escape') setEditingFileRemark(false)
+                    }}
+                    autoFocus
+                    className="flex-1 px-3 py-2 text-sm border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                  />
+                  <button
+                    onClick={handleFileRemarkEdit}
+                    className="p-2 text-green-600 hover:text-green-700"
+                  >
+                    <Check className="h-5 w-5" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 cursor-pointer hover:bg-neutral-100 transition-colors break-all flex items-start gap-2"
+                  onClick={() => setEditingFileRemark(true)}
+                >
+                  <span className="flex-1">
+                    {selectedFileForDetails.remark || selectedFileForDetails.name}
+                  </span>
+                  <Edit2 className="h-4 w-4 text-neutral-400 flex-shrink-0 mt-0.5" />
+                </div>
+              )}
+            </div>
+
+            {/* File Size */}
+            <div>
+              <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                文件大小
+              </label>
+              <div className="px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200">
+                {selectedFileForDetails.fileSize
+                  ? `${(selectedFileForDetails.fileSize / 1024 / 1024).toFixed(2)} MB`
+                  : '-'}
+              </div>
+            </div>
+
+            {/* Original Path (LOCAL_REF) */}
+            {selectedFileForDetails.originalPath && selectedFileForDetails.source === 'LOCAL_REF' && (
+              <div>
+                <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                  原始文件路径
+                </label>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 break-all font-mono">
+                    {selectedFileForDetails.originalPath}
+                  </div>
+                  <button
+                    onClick={() => handleCopyToClipboard(selectedFileForDetails.originalPath!)}
+                    className="p-2 text-neutral-600 hover:text-neutral-900 border border-neutral-200 rounded hover:bg-neutral-100"
+                    title="复制路径"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Local File Path (LOCAL) */}
+            {selectedFileForDetails.localPath && selectedFileForDetails.source === 'LOCAL' && (
+              <div>
+                <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                  服务器存储路径
+                </label>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 break-all font-mono">
+                    {selectedFileForDetails.localPath}
+                  </div>
+                  <button
+                    onClick={() => handleCopyToClipboard(selectedFileForDetails.localPath!)}
+                    className="p-2 text-neutral-600 hover:text-neutral-900 border border-neutral-200 rounded hover:bg-neutral-100"
+                    title="复制路径"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Remote URL */}
+            {selectedFileForDetails.sourceUrl && (
+              <div>
+                <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                  远程URL地址
+                </label>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 break-all font-mono">
+                    {selectedFileForDetails.sourceUrl}
+                  </div>
+                  <button
+                    onClick={() => handleCopyToClipboard(selectedFileForDetails.sourceUrl!)}
+                    className="p-2 text-neutral-600 hover:text-neutral-900 border border-neutral-200 rounded hover:bg-neutral-100"
+                    title="复制URL"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* API Access URL */}
+            {selectedFileForDetails.localPath && (
+              <div>
+                <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                  API 访问地址
+                </label>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 break-all font-mono text-neutral-600">
+                    {`${window.location.origin}/api/media-file/${selectedFileForDetails.localPath.replace('data/media-uploads/', '')}`}
+                  </div>
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/api/media-file/${selectedFileForDetails.localPath.replace('data/media-uploads/', '')}`
+                      handleCopyToClipboard(url)
+                    }}
+                    className="p-2 text-neutral-600 hover:text-neutral-900 border border-neutral-200 rounded hover:bg-neutral-100"
+                    title="复制到剪贴板"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleDownloadFile(selectedFileForDetails)}
+                className="flex-1 flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
+              >
+                <Download className="h-4 w-4" />
+                下载原文件
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('确定要删除这个文件吗？此操作无法撤销。')) {
+                    deleteFileMutation.mutate({ id: selectedFileForDetails.id })
+                    setSelectedFileForDetails(null)
+                  }
+                }}
+                className="flex-1 flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+              >
+                <Trash2 className="h-4 w-4" />
+                删除文件
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add URL Dialog */}
       <Dialog open={addUrlDialogOpen} onOpenChange={setAddUrlDialogOpen}>
@@ -758,6 +1784,54 @@ export default function MediaBrowserPage() {
                 className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
               >
                 {addUrlsMutation.isPending ? '添加中...' : '添加'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Local Path Dialog */}
+      <Dialog open={addLocalPathDialogOpen} onOpenChange={setAddLocalPathDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>引用本地文件</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+              <p className="text-xs text-blue-800">
+                💡 <strong>如何获取文件路径：</strong>
+              </p>
+              <ul className="mt-2 text-xs text-blue-700 space-y-1 ml-4">
+                <li>• <strong>macOS:</strong> 在访达中选中文件，按 Option+Cmd+C 复制路径</li>
+                <li>• <strong>Windows:</strong> 在文件资源管理器中按住 Shift 右键点击文件，选择"复制为路径"</li>
+              </ul>
+            </div>
+            <div>
+              <label className="text-sm font-medium">文件路径（每行一个）</label>
+              <textarea
+                value={localPathInput}
+                onChange={(e) => setLocalPathInput(e.target.value)}
+                placeholder={`macOS/Linux 示例:\n/Users/username/Videos/video.mp4\n/Users/username/Pictures/image.jpg\n\nWindows 示例:\nC:\\Users\\username\\Videos\\video.mp4\nD:\\Media\\image.png`}
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none font-mono"
+                rows={8}
+              />
+              <p className="mt-2 text-xs text-neutral-500">
+                支持批量添加，每行一个完整的文件路径
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setAddLocalPathDialogOpen(false)}
+                className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddLocalPaths}
+                disabled={addLocalReferenceMutation.isPending}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {addLocalReferenceMutation.isPending ? '添加中...' : '添加'}
               </button>
             </div>
           </div>
@@ -802,6 +1876,94 @@ export default function MediaBrowserPage() {
                 className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
               >
                 {createFolderMutation.isPending ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Actor Dialog */}
+      <Dialog open={createActorDialogOpen} onOpenChange={setCreateActorDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>创建演员</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">演员名称</label>
+              <input
+                type="text"
+                value={newActorName}
+                onChange={(e) => setNewActorName(e.target.value)}
+                placeholder="请输入演员名称"
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateActor()
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setCreateActorDialogOpen(false)
+                  setNewActorName('')
+                }}
+                className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateActor}
+                disabled={createActorMutation.isPending}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {createActorMutation.isPending ? '创建中...' : '创建'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Actor Avatar URL Dialog */}
+      <Dialog open={showAvatarUrlDialog} onOpenChange={setShowAvatarUrlDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>设置演员头像</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">头像 URL</label>
+              <input
+                type="text"
+                value={tempActorAvatarUrl}
+                onChange={(e) => setTempActorAvatarUrl(e.target.value)}
+                placeholder="https://example.com/avatar.jpg"
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleActorAvatarUpdate()
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowAvatarUrlDialog(false)
+                  setTempActorAvatarUrl('')
+                }}
+                className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleActorAvatarUpdate}
+                disabled={updateActorMutation.isPending}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {updateActorMutation.isPending ? '保存中...' : '保存'}
               </button>
             </div>
           </div>
@@ -878,7 +2040,6 @@ export default function MediaBrowserPage() {
                     <div className="flex gap-1">
                       <button
                         onClick={async () => {
-                          // 重试逻辑
                           setUploadTasks((prev) =>
                             prev.map((t) =>
                               t.id === task.id ? { ...t, status: 'uploading', error: undefined } : t
@@ -887,10 +2048,9 @@ export default function MediaBrowserPage() {
 
                           try {
                             if (task.url) {
-                              // 重试 URL
                               const result = await addUrlsMutation.mutateAsync({
                                 urls: [task.url],
-                                folderId: selectedFolder,
+                                folderId: viewTab === 'folders' ? selectedFolder : undefined,
                               })
                               const urlResult = result.results[0]
                               if (urlResult) {
@@ -968,16 +2128,19 @@ export default function MediaBrowserPage() {
 
           <div className="relative w-full h-full flex items-center justify-center p-8 pointer-events-none">
             {previewFile.type === 'IMAGE' && getOriginalImageUrl(previewFile) && (
-              <img
+              <NextImage
                 src={getOriginalImageUrl(previewFile)!}
                 alt={previewFile.name}
+                width={1920}
+                height={1080}
                 className="max-w-full max-h-full object-contain pointer-events-auto"
                 onClick={(e) => e.stopPropagation()}
+                unoptimized
               />
             )}
-            {previewFile.type === 'VIDEO' && (
+            {previewFile.type === 'VIDEO' && getVideoUrl(previewFile) && (
               <video
-                src={previewFile.sourceUrl || (previewFile.localPath ? `/api/media-file/${previewFile.localPath.replace('data/media-uploads/', '')}` : '')}
+                src={getVideoUrl(previewFile)!}
                 controls
                 autoPlay
                 className="max-w-full max-h-full pointer-events-auto"
@@ -986,14 +2149,21 @@ export default function MediaBrowserPage() {
             )}
             {previewFile.type === 'AUDIO' && (
               <div
-                className="bg-white p-8 rounded-lg pointer-events-auto"
+                className="bg-white p-8 rounded-lg pointer-events-auto max-w-md"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex flex-col items-center gap-4">
-                  <Music className="h-16 w-16 text-neutral-400" />
-                  <p className="text-sm text-center font-medium">{previewFile.name}</p>
+                  <Music className="h-24 w-24 text-neutral-400" />
+                  <p className="text-lg text-center font-medium text-neutral-900">{previewFile.remark || previewFile.name}</p>
+                  {previewFile.remark && (
+                    <p className="text-sm text-center text-neutral-500">{previewFile.name}</p>
+                  )}
                   <audio
-                    src={previewFile.sourceUrl || (previewFile.localPath ? `/api/media-file/${previewFile.localPath.replace('data/media-uploads/', '')}` : '')}
+                    src={
+                      previewFile.source === 'LOCAL_REF'
+                        ? `/api/media-ref/${previewFile.id}`
+                        : previewFile.sourceUrl || (previewFile.localPath ? `/api/media-file/${previewFile.localPath.replace('data/media-uploads/', '')}` : '')
+                    }
                     controls
                     autoPlay
                     className="w-full mt-4"

@@ -135,6 +135,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         page: z.number().min(1).default(1),
         pageSize: z.number().min(1).max(100).default(50),
         folderId: z.string().optional(),
+        actorId: z.string().optional(),
         tagId: z.string().optional(),
         type: z.enum(['IMAGE', 'VIDEO', 'AUDIO']).optional(),
         source: z.enum(['LOCAL', 'URL']).optional(),
@@ -142,12 +143,13 @@ export const mediaBrowserRouter = createTRPCRouter({
       })
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, folderId, tagId, type, source, search } = input
+      const { page, pageSize, folderId, actorId, tagId, type, source, search } = input
       const userId = ctx.userId!
 
       const where: any = { userId }
 
       if (folderId) where.folderId = folderId
+      if (actorId) where.actorId = actorId
       if (type) where.type = type
       if (source) where.source = source
       if (search) where.name = { contains: search }
@@ -162,6 +164,7 @@ export const mediaBrowserRouter = createTRPCRouter({
           where,
           include: {
             folder: true,
+            actor: true,
             tags: true,
           },
           skip: (page - 1) * pageSize,
@@ -190,6 +193,7 @@ export const mediaBrowserRouter = createTRPCRouter({
       where: { id: input.id, userId: ctx.userId! },
       include: {
         folder: true,
+        actor: true,
         tags: true,
       },
     })
@@ -334,6 +338,13 @@ export const mediaBrowserRouter = createTRPCRouter({
         // 保存文件
         const { localPath, fileSize: savedFileSize } = await saveLocalFile(input.fileData, input.fileName, userId)
 
+        // 获取媒体时长（视频和音频）
+        let duration: number | null = null
+        if (type === 'VIDEO' || type === 'AUDIO') {
+          const { getMediaDuration } = await import('~/lib/services/audio-utils')
+          duration = await getMediaDuration(localPath)
+        }
+
         // 创建媒体文件记录
         const file = await ctx.db.mediaFile.create({
           data: {
@@ -344,6 +355,7 @@ export const mediaBrowserRouter = createTRPCRouter({
             localPath,
             mimeType: input.mimeType,
             fileSize: savedFileSize,
+            duration,
             folderId: input.folderId,
           },
         })
@@ -379,6 +391,108 @@ export const mediaBrowserRouter = createTRPCRouter({
     }),
 
   /**
+   * 添加本地文件引用（不复制文件，只存储路径）
+   */
+  addLocalReference: userProcedure
+    .input(
+      z.object({
+        filePath: z.string(), // 绝对路径
+        fileName: z.string(),
+        mimeType: z.string(),
+        folderId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      try {
+        // 验证文件是否存在
+        try {
+          await fs.access(input.filePath)
+        } catch {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: '文件不存在或无法访问',
+          })
+        }
+
+        const type = detectMediaType(input.mimeType)
+
+        // 获取文件信息
+        const stats = await fs.stat(input.filePath)
+        const fileSize = stats.size
+
+        // 检查是否已存在相同的文件引用
+        const existingFile = await ctx.db.mediaFile.findFirst({
+          where: {
+            userId,
+            originalPath: input.filePath,
+            source: 'LOCAL_REF',
+          },
+        })
+
+        if (existingFile) {
+          return {
+            success: false,
+            error: '该文件已添加',
+            isDuplicate: true,
+          }
+        }
+
+        // 获取媒体时长（视频和音频）
+        let duration: number | null = null
+        if (type === 'VIDEO' || type === 'AUDIO') {
+          const { getMediaDuration } = await import('~/lib/services/audio-utils')
+          duration = await getMediaDuration(input.filePath)
+        }
+
+        // 创建媒体文件记录
+        const file = await ctx.db.mediaFile.create({
+          data: {
+            userId,
+            name: input.fileName,
+            type,
+            source: 'LOCAL_REF',
+            originalPath: input.filePath,
+            mimeType: input.mimeType,
+            fileSize,
+            duration,
+            folderId: input.folderId,
+          },
+        })
+
+        // 异步生成缩略图（从原始路径读取）
+        if (type === 'IMAGE' || type === 'VIDEO') {
+          thumbnailQueue.add({
+            id: file.id,
+            options: {
+              userId,
+              fileId: file.id,
+              localPath: input.filePath,
+              type: type.toLowerCase() as 'image' | 'video',
+            },
+            onComplete: async (thumbnailPath) => {
+              if (thumbnailPath) {
+                await ctx.db.mediaFile.update({
+                  where: { id: file.id },
+                  data: { thumbnailPath },
+                })
+              }
+            },
+          })
+        }
+
+        return { success: true, file }
+      } catch (error) {
+        if (error instanceof TRPCError) throw error
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `添加文件引用失败: ${error}`,
+        })
+      }
+    }),
+
+  /**
    * 更新媒体文件
    */
   updateFile: userProcedure
@@ -386,6 +500,7 @@ export const mediaBrowserRouter = createTRPCRouter({
       z.object({
         id: z.string(),
         name: z.string().optional(),
+        remark: z.string().nullable().optional(),
         folderId: z.string().nullable().optional(),
       })
     )
@@ -402,10 +517,12 @@ export const mediaBrowserRouter = createTRPCRouter({
         where: { id: input.id },
         data: {
           name: input.name,
+          remark: input.remark,
           folderId: input.folderId,
         },
         include: {
           folder: true,
+          actor: true,
           tags: true,
         },
       })
@@ -743,6 +860,148 @@ export const mediaBrowserRouter = createTRPCRouter({
 
     return { success: true }
   }),
+
+  // ============================================
+  // 演员操作
+  // ============================================
+
+  /**
+   * 查询所有演员
+   */
+  listActors: userProcedure.query(async ({ ctx }) => {
+    const actors = await ctx.db.mediaActor.findMany({
+      where: { userId: ctx.userId! },
+      include: {
+        _count: {
+          select: { files: true },
+        },
+      },
+      orderBy: { sortOrder: 'asc' },
+    })
+
+    return actors
+  }),
+
+  /**
+   * 创建演员
+   */
+  createActor: userProcedure
+    .input(
+      z.object({
+        name: z.string().min(1).max(50),
+        avatarUrl: z.string().optional(),
+        bio: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const actor = await ctx.db.mediaActor.create({
+        data: {
+          userId: ctx.userId!,
+          name: input.name,
+          avatarUrl: input.avatarUrl,
+          bio: input.bio,
+        },
+      })
+
+      return actor
+    }),
+
+  /**
+   * 更新演员
+   */
+  updateActor: userProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        name: z.string().min(1).max(50).optional(),
+        avatarUrl: z.string().optional(),
+        bio: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const actor = await ctx.db.mediaActor.findFirst({
+        where: { id: input.id, userId: ctx.userId! },
+      })
+
+      if (!actor) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '演员不存在' })
+      }
+
+      const updated = await ctx.db.mediaActor.update({
+        where: { id: input.id },
+        data: {
+          name: input.name,
+          avatarUrl: input.avatarUrl,
+          bio: input.bio,
+        },
+      })
+
+      return updated
+    }),
+
+  /**
+   * 删除演员
+   */
+  deleteActor: userProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const actor = await ctx.db.mediaActor.findFirst({
+        where: { id: input.id, userId: ctx.userId! },
+      })
+
+      if (!actor) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '演员不存在' })
+      }
+
+      await ctx.db.mediaActor.delete({ where: { id: input.id } })
+
+      return { success: true }
+    }),
+
+  /**
+   * 移动文件到演员（拖拽功能）
+   */
+  moveFileToActor: userProcedure
+    .input(
+      z.object({
+        fileId: z.string(),
+        actorId: z.string().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const file = await ctx.db.mediaFile.findFirst({
+        where: { id: input.fileId, userId: ctx.userId! },
+      })
+
+      if (!file) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '文件不存在' })
+      }
+
+      // 如果 actorId 不为 null，验证演员是否存在且属于当前用户
+      if (input.actorId) {
+        const actor = await ctx.db.mediaActor.findFirst({
+          where: { id: input.actorId, userId: ctx.userId! },
+        })
+
+        if (!actor) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: '目标演员不存在' })
+        }
+      }
+
+      const updated = await ctx.db.mediaFile.update({
+        where: { id: input.fileId },
+        data: {
+          actorId: input.actorId,
+        },
+        include: {
+          folder: true,
+          actor: true,
+          tags: true,
+        },
+      })
+
+      return updated
+    }),
 
   // ============================================
   // 导出操作

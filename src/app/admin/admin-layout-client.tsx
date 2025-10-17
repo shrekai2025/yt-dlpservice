@@ -261,7 +261,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
       <div className="flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 overflow-y-auto px-8 py-10" role="main">
+        <main
+          className={cn(
+            "flex-1 overflow-y-auto",
+            pathname === '/admin/media-browser' ? '' : 'px-8 py-10'
+          )}
+          role="main"
+        >
           {children}
         </main>
       </div>

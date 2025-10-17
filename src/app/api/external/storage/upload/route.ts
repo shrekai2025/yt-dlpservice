@@ -6,29 +6,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { validateApiKey } from '~/lib/auth/api-key'
+import { validateExternalApiKey, createAuthErrorResponse } from '~/lib/utils/auth'
 import { s3Uploader } from '~/lib/services/s3-uploader'
 import { db } from '~/server/db'
 
 export async function POST(request: NextRequest) {
   try {
-    // 1. Validate API key
-    const apiKey = request.headers.get('X-API-Key')
-
-    if (!apiKey) {
-      return NextResponse.json({ error: 'Missing X-API-Key header' }, { status: 401 })
+    // 1. Validate API key (统一使用 TEXTGET_API_KEY)
+    const authResult = validateExternalApiKey(request)
+    if (!authResult.success) {
+      return createAuthErrorResponse(authResult.error || 'Authentication failed')
     }
 
-    const keyInfo = await validateApiKey(apiKey)
-
-    if (!keyInfo) {
-      return NextResponse.json(
-        { error: 'Invalid or inactive API key' },
-        { status: 401 }
-      )
-    }
-
-    console.log(`[Storage API] Authenticated: ${keyInfo.name}`)
+    console.log(`[Storage API] Authenticated successfully`)
 
     // 2. Check S3 configuration
     if (!s3Uploader.isConfigured()) {

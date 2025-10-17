@@ -8,6 +8,24 @@ import type { AudioFileInfo, FFmpegCompressionParams } from '~/types/compression
 const execAsync = promisify(exec)
 
 /**
+ * 获取媒体文件时长（支持视频和音频）
+ * 返回秒数，如果无法获取则返回 null
+ */
+export async function getMediaDuration(filePath: string): Promise<number | null> {
+  try {
+    const command = `ffprobe -v quiet -print_format json -show_format "${filePath}"`
+    const { stdout } = await execAsync(command)
+    const info = JSON.parse(stdout)
+
+    const duration = parseFloat(info.format?.duration)
+    return isNaN(duration) ? null : duration
+  } catch (error) {
+    Logger.warn(`获取媒体时长失败: ${filePath}, 错误: ${error}`)
+    return null
+  }
+}
+
+/**
  * 获取音频文件信息
  */
 export async function getAudioFileInfo(filePath: string): Promise<AudioFileInfo> {
@@ -15,15 +33,15 @@ export async function getAudioFileInfo(filePath: string): Promise<AudioFileInfo>
     // 获取文件大小
     const stats = await fs.stat(filePath)
     const size = stats.size
-    
+
     // 使用 FFprobe 获取音频信息
     const command = `ffprobe -v quiet -print_format json -show_format -show_streams "${filePath}"`
     const { stdout } = await execAsync(command)
     const info = JSON.parse(stdout)
-    
+
     // 提取音频流信息
     const audioStream = info.streams?.find((stream: any) => stream.codec_type === 'audio')
-    
+
     return {
       path: filePath,
       size,
@@ -35,7 +53,7 @@ export async function getAudioFileInfo(filePath: string): Promise<AudioFileInfo>
     }
   } catch (error) {
     Logger.warn(`获取音频文件信息失败: ${filePath}, 错误: ${error}`)
-    
+
     // 如果 FFprobe 失败，至少返回基本信息
     const stats = await fs.stat(filePath)
     return {

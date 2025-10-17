@@ -164,7 +164,6 @@ export default function StoragePage() {
   // Copy URL
   const handleCopyUrl = (url: string) => {
     navigator.clipboard.writeText(url)
-    alert('URL 已复制到剪贴板')
   }
 
   // Format file size
