@@ -44,37 +44,39 @@ export class BrowserManager {
   /**
    * 获取一个新的页面实例
    */
-  async getPage(options: { headless?: boolean; timeout?: number } = {}): Promise<Page> {
-    const { headless = true, timeout = 30000 } = options
-    
+  async getPage(options: { headless?: boolean; timeout?: number; enableRequestInterception?: boolean } = {}): Promise<Page> {
+    const { headless = true, timeout = 30000, enableRequestInterception = true } = options
+
     // 确保浏览器已启动
     await this.ensureBrowserStarted(headless)
-    
+
     if (!this.browser) {
       throw new Error('浏览器启动失败')
     }
 
     // 创建新页面
     const page = await this.browser.newPage()
-    
+
     // 设置超时
     page.setDefaultTimeout(timeout)
     page.setDefaultNavigationTimeout(timeout)
-    
+
     // 设置User-Agent
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-    
-    // 启用请求拦截以优化性能
-    await this.setupRequestInterception(page)
-    
+
+    // 可选启用请求拦截以优化性能
+    if (enableRequestInterception) {
+      await this.setupRequestInterception(page)
+    }
+
     // 跟踪活跃页面
     this.activePages.add(page)
-    
+
     // 清除闲置定时器
     this.clearIdleTimer()
-    
+
     Logger.debug(`BrowserManager: 创建新页面，当前活跃页面数: ${this.activePages.size}`)
-    
+
     return page
   }
 

@@ -4,6 +4,7 @@ import { BilibiliPlatform } from './bilibili/bilibili-platform'
 import { XiaoyuzhouPlatform } from './xiaoyuzhou/xiaoyuzhou-platform'
 import { ApplePodcastsPlatform } from './applepodcasts/applepodcasts-platform'
 import { TwitterPlatform } from './twitter/twitter-platform'
+import { PornHubPlatform } from './pornhub/pornhub-platform'
 
 // 导出接口和基类
 export * from './base/platform-interface'
@@ -16,6 +17,7 @@ export { BilibiliPlatform } from './bilibili/bilibili-platform'
 export { XiaoyuzhouPlatform } from './xiaoyuzhou/xiaoyuzhou-platform'
 export { ApplePodcastsPlatform } from './applepodcasts/applepodcasts-platform'
 export { TwitterPlatform } from './twitter/twitter-platform'
+export { PornHubPlatform } from './pornhub/pornhub-platform'
 
 /**
  * 初始化所有平台
@@ -41,6 +43,10 @@ export function initializePlatforms(ytDlpPath?: string): void {
   // 注册Twitter平台
   const twitterPlatform = new TwitterPlatform(ytDlpPath)
   platformRegistry.register(twitterPlatform)
+
+  // 注册PornHub平台
+  const pornhubPlatform = new PornHubPlatform(ytDlpPath)
+  platformRegistry.register(pornhubPlatform)
 }
 
 // 便捷访问

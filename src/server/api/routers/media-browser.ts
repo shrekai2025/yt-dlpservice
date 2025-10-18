@@ -82,6 +82,9 @@ async function getUrlMetadata(url: string) {
       if (urlLower.includes('format=webp') || urlLower.includes('.webp')) {
         return { mimeType: 'image/webp', fileSize: null }
       }
+      if (urlLower.includes('format=gif') || urlLower.includes('.gif')) {
+        return { mimeType: 'image/gif', fileSize: null }
+      }
       if (urlLower.includes('.mp4')) {
         return { mimeType: 'video/mp4', fileSize: null }
       }
@@ -132,23 +135,29 @@ export const mediaBrowserRouter = createTRPCRouter({
   listFiles: userProcedure
     .input(
       z.object({
-        page: z.number().min(1).default(1),
+        page: z.number().min(1).optional(),
         pageSize: z.number().min(1).max(100).default(50),
-        folderId: z.string().optional(),
+        folderId: z.string().nullable().optional(),
         actorId: z.string().optional(),
         tagId: z.string().optional(),
         type: z.enum(['IMAGE', 'VIDEO', 'AUDIO']).optional(),
         source: z.enum(['LOCAL', 'URL']).optional(),
         search: z.string().optional(),
+        cursor: z.number().optional(), // For infinite query
       })
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, folderId, actorId, tagId, type, source, search } = input
+      // Use cursor if provided (infinite query), otherwise use page
+      const page = input.cursor ?? input.page ?? 1
+      const { pageSize, folderId, actorId, tagId, type, source, search } = input
       const userId = ctx.userId!
 
       const where: any = { userId }
 
-      if (folderId) where.folderId = folderId
+      // 支持查询未归属文件（folderId 为 null）
+      if (folderId !== undefined) {
+        where.folderId = folderId
+      }
       if (actorId) where.actorId = actorId
       if (type) where.type = type
       if (source) where.source = source
@@ -273,12 +282,16 @@ export const mediaBrowserRouter = createTRPCRouter({
                 sourceUrl: url,
                 type: type.toLowerCase() as 'image' | 'video',
               },
-              onComplete: async (thumbnailPath) => {
-                console.log('[addUrls] Thumbnail generation completed:', { fileId: file.id, thumbnailPath })
-                if (thumbnailPath) {
+              onComplete: async (result) => {
+                console.log('[addUrls] Thumbnail generation completed:', { fileId: file.id, result })
+                if (result.thumbnailPath) {
                   await ctx.db.mediaFile.update({
                     where: { id: file.id },
-                    data: { thumbnailPath },
+                    data: {
+                      thumbnailPath: result.thumbnailPath,
+                      width: result.width,
+                      height: result.height,
+                    },
                   })
                   console.log('[addUrls] Thumbnail path updated in database:', { fileId: file.id, thumbnailPath })
                 }
@@ -373,11 +386,15 @@ export const mediaBrowserRouter = createTRPCRouter({
               localPath,
               type: type.toLowerCase() as 'image' | 'video',
             },
-            onComplete: async (thumbnailPath) => {
-              if (thumbnailPath) {
+            onComplete: async (result) => {
+              if (result.thumbnailPath) {
                 await ctx.db.mediaFile.update({
                   where: { id: file.id },
-                  data: { thumbnailPath },
+                  data: {
+                    thumbnailPath: result.thumbnailPath,
+                    width: result.width,
+                    height: result.height,
+                  },
                 })
               }
             },
@@ -474,11 +491,15 @@ export const mediaBrowserRouter = createTRPCRouter({
               localPath: input.filePath,
               type: type.toLowerCase() as 'image' | 'video',
             },
-            onComplete: async (thumbnailPath) => {
-              if (thumbnailPath) {
+            onComplete: async (result) => {
+              if (result.thumbnailPath) {
                 await ctx.db.mediaFile.update({
                   where: { id: file.id },
-                  data: { thumbnailPath },
+                  data: {
+                    thumbnailPath: result.thumbnailPath,
+                    width: result.width,
+                    height: result.height,
+                  },
                 })
               }
             },
@@ -570,6 +591,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         },
         include: {
           folder: true,
+          actor: true,
           tags: true,
         },
       })
@@ -1045,18 +1067,138 @@ export const mediaBrowserRouter = createTRPCRouter({
           localPath: file.localPath || file.originalPath || undefined,
           type: file.type.toLowerCase() as 'image' | 'video',
         },
-        onComplete: async (thumbnailPath) => {
-          console.log('[regenerateThumbnail] Thumbnail generated:', { fileId: file.id, thumbnailPath })
-          if (thumbnailPath) {
+        onComplete: async (result) => {
+          console.log('[regenerateThumbnail] Thumbnail generated:', { fileId: file.id, result })
+          if (result.thumbnailPath) {
             await ctx.db.mediaFile.update({
               where: { id: file.id },
-              data: { thumbnailPath },
+              data: {
+                thumbnailPath: result.thumbnailPath,
+                width: result.width,
+                height: result.height,
+              },
             })
           }
         },
       })
 
       return { success: true, message: '缩略图重新生成任务已添加' }
+    }),
+
+  /**
+   * 转存远程URL文件到本地
+   */
+  convertUrlToLocal: userProcedure
+    .input(z.object({ fileId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      const file = await ctx.db.mediaFile.findFirst({
+        where: { id: input.fileId, userId },
+      })
+
+      if (!file) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '文件不存在' })
+      }
+
+      if (file.source !== 'URL') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: '只能转存远程URL文件' })
+      }
+
+      if (!file.sourceUrl) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: '文件缺少远程URL' })
+      }
+
+      try {
+        // 下载远程文件
+        console.log('[convertUrlToLocal] Downloading file from:', file.sourceUrl)
+        const response = await axios.get(file.sourceUrl, {
+          responseType: 'arraybuffer',
+          timeout: 60000, // 60秒超时
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          },
+        })
+
+        const buffer = Buffer.from(response.data as ArrayBuffer)
+
+        // 准备保存文件
+        const uploadDir = path.join(process.cwd(), 'data', 'media-uploads', userId)
+        await fs.mkdir(uploadDir, { recursive: true })
+
+        const uniqueId = crypto.randomBytes(8).toString('hex')
+        const localPath = path.join(uploadDir, `${uniqueId}_${file.name}`)
+
+        // 保存文件
+        await fs.writeFile(localPath, buffer)
+        const relativePath = path.relative(process.cwd(), localPath)
+
+        console.log('[convertUrlToLocal] File saved to:', relativePath)
+
+        // 获取媒体时长（视频和音频）
+        let duration: number | null = file.duration
+        if ((file.type === 'VIDEO' || file.type === 'AUDIO') && !duration) {
+          const { getMediaDuration } = await import('~/lib/services/audio-utils')
+          duration = await getMediaDuration(relativePath)
+        }
+
+        // 更新数据库记录
+        const updated = await ctx.db.mediaFile.update({
+          where: { id: file.id },
+          data: {
+            source: 'LOCAL',
+            localPath: relativePath,
+            fileSize: buffer.length,
+            duration,
+          },
+          include: {
+            folder: true,
+            actor: true,
+            tags: true,
+          },
+        })
+
+        // 重新生成缩略图（从本地文件）
+        if (file.type === 'IMAGE' || file.type === 'VIDEO') {
+          // 删除旧的基于URL的缩略图
+          if (file.thumbnailPath) {
+            await deleteThumbnail(file.thumbnailPath)
+          }
+
+          thumbnailQueue.add({
+            id: file.id,
+            options: {
+              userId,
+              fileId: file.id,
+              localPath: relativePath,
+              type: file.type.toLowerCase() as 'image' | 'video',
+            },
+            onComplete: async (result) => {
+              console.log('[convertUrlToLocal] Thumbnail regenerated:', { fileId: file.id, result })
+              if (result.thumbnailPath) {
+                await ctx.db.mediaFile.update({
+                  where: { id: file.id },
+                  data: {
+                    thumbnailPath: result.thumbnailPath,
+                    width: result.width,
+                    height: result.height,
+                  },
+                })
+              }
+            },
+          })
+        }
+
+        console.log('[convertUrlToLocal] Conversion completed:', { fileId: file.id, localPath: relativePath })
+        return { success: true, file: updated }
+      } catch (error) {
+        console.error('[convertUrlToLocal] Failed:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `转存失败: ${errorMessage}`,
+        })
+      }
     }),
 
   // ============================================

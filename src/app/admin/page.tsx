@@ -282,7 +282,7 @@ export default function TaskManagementPage() {
                 className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-900 focus:outline-none focus:ring-1 focus:ring-neutral-900"
                 required
               />
-              <p className="text-xs text-neutral-500">支持 YouTube、Bilibili、小宇宙、Apple 播客、Twitter。</p>
+              <p className="text-xs text-neutral-500">支持 YouTube、Bilibili、小宇宙、Apple 播客、Twitter、PornHub。</p>
             </div>
 
             <div className="space-y-2">
