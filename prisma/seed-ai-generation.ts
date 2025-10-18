@@ -783,6 +783,27 @@ async function main() {
     },
   })
 
+  // Kie Wan 2.5 Image to Video 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-wan-2-5-image-to-video' },
+    update: {},
+    create: {
+      name: 'Wan 2.5 Image to Video',
+      slug: 'kie-wan-2-5-image-to-video',
+      description: 'Wan 2.5 图生视频（支持720p/1080p，按秒计费，5秒/10秒）（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieWan25ImageToVideoAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['image-to-video', '1080p', 'prompt-expansion', 'negative-prompt', 'per-second-pricing', 'duration-control']),
+      functionTags: JSON.stringify(['image-to-video']),
+      pricingInfo: '720p: 12 Credits/秒 ($0.06/秒) | 1080p: 20 Credits/秒 ($0.10/秒)',
+      isActive: true, // 默认启用
+      sortOrder: 24,
+    },
+  })
+
   // Kie ByteDance V1 Pro Text to Video 模型
   await prisma.aIModel.upsert({
     where: { slug: 'kie-bytedance-v1-pro-text-to-video' },
@@ -800,7 +821,7 @@ async function main() {
       functionTags: JSON.stringify(['text-to-video']),
       pricingInfo: '480p: 2.8 Credits/秒 ($0.014/秒) | 720p: 6 Credits/秒 ($0.03/秒) | 1080p: 14 Credits/秒 ($0.07/秒)',
       isActive: true, // 默认启用
-      sortOrder: 24,
+      sortOrder: 25,
     },
   })
 
@@ -821,7 +842,7 @@ async function main() {
       functionTags: JSON.stringify(['image-to-video']),
       pricingInfo: '480p: 2.8 Credits/秒 ($0.014/秒) | 720p: 6 Credits/秒 ($0.03/秒) | 1080p: 14 Credits/秒 ($0.07/秒)',
       isActive: true, // 默认启用
-      sortOrder: 25,
+      sortOrder: 26,
     },
   })
 
@@ -842,7 +863,7 @@ async function main() {
       functionTags: JSON.stringify(['text-to-video', 'image-to-video']),
       pricingInfo: '5秒720p: 12 Credits ($0.06) | 5秒1080p: 30 Credits ($0.15) | 10秒720p: 30 Credits ($0.15)',
       isActive: true, // 默认启用
-      sortOrder: 26,
+      sortOrder: 27,
     },
   })
 
@@ -863,7 +884,7 @@ async function main() {
       functionTags: JSON.stringify(['video-extend']),
       pricingInfo: '720p: 12 Credits/5秒 ($0.06) | 1080p: 30 Credits/5秒 ($0.15)',
       isActive: true, // 默认启用
-      sortOrder: 27,
+      sortOrder: 28,
     },
   })
 

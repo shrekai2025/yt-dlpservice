@@ -231,6 +231,16 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
     return `${pricing.creditsPerSec} Credits/秒 ≈ $${pricing.costPerSec}/秒 (${resolution})`
   },
 
+  'kie-wan-2-5-image-to-video': (params) => {
+    const resolution = params.resolution as string || '1080p'
+    const pricingMap: Record<string, { creditsPerSec: number; costPerSec: string }> = {
+      '720p': { creditsPerSec: 12, costPerSec: '0.06' },
+      '1080p': { creditsPerSec: 20, costPerSec: '0.10' },
+    }
+    const pricing = pricingMap[resolution] || { creditsPerSec: 20, costPerSec: '0.10' }
+    return `${pricing.creditsPerSec} Credits/秒 ≈ $${pricing.costPerSec}/秒 (${resolution})`
+  },
+
   'kie-bytedance-v1-pro-text-to-video': (params) => {
     const duration = params.duration as string || '5'
     const resolution = params.resolution as string || '720p'

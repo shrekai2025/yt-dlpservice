@@ -29,7 +29,7 @@ interface KieKlingV2StatusResponse {
   data: {
     taskId: string
     model: string
-    state: 'waiting' | 'success' | 'fail'
+    state: 'waiting' | 'queueing' | 'generating' | 'success' | 'fail'
     param: string
     resultJson: string | null
     failCode: string | null
@@ -197,12 +197,17 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
 
       const { state, resultJson, failCode, failMsg } = data
 
-      // 等待中
-      if (state === 'waiting') {
+      // 等待中、排队中、生成中
+      if (state === 'waiting' || state === 'queueing' || state === 'generating') {
+        const stateMessages = {
+          waiting: 'Waiting for video generation...',
+          queueing: 'Task in queue...',
+          generating: 'Generating video...',
+        }
         return {
           status: 'PROCESSING',
           providerTaskId: taskId,
-          message: 'Waiting for video generation...',
+          message: stateMessages[state] || 'Processing...',
         }
       }
 

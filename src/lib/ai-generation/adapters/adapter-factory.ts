@@ -33,6 +33,7 @@ import { KieKlingV25TurboTextToVideoProAdapter } from './kie/kie-kling-v2-5-turb
 import { KieWan22A14bTextToVideoTurboAdapter } from './kie/kie-wan-2-2-a14b-text-to-video-turbo-adapter'
 import { KieWan22A14bImageToVideoTurboAdapter } from './kie/kie-wan-2-2-a14b-image-to-video-turbo-adapter'
 import { KieWan25TextToVideoAdapter } from './kie/kie-wan-2-5-text-to-video-adapter'
+import { KieWan25ImageToVideoAdapter } from './kie/kie-wan-2-5-image-to-video-adapter'
 import { KieByteDanceV1ProTextToVideoAdapter } from './kie/kie-bytedance-v1-pro-text-to-video-adapter'
 import { KieByteDanceV1ProImageToVideoAdapter } from './kie/kie-bytedance-v1-pro-image-to-video-adapter'
 import { KieRunwayAdapter } from './kie/kie-runway-adapter'
@@ -81,6 +82,7 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   KieWan22A14bTextToVideoTurboAdapter,
   KieWan22A14bImageToVideoTurboAdapter,
   KieWan25TextToVideoAdapter,
+  KieWan25ImageToVideoAdapter,
   KieByteDanceV1ProTextToVideoAdapter,
   KieByteDanceV1ProImageToVideoAdapter,
   KieRunwayAdapter,

@@ -1,11 +1,11 @@
 /**
- * KieKlingV2MasterTextToVideoAdapter - Kie.ai Kling v2-1 Master Text to Video
+ * KieWan25ImageToVideoAdapter - Kie.ai Wan 2.5 Image to Video
  *
- * 对应模型: kie-kling-v2-1-master-text-to-video
- * 功能: 文生视频
+ * 对应模型: kie-wan-2-5-image-to-video
+ * 功能: 图生视频（Wan 2.5 版本，支持 720p 和 1080p）
  *
  * API文档: https://api.kie.ai/api/v1/jobs/createTask
- * 定价: 5秒视频 160 credits ($0.80), 10秒视频 320 credits ($1.60)
+ * 定价: 720p: 12 credits/秒 ($0.06), 1080p: 20 credits/秒 ($0.10)
  */
 
 import { BaseAdapter } from '../base-adapter'
@@ -15,7 +15,7 @@ import type {
   AdapterResponse,
 } from '../types'
 
-interface KieKlingV2TextTaskResponse {
+interface KieWanTaskResponse {
   code: number
   msg: string
   data: {
@@ -23,7 +23,7 @@ interface KieKlingV2TextTaskResponse {
   }
 }
 
-interface KieKlingV2TextStatusResponse {
+interface KieWanStatusResponse {
   code: number
   msg: string
   data: {
@@ -40,11 +40,11 @@ interface KieKlingV2TextStatusResponse {
   }
 }
 
-interface KieKlingV2TextResultJson {
+interface KieWanResultJson {
   resultUrls: string[]
 }
 
-export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
+export class KieWan25ImageToVideoAdapter extends BaseAdapter {
   /**
    * 调度生成请求
    */
@@ -63,7 +63,7 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         }
       }
 
-      // 验证 prompt 参数
+      // 验证必需参数
       if (!request.prompt) {
         return {
           status: 'ERROR',
@@ -76,37 +76,55 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         }
       }
 
+      if (!request.inputImages || request.inputImages.length === 0) {
+        return {
+          status: 'ERROR',
+          message: 'Input image is required',
+          error: {
+            code: 'MISSING_IMAGE',
+            message: 'At least one input image is required',
+            isRetryable: false,
+          },
+        }
+      }
+
       // 构建 input 参数对象
       const input: Record<string, unknown> = {
         prompt: request.prompt,
+        image_url: request.inputImages[0], // 单张图片输入
       }
 
-      // 可选参数: duration (5 or 10)
+      // 可选参数: duration (5秒或10秒)
       if (request.parameters?.duration) {
-        input.duration = String(request.parameters.duration)
+        input.duration = request.parameters.duration
       }
 
-      // 可选参数: aspect_ratio
-      if (request.parameters?.aspect_ratio) {
-        input.aspect_ratio = request.parameters.aspect_ratio
+      // 可选参数: resolution (720p, 1080p)
+      if (request.parameters?.resolution) {
+        input.resolution = request.parameters.resolution
       }
 
-      // 可选参数: negative_prompt
+      // 可选参数: negative_prompt (最多500字符)
       if (request.parameters?.negative_prompt) {
         input.negative_prompt = request.parameters.negative_prompt
       }
 
-      // 可选参数: cfg_scale (0-1)
-      if (request.parameters?.cfg_scale !== undefined) {
-        const cfgScale = Number(request.parameters.cfg_scale)
-        if (!isNaN(cfgScale)) {
-          input.cfg_scale = cfgScale
+      // 可选参数: enable_prompt_expansion
+      if (request.parameters?.enable_prompt_expansion !== undefined) {
+        input.enable_prompt_expansion = Boolean(request.parameters.enable_prompt_expansion)
+      }
+
+      // 可选参数: seed
+      if (request.parameters?.seed !== undefined) {
+        const seed = Number(request.parameters.seed)
+        if (!isNaN(seed)) {
+          input.seed = seed
         }
       }
 
       // 构建完整的请求体
       const payload: Record<string, unknown> = {
-        model: 'kling/v2-1-master-text-to-video',
+        model: 'wan/2-5-image-to-video',
         input,
       }
 
@@ -115,10 +133,10 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         payload.callBackUrl = request.parameters.callBackUrl
       }
 
-      this.log('info', 'Creating Kie Kling v2-1 Master Text to Video task', payload)
+      this.log('info', 'Creating Kie Wan 2.5 Image to Video task', payload)
 
       // 创建任务
-      const response = await this.httpClient.post<KieKlingV2TextTaskResponse>(
+      const response = await this.httpClient.post<KieWanTaskResponse>(
         '/api/v1/jobs/createTask',
         payload,
         {
@@ -140,7 +158,7 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         }
       }
 
-      this.log('info', `Kling v2-1 Master Text to Video task created: ${data.taskId}`)
+      this.log('info', `Wan 2.5 Image to Video task created: ${data.taskId}`)
 
       // 返回异步任务
       return {
@@ -149,7 +167,7 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         message: 'Video generation in progress',
       }
     } catch (error: unknown) {
-      this.log('error', 'Kie Kling v2-1 Master Text to Video dispatch failed', error)
+      this.log('error', 'Kie Wan 2.5 Image to Video dispatch failed', error)
 
       return {
         status: 'ERROR',
@@ -168,7 +186,7 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
    */
   async checkTaskStatus(taskId: string): Promise<AdapterResponse> {
     try {
-      const response = await this.httpClient.get<KieKlingV2TextStatusResponse>(
+      const response = await this.httpClient.get<KieWanStatusResponse>(
         '/api/v1/jobs/recordInfo',
         {
           baseURL: this.getApiEndpoint() || 'https://api.kie.ai',
@@ -204,9 +222,9 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
 
       // 成功
       if (state === 'success' && resultJson) {
-        let parsedResult: KieKlingV2TextResultJson
+        let parsedResult: KieWanResultJson
         try {
-          parsedResult = JSON.parse(resultJson) as KieKlingV2TextResultJson
+          parsedResult = JSON.parse(resultJson) as KieWanResultJson
         } catch {
           return {
             status: 'ERROR',
@@ -250,7 +268,7 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         providerTaskId: taskId,
       }
     } catch (error: unknown) {
-      this.log('error', 'Failed to check Kling v2-1 Master Text to Video task status', error)
+      this.log('error', 'Failed to check Wan 2.5 Image to Video task status', error)
 
       return {
         status: 'ERROR',

@@ -1159,6 +1159,61 @@ export const MODEL_PARAMETERS: Record<string, ParameterField[]> = {
     },
   ],
 
+  'kie-wan-2-5-image-to-video': [
+    {
+      key: 'duration',
+      label: '视频时长',
+      type: 'select',
+      defaultValue: '5',
+      options: [
+        { label: '5 秒', value: '5' },
+        { label: '10 秒', value: '10' },
+      ],
+      helperText: '选择视频时长',
+    },
+    {
+      key: 'resolution',
+      label: '视频分辨率',
+      type: 'select',
+      defaultValue: '1080p',
+      options: [
+        { label: '720p (12 Credits/秒)', value: '720p' },
+        { label: '1080p (20 Credits/秒)', value: '1080p' },
+      ],
+      helperText: '选择视频的分辨率，定价按每秒计费',
+    },
+    {
+      key: 'negative_prompt',
+      label: '负面提示词',
+      type: 'textarea',
+      placeholder: '描述想要避免的内容...',
+      helperText: '可选。描述不想要的元素，最多500字符',
+    },
+    {
+      key: 'enable_prompt_expansion',
+      label: '启用提示词扩展',
+      type: 'boolean',
+      defaultValue: true,
+      helperText: '使用 LLM 重写提示词。对短提示词效果更好，但会增加处理时间',
+    },
+    {
+      key: 'seed',
+      label: '随机种子',
+      type: 'number',
+      min: 0,
+      step: 1,
+      placeholder: '留空则随机',
+      helperText: '可选。设置种子以生成可重现的视频结果',
+    },
+    {
+      key: 'callBackUrl',
+      label: '回调通知 URL',
+      type: 'string',
+      placeholder: 'https://your-domain.com/api/callback',
+      helperText: '可选。任务完成时系统将向此URL发送POST请求通知',
+    },
+  ],
+
   'kie-bytedance-v1-pro-text-to-video': [
     {
       key: 'aspect_ratio',

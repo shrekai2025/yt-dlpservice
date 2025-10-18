@@ -254,6 +254,15 @@ export default function MediaBrowserPage() {
     },
   })
 
+  const regenerateThumbnailMutation = api.mediaBrowser.regenerateThumbnail.useMutation({
+    onSuccess: () => {
+      alert('缩略图重新生成任务已添加，请稍后刷新查看')
+    },
+    onError: (error) => {
+      alert(`重新生成缩略图失败: ${error.message}`)
+    },
+  })
+
   // 获取当前选中的演员信息
   const selectedActorData = actors?.find((a) => a.id === selectedActor)
 
@@ -1729,26 +1738,40 @@ export default function MediaBrowserPage() {
             )}
 
             {/* Action Buttons */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleDownloadFile(selectedFileForDetails)}
-                className="flex-1 flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
-              >
-                <Download className="h-4 w-4" />
-                下载原文件
-              </button>
-              <button
-                onClick={() => {
-                  if (confirm('确定要删除这个文件吗？此操作无法撤销。')) {
-                    deleteFileMutation.mutate({ id: selectedFileForDetails.id })
-                    setSelectedFileForDetails(null)
-                  }
-                }}
-                className="flex-1 flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
-              >
-                <Trash2 className="h-4 w-4" />
-                删除文件
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDownloadFile(selectedFileForDetails)}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
+                >
+                  <Download className="h-4 w-4" />
+                  下载原文件
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm('确定要删除这个文件吗？此操作无法撤销。')) {
+                      deleteFileMutation.mutate({ id: selectedFileForDetails.id })
+                      setSelectedFileForDetails(null)
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-md bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  删除文件
+                </button>
+              </div>
+              {selectedFileForDetails.type !== 'AUDIO' && (
+                <button
+                  onClick={() => {
+                    regenerateThumbnailMutation.mutate({ fileId: selectedFileForDetails.id })
+                  }}
+                  disabled={regenerateThumbnailMutation.isPending}
+                  className="w-full flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Image className="h-4 w-4" />
+                  {regenerateThumbnailMutation.isPending ? '重新生成中...' : '重新生成缩略图'}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -264,6 +264,7 @@ export const mediaBrowserRouter = createTRPCRouter({
 
           // 异步生成缩略图（不阻塞）
           if (type === 'IMAGE' || type === 'VIDEO') {
+            console.log('[addUrls] Adding thumbnail job for:', { fileId: file.id, url, type })
             thumbnailQueue.add({
               id: file.id,
               options: {
@@ -273,11 +274,13 @@ export const mediaBrowserRouter = createTRPCRouter({
                 type: type.toLowerCase() as 'image' | 'video',
               },
               onComplete: async (thumbnailPath) => {
+                console.log('[addUrls] Thumbnail generation completed:', { fileId: file.id, thumbnailPath })
                 if (thumbnailPath) {
                   await ctx.db.mediaFile.update({
                     where: { id: file.id },
                     data: { thumbnailPath },
                   })
+                  console.log('[addUrls] Thumbnail path updated in database:', { fileId: file.id, thumbnailPath })
                 }
               },
             })
@@ -1001,6 +1004,59 @@ export const mediaBrowserRouter = createTRPCRouter({
       })
 
       return updated
+    }),
+
+  /**
+   * 重新生成缩略图
+   */
+  regenerateThumbnail: userProcedure
+    .input(z.object({ fileId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      const file = await ctx.db.mediaFile.findFirst({
+        where: { id: input.fileId, userId },
+      })
+
+      if (!file) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: '文件不存在' })
+      }
+
+      if (file.type === 'AUDIO') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: '音频文件不支持缩略图' })
+      }
+
+      // 删除旧的缩略图
+      if (file.thumbnailPath) {
+        await deleteThumbnail(file.thumbnailPath)
+        await ctx.db.mediaFile.update({
+          where: { id: file.id },
+          data: { thumbnailPath: null },
+        })
+      }
+
+      // 添加到缩略图生成队列
+      thumbnailQueue.add({
+        id: file.id,
+        options: {
+          userId,
+          fileId: file.id,
+          sourceUrl: file.sourceUrl || undefined,
+          localPath: file.localPath || file.originalPath || undefined,
+          type: file.type.toLowerCase() as 'image' | 'video',
+        },
+        onComplete: async (thumbnailPath) => {
+          console.log('[regenerateThumbnail] Thumbnail generated:', { fileId: file.id, thumbnailPath })
+          if (thumbnailPath) {
+            await ctx.db.mediaFile.update({
+              where: { id: file.id },
+              data: { thumbnailPath },
+            })
+          }
+        },
+      })
+
+      return { success: true, message: '缩略图重新生成任务已添加' }
     }),
 
   // ============================================
