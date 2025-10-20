@@ -200,6 +200,7 @@ export const aiGenerationRouter = createTRPCRouter({
         inputImages: z.array(z.string()).optional(),
         numberOfOutputs: z.number().int().positive().optional(),
         parameters: z.record(z.unknown()).optional(),
+        shotId: z.string().optional(), // 关联的镜头ID（可选）
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -258,6 +259,7 @@ export const aiGenerationRouter = createTRPCRouter({
         inputImages: input.inputImages,
         numberOfOutputs: effectiveNumberOfOutputs,
         parameters: validatedParameters,
+        shotId: input.shotId, // 关联镜头ID
       })
 
       console.log(`[AI Generation] Created task ${task.id} for model ${model.name}`)
@@ -415,6 +417,8 @@ export const aiGenerationRouter = createTRPCRouter({
       z.object({
         status: z.enum(['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED', 'CANCELLED']).optional(),
         modelId: z.string().optional(),
+        outputType: z.enum(['IMAGE', 'VIDEO', 'AUDIO']).optional(),
+        shotId: z.string().optional(), // 按镜头ID筛选
         limit: z.number().min(1).max(100).default(20),
         offset: z.number().min(0).default(0),
       })
@@ -423,6 +427,8 @@ export const aiGenerationRouter = createTRPCRouter({
       const result = await taskManager.listTasks({
         status: input.status,
         modelId: input.modelId,
+        outputType: input.outputType,
+        shotId: input.shotId, // 传递镜头ID筛选
         limit: input.limit,
         offset: input.offset,
       })

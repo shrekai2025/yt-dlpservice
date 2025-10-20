@@ -1012,3 +1012,24 @@ Ctrl + O
 Ctrl + X
 pm2 restart yt-dlpservice
 pm2 logs yt-dlpservice --lines 30
+
+
+
+
+Q2: 远程服务器部署需要改什么？
+✅ 只需要修改 .env.production 文件中的路径，不需要执行额外命令！ 部署步骤：
+# 1. 在服务器上创建 .env.production
+DATABASE_URL="file:./data/app.db"  # 使用相对路径（推荐）
+ADMIN_USERNAME="your_username"
+ADMIN_PASSWORD="your_password"
+
+# 2. 标准部署流程（与本地相同）
+npm ci --only=production
+npx prisma migrate deploy
+npx tsx prisma/seed-user.ts
+npx tsx prisma/seed-ai-generation.ts
+npm run build
+npm start
+
+
+DEPLOYMENT_VERIFICATION.md - 包含完整的数据流验证和检查清单

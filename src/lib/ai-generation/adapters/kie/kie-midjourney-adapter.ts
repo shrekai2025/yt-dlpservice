@@ -72,48 +72,56 @@ export class KieMidjourneyAdapter extends BaseAdapter {
       
       payload.taskType = request.parameters?.taskType || defaultTaskType
 
-      // 生成速度
-      if (request.parameters?.speed) {
-        payload.speed = request.parameters.speed
-      }
+      // 判断任务类型
+      const isVideoTask = payload.taskType === 'mj_video' || payload.taskType === 'mj_video_hd'
 
-      // 输出比例
+      // 输出比例 (图像和视频都需要)
       if (request.parameters?.aspectRatio) {
         payload.aspectRatio = request.parameters.aspectRatio
       }
 
-      // MJ 版本
-      if (request.parameters?.version) {
-        payload.version = request.parameters.version
+      // === 图像任务专用参数 ===
+      if (!isVideoTask) {
+        // 生成速度
+        if (request.parameters?.speed) {
+          payload.speed = request.parameters.speed
+        }
+
+        // MJ 版本
+        if (request.parameters?.version) {
+          payload.version = request.parameters.version
+        }
+
+        // 多样性
+        if (request.parameters?.variety !== undefined) {
+          payload.variety = request.parameters.variety
+        }
+
+        // 风格化
+        if (request.parameters?.stylization !== undefined) {
+          payload.stylization = request.parameters.stylization
+        }
+
+        // 怪异度
+        if (request.parameters?.weirdness !== undefined) {
+          payload.weirdness = request.parameters.weirdness
+        }
+
+        // Omni 强度
+        if (request.parameters?.ow !== undefined) {
+          payload.ow = request.parameters.ow
+        }
       }
 
-      // 多样性
-      if (request.parameters?.variety !== undefined) {
-        payload.variety = request.parameters.variety
-      }
+      // === 视频任务专用参数 ===
+      if (isVideoTask) {
+        if (request.parameters?.videoBatchSize !== undefined) {
+          payload.videoBatchSize = request.parameters.videoBatchSize
+        }
 
-      // 风格化
-      if (request.parameters?.stylization !== undefined) {
-        payload.stylization = request.parameters.stylization
-      }
-
-      // 怪异度
-      if (request.parameters?.weirdness !== undefined) {
-        payload.weirdness = request.parameters.weirdness
-      }
-
-      // Omni 强度
-      if (request.parameters?.ow !== undefined) {
-        payload.ow = request.parameters.ow
-      }
-
-      // 视频相关参数
-      if (request.parameters?.videoBatchSize !== undefined) {
-        payload.videoBatchSize = request.parameters.videoBatchSize
-      }
-
-      if (request.parameters?.motion) {
-        payload.motion = request.parameters.motion
+        if (request.parameters?.motion) {
+          payload.motion = request.parameters.motion
+        }
       }
 
       // 输入图片 - 使用 fileUrls (推荐) 或 fileUrl (向后兼容)
@@ -137,6 +145,7 @@ export class KieMidjourneyAdapter extends BaseAdapter {
       }
 
       this.log('info', 'Creating Kie Midjourney task', payload)
+      console.log('[KieMidjourneyAdapter] Full payload being sent to API:', JSON.stringify(payload, null, 2))
 
       // 创建任务
       const response = await this.httpClient.post<KieMjTaskResponse>(

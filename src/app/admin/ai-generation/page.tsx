@@ -15,7 +15,7 @@ import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent } from '~/components/ui/dialog'
 import { getModelParameters, type ParameterField } from '~/lib/ai-generation/config/model-parameters'
 import { getModelPricingInfo } from '~/lib/ai-generation/config/pricing-info'
-import { TaskHistorySection } from './tasks/task-history-section'
+import { TaskHistorySection, type TaskHistoryTask } from './tasks/task-history-section'
 
 type OutputType = 'IMAGE' | 'VIDEO' | 'AUDIO'
 
@@ -391,6 +391,51 @@ export default function AIGenerationPage() {
     }
   }, [isFluxKontextModel, numberOfOutputs])
 
+  // 处理应用历史任务
+  const handleApplyTask = (task: TaskHistoryTask) => {
+    // 应用模型选择
+    if (task.model.id) {
+      setSelectedModelId(task.model.id)
+      setSelectedProviderId(task.model.provider.id)
+
+      // 根据模型的输出类型设置相应的输出类型
+      if (task.model.outputType) {
+        setSelectedOutputType(task.model.outputType as OutputType)
+      }
+    }
+
+    // 应用提示词
+    if (task.prompt) {
+      setPrompt(task.prompt)
+    }
+
+    // 应用输入图片
+    if (Array.isArray(task.inputImages) && task.inputImages.length > 0) {
+      const images = task.inputImages
+        .filter((img): img is string => typeof img === 'string')
+        .map((url, index) => ({
+          url,
+          name: `历史图片 ${index + 1}`,
+        }))
+      setUploadedImages(images)
+    } else {
+      setUploadedImages([])
+    }
+
+    // 应用参数
+    if (task.parameters && typeof task.parameters === 'object') {
+      setParameters(task.parameters as Record<string, unknown>)
+    }
+
+    // 应用输出数量
+    if (task.numberOfOutputs) {
+      setNumberOfOutputs(task.numberOfOutputs)
+    }
+
+    // 滚动到页面顶部以便用户看到应用的参数
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   // 处理生成
   const handleGenerate = () => {
     if (!selectedModelId) {
@@ -752,7 +797,7 @@ export default function AIGenerationPage() {
       </Dialog>
 
       {/* 任务历史 */}
-      <TaskHistorySection refreshToken={tasksRefreshToken} />
+      <TaskHistorySection refreshToken={tasksRefreshToken} onApplyTask={handleApplyTask} />
     </div>
   )
 }

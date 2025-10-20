@@ -12,6 +12,7 @@ import { Dialog, DialogContent } from '~/components/ui/dialog'
 import type { AppRouter } from '~/server/api/root'
 
 export type TaskStatus = 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'
+export type OutputType = 'IMAGE' | 'VIDEO' | 'AUDIO'
 
 type ListTasksOutput = inferRouterOutputs<AppRouter>['aiGeneration']['listTasks']
 export type TaskHistoryTask = ListTasksOutput['tasks'][number]
@@ -30,6 +31,7 @@ export function TaskHistorySection({
   onApplyTask,
 }: TaskHistorySectionProps) {
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | undefined>(undefined)
+  const [selectedOutputType, setSelectedOutputType] = useState<OutputType | undefined>(undefined)
   const [previewMedia, setPreviewMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(
     null
   )
@@ -43,6 +45,7 @@ export function TaskHistorySection({
   } = api.aiGeneration.listTasks.useQuery(
     {
       status: selectedStatus,
+      outputType: selectedOutputType,
       limit: itemsPerPage,
       offset: (currentPage - 1) * itemsPerPage,
     },
@@ -88,10 +91,10 @@ export function TaskHistorySection({
     }
   }, [refreshToken, refetch])
 
-  // 当筛选状态改变时，重置到第一页
+  // 当筛选状态或输出类型改变时，重置到第一页
   useEffect(() => {
     setCurrentPage(1)
-  }, [selectedStatus])
+  }, [selectedStatus, selectedOutputType])
 
   const heading = variant === 'page' ? '生成任务' : '任务历史'
 
@@ -142,24 +145,54 @@ export function TaskHistorySection({
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <Button
-          variant={selectedStatus === undefined ? 'default' : 'outline'}
-          size="sm"
-          onClick={() => setSelectedStatus(undefined)}
-        >
-          全部
-        </Button>
-        {(['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED'] as TaskStatus[]).map((status) => (
-          <Button
-            key={status}
-            variant={selectedStatus === status ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setSelectedStatus(status)}
-          >
-            {status}
-          </Button>
-        ))}
+      <div className="space-y-3">
+        {/* 任务类型筛选 */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-600">任务类型:</span>
+          <div className="flex gap-2">
+            <Button
+              variant={selectedOutputType === undefined ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedOutputType(undefined)}
+            >
+              All
+            </Button>
+            {(['IMAGE', 'VIDEO', 'AUDIO'] as OutputType[]).map((type) => (
+              <Button
+                key={type}
+                variant={selectedOutputType === type ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedOutputType(type)}
+              >
+                {type === 'IMAGE' ? 'Image' : type === 'VIDEO' ? 'Video' : 'Audio'}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {/* 任务状态筛选 */}
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-gray-600">任务状态:</span>
+          <div className="flex gap-2">
+            <Button
+              variant={selectedStatus === undefined ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setSelectedStatus(undefined)}
+            >
+              全部
+            </Button>
+            {(['PENDING', 'PROCESSING', 'SUCCESS', 'FAILED'] as TaskStatus[]).map((status) => (
+              <Button
+                key={status}
+                variant={selectedStatus === status ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setSelectedStatus(status)}
+              >
+                {status}
+              </Button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -250,9 +283,7 @@ export function TaskHistorySection({
                       size="sm"
                       disabled={deleteMutation.isLoading}
                       onClick={() => {
-                        if (confirm('确认删除此任务？')) {
-                          deleteMutation.mutate({ taskId: task.id })
-                        }
+                        deleteMutation.mutate({ taskId: task.id })
                       }}
                     >
                       删除

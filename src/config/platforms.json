@@ -79,5 +79,20 @@
     "requiresAuth": false,
     "downloadMethod": "yt-dlp",
     "note": "Twitter/X平台支持推文中的视频、图片下载。部分内容可能需要登录才能访问。"
+  },
+  "pornhub": {
+    "name": "PornHub",
+    "domains": [
+      "pornhub.com",
+      "www.pornhub.com"
+    ],
+    "urlPatterns": [
+      "/view_video\\.php",
+      "/embed/",
+      "/video/show/title/"
+    ],
+    "contentTypes": ["video"],
+    "requiresAuth": false,
+    "downloadMethod": "yt-dlp"
   }
 } 

@@ -13,6 +13,7 @@ export interface CreateTaskInput {
   inputImages?: string[]
   numberOfOutputs?: number
   parameters?: Record<string, unknown>
+  shotId?: string // 关联的镜头ID
 }
 
 export interface UpdateTaskInput {
@@ -29,6 +30,8 @@ export interface UpdateTaskInput {
 export interface ListTasksFilter {
   status?: AITaskStatus
   modelId?: string
+  outputType?: 'IMAGE' | 'VIDEO' | 'AUDIO'
+  shotId?: string // 按镜头ID筛选
   limit?: number
   offset?: number
 }
@@ -45,6 +48,7 @@ export class TaskManager {
         inputImages: input.inputImages ? JSON.stringify(input.inputImages) : null,
         numberOfOutputs: input.numberOfOutputs || 1,
         parameters: input.parameters ? JSON.stringify(input.parameters) : null,
+        shotId: input.shotId, // 关联镜头ID
         status: 'PENDING',
       },
       include: {
@@ -105,7 +109,11 @@ export class TaskManager {
     const where: {
       status?: AITaskStatus
       modelId?: string
+      shotId?: string
       deletedAt: null
+      model?: {
+        outputType?: string
+      }
     } = {
       deletedAt: null,
     }
@@ -116,6 +124,16 @@ export class TaskManager {
 
     if (filter.modelId) {
       where.modelId = filter.modelId
+    }
+
+    if (filter.shotId) {
+      where.shotId = filter.shotId
+    }
+
+    if (filter.outputType) {
+      where.model = {
+        outputType: filter.outputType,
+      }
     }
 
     const limit = filter.limit || 20

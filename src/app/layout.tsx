@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "../styles/globals.css";
 import { TRPCReactProvider } from "~/components/providers/trpc-provider";
+import { Toaster } from "~/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "Media Converter",
@@ -19,6 +20,7 @@ export default function RootLayout({
           <div className="min-h-screen">
             {children}
           </div>
+          <Toaster />
         </TRPCReactProvider>
       </body>
     </html>

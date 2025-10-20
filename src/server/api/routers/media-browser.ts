@@ -915,6 +915,7 @@ export const mediaBrowserRouter = createTRPCRouter({
       z.object({
         name: z.string().min(1).max(50),
         avatarUrl: z.string().optional(),
+        referenceImageUrl: z.string().optional(),
         bio: z.string().optional(),
       })
     )
@@ -924,6 +925,7 @@ export const mediaBrowserRouter = createTRPCRouter({
           userId: ctx.userId!,
           name: input.name,
           avatarUrl: input.avatarUrl,
+          referenceImageUrl: input.referenceImageUrl,
           bio: input.bio,
         },
       })
@@ -940,6 +942,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         id: z.string(),
         name: z.string().min(1).max(50).optional(),
         avatarUrl: z.string().optional(),
+        referenceImageUrl: z.string().optional(),
         bio: z.string().optional(),
       })
     )
@@ -957,6 +960,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         data: {
           name: input.name,
           avatarUrl: input.avatarUrl,
+          referenceImageUrl: input.referenceImageUrl,
           bio: input.bio,
         },
       })

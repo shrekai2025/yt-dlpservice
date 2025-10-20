@@ -4,9 +4,10 @@ import { useState, useRef, useEffect, useCallback, useMemo, useReducer } from 'r
 import NextImage from 'next/image'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { api } from '~/components/providers/trpc-provider'
-import { Plus, Download, Grid3x3, List, Image, Video, Music, Folder, X, Upload, AlertCircle, RefreshCw, Trash2, Loader2, User, Edit2, Check, ChevronLeft, ChevronRight, Copy, Search, Minimize2, Maximize2, Play, HardDrive } from 'lucide-react'
+import { Plus, Download, Grid3x3, List, Image, Video, Music, Folder, X, Upload, AlertCircle, RefreshCw, Trash2, Loader2, User, Edit2, Check, ChevronLeft, ChevronRight, Copy, Search, Minimize2, Maximize2, Play, HardDrive, Scissors, RotateCw } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { getShimmerPlaceholder } from '~/lib/utils/image-placeholder'
+import { VideoTrimModal } from '~/components/VideoTrimModal'
 
 // LocalStorage keys
 const STORAGE_KEYS = {
@@ -21,6 +22,7 @@ const STORAGE_KEYS = {
   SELECTED_ACTOR: 'media-browser-selected-actor',
   COMPACT_MODE: 'media-browser-compact-mode',
   AUTO_PLAY_ALL: 'media-browser-auto-play-all',
+  SHOW_UNASSIGNED: 'media-browser-show-unassigned',
 }
 
 type MediaFile = {
@@ -39,7 +41,7 @@ type MediaFile = {
   width?: number | null
   height?: number | null
   folder?: { id: string; name: string } | null
-  actor?: { id: string; name: string; avatarUrl: string | null; bio: string | null } | null
+  actor?: { id: string; name: string; avatarUrl: string | null; referenceImageUrl: string | null; bio: string | null } | null
 }
 
 type UploadTask = {
@@ -63,24 +65,26 @@ type ViewTab = 'folders' | 'actors'
  */
 type UIState = {
   viewTab: ViewTab
-  viewMode: 'grid' | 'list'
+  viewMode: 'grid' | 'justified' // 改为 justified (木桶布局)
   compactMode: boolean
   autoPlayAll: boolean
   actorPanelCollapsed: boolean
   leftSidebarCollapsed: boolean
   columnWidth: number
   showUnassigned: boolean
+  justifiedRowHeight: number // 木桶布局的行高
 }
 
 type UIAction =
   | { type: 'SET_VIEW_TAB'; payload: ViewTab }
-  | { type: 'SET_VIEW_MODE'; payload: 'grid' | 'list' }
+  | { type: 'SET_VIEW_MODE'; payload: 'grid' | 'justified' }
   | { type: 'TOGGLE_COMPACT_MODE' }
   | { type: 'TOGGLE_AUTO_PLAY_ALL' }
   | { type: 'TOGGLE_ACTOR_PANEL' }
   | { type: 'TOGGLE_LEFT_SIDEBAR' }
   | { type: 'SET_COLUMN_WIDTH'; payload: number }
   | { type: 'SET_SHOW_UNASSIGNED'; payload: boolean }
+  | { type: 'SET_JUSTIFIED_ROW_HEIGHT'; payload: number }
 
 const uiReducer = (state: UIState, action: UIAction): UIState => {
   switch (action.type) {
@@ -100,6 +104,8 @@ const uiReducer = (state: UIState, action: UIAction): UIState => {
       return { ...state, columnWidth: action.payload }
     case 'SET_SHOW_UNASSIGNED':
       return { ...state, showUnassigned: action.payload }
+    case 'SET_JUSTIFIED_ROW_HEIGHT':
+      return { ...state, justifiedRowHeight: action.payload }
     default:
       return state
   }
@@ -111,14 +117,14 @@ const uiReducer = (state: UIState, action: UIAction): UIState => {
 type FilterState = {
   selectedFolder: string | undefined
   selectedActor: string | undefined
-  filterType: 'IMAGE' | 'VIDEO' | 'AUDIO' | undefined
+  filterTypes: ('IMAGE' | 'VIDEO' | 'AUDIO')[]  // 改为数组支持多选
   filterSource: 'LOCAL' | 'URL' | undefined
 }
 
 type FilterAction =
   | { type: 'SET_FOLDER'; payload: string | undefined }
   | { type: 'SET_ACTOR'; payload: string | undefined }
-  | { type: 'SET_TYPE'; payload: 'IMAGE' | 'VIDEO' | 'AUDIO' | undefined }
+  | { type: 'TOGGLE_TYPE'; payload: 'IMAGE' | 'VIDEO' | 'AUDIO' }  // 改为toggle
   | { type: 'SET_SOURCE'; payload: 'LOCAL' | 'URL' | undefined }
   | { type: 'RESET_FILTERS' }
 
@@ -128,15 +134,24 @@ const filterReducer = (state: FilterState, action: FilterAction): FilterState =>
       return { ...state, selectedFolder: action.payload }
     case 'SET_ACTOR':
       return { ...state, selectedActor: action.payload }
-    case 'SET_TYPE':
-      return { ...state, filterType: action.payload }
+    case 'TOGGLE_TYPE':
+      // 切换类型选择
+      const isSelected = state.filterTypes.includes(action.payload)
+      if (isSelected) {
+        // 取消选择,但至少保留一个
+        const newTypes = state.filterTypes.filter(t => t !== action.payload)
+        return { ...state, filterTypes: newTypes.length > 0 ? newTypes : state.filterTypes }
+      } else {
+        // 添加选择
+        return { ...state, filterTypes: [...state.filterTypes, action.payload] }
+      }
     case 'SET_SOURCE':
       return { ...state, filterSource: action.payload }
     case 'RESET_FILTERS':
       return {
         selectedFolder: undefined,
         selectedActor: undefined,
-        filterType: undefined,
+        filterTypes: ['IMAGE', 'VIDEO', 'AUDIO'],  // 默认全选
         filterSource: undefined,
       }
     default:
@@ -158,13 +173,14 @@ export default function MediaBrowserPage() {
     leftSidebarCollapsed: false,
     columnWidth: 280,
     showUnassigned: false,
+    justifiedRowHeight: 250, // 默认木桶布局行高
   })
 
   // ===== Stage 4: useReducer for Filter State =====
   const [filterState, dispatchFilter] = useReducer(filterReducer, {
     selectedFolder: undefined,
     selectedActor: undefined,
-    filterType: undefined,
+    filterTypes: ['IMAGE', 'VIDEO', 'AUDIO'],  // 默认全选
     filterSource: undefined,
   })
 
@@ -178,16 +194,17 @@ export default function MediaBrowserPage() {
     leftSidebarCollapsed,
     columnWidth,
     showUnassigned,
+    justifiedRowHeight,
   } = uiState
 
-  const { selectedFolder, selectedActor, filterType, filterSource} = filterState
+  const { selectedFolder, selectedActor, filterTypes, filterSource} = filterState
 
   // Helper functions for common state updates
   const setViewTab = useCallback((tab: ViewTab) => {
     dispatchUI({ type: 'SET_VIEW_TAB', payload: tab })
   }, [])
 
-  const setViewMode = useCallback((mode: 'grid' | 'list') => {
+  const setViewMode = useCallback((mode: 'grid' | 'justified') => {
     dispatchUI({ type: 'SET_VIEW_MODE', payload: mode })
   }, [])
 
@@ -203,6 +220,10 @@ export default function MediaBrowserPage() {
     dispatchUI({ type: 'SET_COLUMN_WIDTH', payload: width })
   }, [])
 
+  const setJustifiedRowHeight = useCallback((height: number) => {
+    dispatchUI({ type: 'SET_JUSTIFIED_ROW_HEIGHT', payload: height })
+  }, [])
+
   const setSelectedFolder = useCallback((folder: string | undefined) => {
     dispatchFilter({ type: 'SET_FOLDER', payload: folder })
   }, [])
@@ -211,8 +232,8 @@ export default function MediaBrowserPage() {
     dispatchFilter({ type: 'SET_ACTOR', payload: actor })
   }, [])
 
-  const setFilterType = useCallback((type: 'IMAGE' | 'VIDEO' | 'AUDIO' | undefined) => {
-    dispatchFilter({ type: 'SET_TYPE', payload: type })
+  const toggleFilterType = useCallback((type: 'IMAGE' | 'VIDEO' | 'AUDIO') => {
+    dispatchFilter({ type: 'TOGGLE_TYPE', payload: type })
   }, [])
 
   const setFilterSource = useCallback((source: 'LOCAL' | 'URL' | undefined) => {
@@ -254,6 +275,8 @@ export default function MediaBrowserPage() {
   const [tempActorBio, setTempActorBio] = useState('')
   const [tempActorAvatarUrl, setTempActorAvatarUrl] = useState('')
   const [showAvatarUrlDialog, setShowAvatarUrlDialog] = useState(false)
+  const [tempActorReferenceImageUrl, setTempActorReferenceImageUrl] = useState('')
+  const [showReferenceImageUrlDialog, setShowReferenceImageUrlDialog] = useState(false)
 
   const [hoveredVideoId, setHoveredVideoId] = useState<string | null>(null)
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -267,29 +290,58 @@ export default function MediaBrowserPage() {
   const [selectedFileForDetails, setSelectedFileForDetails] = useState<MediaFile | null>(null)
   const [editingFileRemark, setEditingFileRemark] = useState(false)
   const [tempFileRemark, setTempFileRemark] = useState('')
+  const [videoTrimModalOpen, setVideoTrimModalOpen] = useState(false)
+
+  // 文件详情 - 文件夹和演员选择弹窗
+  const [showFolderSelector, setShowFolderSelector] = useState(false)
+  const [showActorSelector, setShowActorSelector] = useState(false)
+
+  // 批量操作模式
+  const [bulkSelectionMode, setBulkSelectionMode] = useState(false)
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set())
+  const [showBulkFolderSelector, setShowBulkFolderSelector] = useState(false)
+  const [showBulkActorSelector, setShowBulkActorSelector] = useState(false)
 
   // Inline editing state for list view
   const [editingInlineFileId, setEditingInlineFileId] = useState<string | null>(null)
   const [tempInlineRemark, setTempInlineRemark] = useState('')
 
+  // 拖拽文件上传状态
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false)
+  const dragCounterRef = useRef(0)
+
   // 从 localStorage 恢复状态（仅在客户端 mount 后执行一次）
   useEffect(() => {
     setMounted(true)
 
-    const savedViewTab = localStorage.getItem(STORAGE_KEYS.VIEW_TAB) as ViewTab
-    if (savedViewTab) dispatchUI({ type: 'SET_VIEW_TAB', payload: savedViewTab })
-
     const savedFolder = localStorage.getItem(STORAGE_KEYS.SELECTED_FOLDER)
-    if (savedFolder) dispatchFilter({ type: 'SET_FOLDER', payload: savedFolder })
-
     const savedActor = localStorage.getItem(STORAGE_KEYS.SELECTED_ACTOR)
-    if (savedActor) dispatchFilter({ type: 'SET_ACTOR', payload: savedActor })
+    const savedShowUnassigned = localStorage.getItem(STORAGE_KEYS.SHOW_UNASSIGNED)
+    const savedViewTab = localStorage.getItem(STORAGE_KEYS.VIEW_TAB) as ViewTab
+    
+    // 恢复选中状态和 tab，如果没有任何历史记录，默认显示未归属文件
+    if (savedFolder) {
+      dispatchFilter({ type: 'SET_FOLDER', payload: savedFolder })
+      dispatchUI({ type: 'SET_VIEW_TAB', payload: 'folders' })
+    } else if (savedActor) {
+      dispatchFilter({ type: 'SET_ACTOR', payload: savedActor })
+      dispatchUI({ type: 'SET_VIEW_TAB', payload: 'actors' })
+    } else if (savedShowUnassigned === 'true') {
+      dispatchUI({ type: 'SET_SHOW_UNASSIGNED', payload: true })
+      dispatchUI({ type: 'SET_VIEW_TAB', payload: 'folders' })
+    } else if (!savedFolder && !savedActor && savedShowUnassigned === null) {
+      // 首次访问，没有任何历史记录，默认显示未归属文件
+      dispatchUI({ type: 'SET_SHOW_UNASSIGNED', payload: true })
+      dispatchUI({ type: 'SET_VIEW_TAB', payload: 'folders' })
+    } else if (savedViewTab) {
+      // 如果有保存的 tab 但没有选中项，恢复 tab
+      dispatchUI({ type: 'SET_VIEW_TAB', payload: savedViewTab })
+    }
 
-    const savedViewMode = localStorage.getItem(STORAGE_KEYS.VIEW_MODE) as 'grid' | 'list'
+    const savedViewMode = localStorage.getItem(STORAGE_KEYS.VIEW_MODE) as 'grid' | 'justified'
     if (savedViewMode) dispatchUI({ type: 'SET_VIEW_MODE', payload: savedViewMode })
 
-    const savedFilterType = localStorage.getItem(STORAGE_KEYS.FILTER_TYPE) as 'IMAGE' | 'VIDEO' | 'AUDIO'
-    if (savedFilterType) dispatchFilter({ type: 'SET_TYPE', payload: savedFilterType })
+    // filterTypes 不需要持久化,默认全选
 
     const savedFilterSource = localStorage.getItem(STORAGE_KEYS.FILTER_SOURCE) as 'LOCAL' | 'URL'
     if (savedFilterSource) dispatchFilter({ type: 'SET_SOURCE', payload: savedFilterSource })
@@ -337,14 +389,7 @@ export default function MediaBrowserPage() {
     if (mounted) localStorage.setItem(STORAGE_KEYS.VIEW_MODE, viewMode)
   }, [viewMode, mounted])
 
-  useEffect(() => {
-    if (!mounted) return
-    if (filterType) {
-      localStorage.setItem(STORAGE_KEYS.FILTER_TYPE, filterType)
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.FILTER_TYPE)
-    }
-  }, [filterType, mounted])
+  // filterTypes 不需要持久化到 localStorage
 
   useEffect(() => {
     if (!mounted) return
@@ -375,6 +420,10 @@ export default function MediaBrowserPage() {
     if (mounted) localStorage.setItem(STORAGE_KEYS.AUTO_PLAY_ALL, String(autoPlayAll))
   }, [autoPlayAll, mounted])
 
+  useEffect(() => {
+    if (mounted) localStorage.setItem(STORAGE_KEYS.SHOW_UNASSIGNED, String(showUnassigned))
+  }, [showUnassigned, mounted])
+
   // ===== Stage 5: Infinite Scrolling =====
   const {
     data: infiniteFilesData,
@@ -388,7 +437,7 @@ export default function MediaBrowserPage() {
       pageSize: 30, // Smaller page size for infinite scroll
       folderId: viewTab === 'folders' ? (showUnassigned ? null : selectedFolder) : undefined,
       actorId: viewTab === 'actors' ? selectedActor : undefined,
-      type: filterType,
+      type: undefined,  // 不在API层过滤,在前端过滤
       source: filterSource,
     },
     {
@@ -418,12 +467,21 @@ export default function MediaBrowserPage() {
   }, [infiniteFilesData])
 
   // 查询所有文件总数（用于 All 显示）
-  const { data: allFilesData } = api.mediaBrowser.listFiles.useQuery({
-    page: 1,
-    pageSize: 1,
-  })
+  // 优化: 只在侧边栏展开时查询，并使用较长的缓存时间
+  const { data: allFilesData } = api.mediaBrowser.listFiles.useQuery(
+    {
+      page: 1,
+      pageSize: 1,
+    },
+    {
+      enabled: !leftSidebarCollapsed,
+      staleTime: 30000, // 30秒内不重新请求
+      gcTime: 60000, // 60秒后清除缓存
+    }
+  )
 
   // 查询未归属文件总数
+  // 优化: 只在文件夹视图且侧边栏展开时查询
   const { data: unassignedFilesData } = api.mediaBrowser.listFiles.useQuery(
     {
       page: 1,
@@ -431,12 +489,24 @@ export default function MediaBrowserPage() {
       folderId: null,
     },
     {
-      enabled: viewTab === 'folders',
+      enabled: viewTab === 'folders' && !leftSidebarCollapsed,
+      staleTime: 30000,
+      gcTime: 60000,
     }
   )
 
-  const { data: folders, refetch: refetchFolders } = api.mediaBrowser.listFolders.useQuery()
-  const { data: actors, refetch: refetchActors } = api.mediaBrowser.listActors.useQuery()
+  // 优化: 添加缓存配置
+  const { data: folders, refetch: refetchFolders } = api.mediaBrowser.listFolders.useQuery(undefined, {
+    enabled: viewTab === 'folders' && !leftSidebarCollapsed,
+    staleTime: 30000,
+    gcTime: 60000,
+  })
+
+  const { data: actors, refetch: refetchActors } = api.mediaBrowser.listActors.useQuery(undefined, {
+    enabled: viewTab === 'actors' && !leftSidebarCollapsed,
+    staleTime: 30000,
+    gcTime: 60000,
+  })
 
   // Cleanup hover timeout on unmount
   useEffect(() => {
@@ -497,15 +567,23 @@ export default function MediaBrowserPage() {
     onSuccess: () => refetchFiles(),
   })
   const moveFileToFolderMutation = api.mediaBrowser.moveFileToFolder.useMutation({
-    onSuccess: () => {
+    onSuccess: (updatedFile) => {
       refetchFiles()
       refetchFolders()
+      // 更新文件详情面板显示
+      if (selectedFileForDetails?.id === updatedFile.id) {
+        setSelectedFileForDetails(updatedFile)
+      }
     },
   })
   const moveFileToActorMutation = api.mediaBrowser.moveFileToActor.useMutation({
-    onSuccess: () => {
+    onSuccess: (updatedFile) => {
       refetchFiles()
       refetchActors()
+      // 更新文件详情面板显示
+      if (selectedFileForDetails?.id === updatedFile.id) {
+        setSelectedFileForDetails(updatedFile)
+      }
     },
   })
   const createFolderMutation = api.mediaBrowser.createFolder.useMutation({
@@ -564,8 +642,102 @@ export default function MediaBrowserPage() {
     },
   })
 
+  const [isRotating, setIsRotating] = useState(false)
+
+  // 旋转视频
+  const handleRotateVideo = async (fileId: string) => {
+    if (!confirm('确定要将视频向右旋转90度吗？此操作会覆盖原文件，无法撤销。')) {
+      return
+    }
+
+    try {
+      setIsRotating(true)
+      const response = await fetch('/api/admin/media/rotate-video', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileId }),
+      })
+
+      if (!response.ok) {
+        throw new Error('视频旋转失败')
+      }
+
+      const result = await response.json()
+
+      if (result.success) {
+        alert('视频旋转成功！')
+        refetchFiles()
+        // 刷新详情页
+        if (selectedFileForDetails) {
+          const updatedFile = await fetch(`/api/admin/media/${fileId}`).then(r => r.json())
+          if (updatedFile) {
+            setSelectedFileForDetails(updatedFile)
+          }
+        }
+      } else {
+        alert(`旋转失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('视频旋转错误:', error)
+      alert('视频旋转失败，请重试')
+    } finally {
+      setIsRotating(false)
+    }
+  }
+
   // 获取当前选中的演员信息
   const selectedActorData = actors?.find((a) => a.id === selectedActor)
+
+  /**
+   * Memoize files data to prevent unnecessary re-renders
+   * Only recalculates when the actual file data changes
+   * Deduplicate files by ID to prevent duplicate keys in infinite scroll
+   * Filter by selected types
+   */
+  const memoizedFiles = useMemo(() => {
+    const files = filesData?.files ?? []
+    // Deduplicate by ID and filter by selected types
+    const seen = new Set<string>()
+    return files.filter(file => {
+      if (seen.has(file.id)) {
+        return false
+      }
+      seen.add(file.id)
+      // 根据filterTypes过滤
+      return filterTypes.includes(file.type as 'IMAGE' | 'VIDEO' | 'AUDIO')
+    })
+  }, [filesData?.files, filterTypes])
+
+  // 批量操作相关函数
+  const toggleBulkSelection = useCallback((fileId: string) => {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(fileId)) {
+        next.delete(fileId)
+      } else {
+        next.add(fileId)
+      }
+      return next
+    })
+  }, [])
+
+  const selectAllFiles = useCallback(() => {
+    const allIds = new Set(memoizedFiles.map(f => f.id))
+    setSelectedFileIds(allIds)
+  }, [memoizedFiles])
+
+  const clearSelection = useCallback(() => {
+    setSelectedFileIds(new Set())
+  }, [])
+
+  const exitBulkMode = useCallback(() => {
+    setBulkSelectionMode(false)
+    setSelectedFileIds(new Set())
+    setShowBulkFolderSelector(false)
+    setShowBulkActorSelector(false)
+  }, [])
 
   // 处理拖拽
   const handleDragStart = (e: React.DragEvent, fileId: string) => {
@@ -810,6 +982,23 @@ export default function MediaBrowserPage() {
     }
   }
 
+  // 处理演员形象参考图更新
+  const handleActorReferenceImageUpdate = async () => {
+    if (!selectedActor) return
+
+    try {
+      await updateActorMutation.mutateAsync({
+        id: selectedActor,
+        referenceImageUrl: tempActorReferenceImageUrl.trim() || undefined,
+      })
+      setShowReferenceImageUrlDialog(false)
+      setTempActorReferenceImageUrl('')
+    } catch (error) {
+      console.error('Update actor reference image failed:', error)
+      alert('更新演员形象参考图失败')
+    }
+  }
+
   // 处理文件备注编辑
   const handleFileRemarkEdit = async () => {
     if (!selectedFileForDetails) return
@@ -1019,13 +1208,8 @@ export default function MediaBrowserPage() {
     }
   }
 
-  // 处理本地文件上传
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
-    if (!files || files.length === 0) return
-
-    const fileArray = Array.from(files)
-
+  // 处理文件上传的通用逻辑
+  const processFilesUpload = useCallback(async (fileArray: File[]) => {
     const tasks: UploadTask[] = fileArray.map((file) => ({
       id: `local-${Date.now()}-${Math.random()}`,
       name: file.name,
@@ -1105,11 +1289,89 @@ export default function MediaBrowserPage() {
         )
       }
     }
+  }, [uploadLocalMutation, viewTab, selectedFolder, refetchFiles])
+
+  // 处理本地文件选择上传
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    const fileArray = Array.from(files)
+    await processFilesUpload(fileArray)
 
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
   }
+
+  // 处理拖拽文件上传
+  const handleDragEnter = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    dragCounterRef.current++
+    
+    if (e.dataTransfer?.types.includes('Files')) {
+      setIsDraggingFiles(true)
+    }
+  }, [])
+
+  const handleDragLeaveGlobal = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    dragCounterRef.current--
+    
+    if (dragCounterRef.current === 0) {
+      setIsDraggingFiles(false)
+    }
+  }, [])
+
+  const handleDragOverGlobal = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDropGlobal = useCallback(async (e: DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    
+    dragCounterRef.current = 0
+    setIsDraggingFiles(false)
+    
+    const files = e.dataTransfer?.files
+    if (!files || files.length === 0) return
+    
+    const fileArray = Array.from(files).filter(file => {
+      return file.type.startsWith('image/') || 
+             file.type.startsWith('video/') || 
+             file.type.startsWith('audio/')
+    })
+    
+    if (fileArray.length > 0) {
+      await processFilesUpload(fileArray)
+    }
+  }, [processFilesUpload])
+
+  // 添加全局拖拽事件监听器
+  useEffect(() => {
+    const handleDragEnterEvent = (e: DragEvent) => handleDragEnter(e)
+    const handleDragLeaveEvent = (e: DragEvent) => handleDragLeaveGlobal(e)
+    const handleDragOverEvent = (e: DragEvent) => handleDragOverGlobal(e)
+    const handleDropEvent = (e: DragEvent) => handleDropGlobal(e)
+
+    window.addEventListener('dragenter', handleDragEnterEvent)
+    window.addEventListener('dragleave', handleDragLeaveEvent)
+    window.addEventListener('dragover', handleDragOverEvent)
+    window.addEventListener('drop', handleDropEvent)
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnterEvent)
+      window.removeEventListener('dragleave', handleDragLeaveEvent)
+      window.removeEventListener('dragover', handleDragOverEvent)
+      window.removeEventListener('drop', handleDropEvent)
+    }
+  }, [handleDragEnter, handleDragLeaveGlobal, handleDragOverGlobal, handleDropGlobal])
 
   // 处理导出
   const handleExport = async () => {
@@ -1242,24 +1504,6 @@ export default function MediaBrowserPage() {
   }, [columnWidth])
 
   /**
-   * Memoize files data to prevent unnecessary re-renders
-   * Only recalculates when the actual file data changes
-   * Deduplicate files by ID to prevent duplicate keys in infinite scroll
-   */
-  const memoizedFiles = useMemo(() => {
-    const files = filesData?.files ?? []
-    // Deduplicate by ID
-    const seen = new Set<string>()
-    return files.filter(file => {
-      if (seen.has(file.id)) {
-        return false
-      }
-      seen.add(file.id)
-      return true
-    })
-  }, [filesData?.files])
-
-  /**
    * Memoize unassigned files data
    * TODO: Use this when implementing virtual scrolling
    */
@@ -1336,6 +1580,11 @@ export default function MediaBrowserPage() {
    * Limits aspect ratio to 1:20 (wide) to 20:1 (tall)
    */
   const getImageHeight = useCallback((file: MediaFile) => {
+    // Audio files: use half height
+    if (file.type === 'AUDIO') {
+      return Math.round(memoizedColumnWidth / 2)
+    }
+
     // Use width and height if available
     if (file.width && file.height) {
       const aspectRatio = file.height / file.width
@@ -1378,18 +1627,77 @@ export default function MediaBrowserPage() {
   }, [memoizedFiles, gridColumns, memoizedColumnWidth, compactMode])
 
   /**
-   * Virtual list for list view
-   * Simpler since all rows have same height
+   * Justified layout (木桶布局): Fixed height, adaptive width
+   * 计算每行的图片宽度，使其高度一致
    */
-  const listVirtualizer = useVirtualizer({
-    count: memoizedFiles.length,
+  const justifiedRows = useMemo(() => {
+    const rows: MediaFile[][] = []
+    let currentRow: MediaFile[] = []
+    let currentRowWidth = 0
+    const targetHeight = justifiedRowHeight
+    const gap = 8 // gap between items
+    const availWidth = containerWidth - 48 // Subtract padding
+
+    memoizedFiles.forEach((file, index) => {
+      // 计算此文件在目标高度下的宽度
+      const aspectRatio = file.width && file.height ? file.width / file.height : 1
+      const itemWidth = Math.round(targetHeight * aspectRatio)
+
+      // 尝试添加到当前行
+      const potentialWidth = currentRowWidth + itemWidth + (currentRow.length > 0 ? gap : 0)
+
+      // 如果加入后超过容器宽度，或者是最后一个元素
+      if (potentialWidth > availWidth && currentRow.length > 0) {
+        // 结束当前行
+        rows.push([...currentRow])
+        currentRow = [file]
+        currentRowWidth = itemWidth
+      } else {
+        currentRow.push(file)
+        currentRowWidth = potentialWidth
+      }
+
+      // 如果是最后一个元素，添加当前行
+      if (index === memoizedFiles.length - 1 && currentRow.length > 0) {
+        rows.push(currentRow)
+      }
+    })
+
+    return rows
+  }, [memoizedFiles, justifiedRowHeight, containerWidth])
+
+  /**
+   * Virtual list for justified view
+   */
+  const justifiedVirtualizer = useVirtualizer({
+    count: justifiedRows.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 88, // Fixed row height in list view
-    overscan: 10, // Render 10 extra rows above/below viewport
+    estimateSize: () => justifiedRowHeight + 8, // row height + gap
+    overscan: 5,
   })
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <>
+      {/* 拖拽文件上传提示覆盖层 */}
+      {isDraggingFiles && (
+        <div className="fixed inset-0 z-[9999] bg-blue-500/20 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+          <div className="bg-white rounded-2xl shadow-2xl p-12 border-4 border-dashed border-blue-500">
+            <div className="flex flex-col items-center gap-4">
+              <Upload className="h-20 w-20 text-blue-500" />
+              <div className="text-center">
+                <h3 className="text-2xl font-bold text-neutral-900 mb-2">
+                  释放文件以上传
+                </h3>
+                <p className="text-neutral-600">
+                  支持图片、视频和音频文件
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="flex h-full overflow-hidden">
       {/* Left Sidebar - Fixed */}
       <div className={`shrink-0 flex flex-col border-r border-neutral-200 bg-neutral-50 transition-all duration-300 ${
         leftSidebarCollapsed ? 'w-12' : 'w-64'
@@ -1412,132 +1720,86 @@ export default function MediaBrowserPage() {
         {!leftSidebarCollapsed && (
           <div className="flex-1 overflow-y-auto px-4 py-4">
           {/* Action Buttons */}
-          <div className="mb-4 space-y-2">
-            <button
-              onClick={() => setAddUrlDialogOpen(true)}
-              className="w-full flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
-            >
-              <Plus className="h-4 w-4" />
-              添加 URL
-            </button>
-            <button
-              onClick={() => setAddLocalPathDialogOpen(true)}
-              className="w-full flex items-center justify-center gap-2 rounded-md bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-neutral-800"
-            >
-              <Folder className="h-4 w-4" />
-              引用本地文件
-            </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploadLocalMutation.isPending}
-              className="w-full flex items-center justify-center gap-2 rounded-md border border-neutral-300 px-4 py-2.5 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
-            >
-              <Upload className="h-4 w-4" />
-              {uploadLocalMutation.isPending ? '上传中...' : '上传到服务器'}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              accept="image/*,video/*,audio/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
+          <div className="mb-4">
             <div className="flex gap-2">
+              <button
+                onClick={() => setAddUrlDialogOpen(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-800"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                从URL
+              </button>
+              <button
+                onClick={() => setAddLocalPathDialogOpen(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-800"
+              >
+                <Folder className="h-3.5 w-3.5" />
+                从本地
+              </button>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadLocalMutation.isPending}
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                {uploadLocalMutation.isPending ? '上传中' : '本地上传'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,video/*,audio/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
+            <div className="flex gap-2 mt-2">
               <button
                 onClick={handleExport}
                 disabled={exportMutation.isPending}
-                className="flex-1 flex items-center justify-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-md border border-neutral-300 px-3 py-2 text-xs font-medium hover:bg-neutral-50 disabled:opacity-50"
               >
-                <Download className="h-4 w-4" />
+                <Download className="h-3.5 w-3.5" />
                 {exportMutation.isPending ? '导出中' : '导出'}
               </button>
               <button
-                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-                className="flex items-center justify-center gap-2 rounded-md border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
-                title="切换视图"
+                onClick={() => setViewMode(viewMode === 'grid' ? 'justified' : 'grid')}
+                className="flex items-center justify-center rounded-md border border-neutral-300 px-2.5 py-2 hover:bg-neutral-50"
+                title={viewMode === 'grid' ? '切换到木桶布局' : '切换到瀑布流'}
               >
-                {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3x3 className="h-4 w-4" />}
+                {viewMode === 'grid' ? <List className="h-3.5 w-3.5" /> : <Grid3x3 className="h-3.5 w-3.5" />}
               </button>
               <button
                 onClick={() => setAutoPlayAll(!autoPlayAll)}
-                className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                className={`flex items-center justify-center rounded-md border px-2.5 py-2 transition-colors ${
                   autoPlayAll
                     ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
                     : 'border-neutral-300 hover:bg-neutral-50'
                 }`}
                 title={autoPlayAll ? '退出全动态模式' : '全动态模式'}
               >
-                <Play className="h-4 w-4" fill={autoPlayAll ? 'currentColor' : 'none'} />
+                <Play className="h-3.5 w-3.5" fill={autoPlayAll ? 'currentColor' : 'none'} />
               </button>
               <button
                 onClick={() => setCompactMode(!compactMode)}
-                className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                className={`flex items-center justify-center rounded-md border px-2.5 py-2 transition-colors ${
                   compactMode
                     ? 'border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800'
                     : 'border-neutral-300 hover:bg-neutral-50'
                 }`}
                 title={compactMode ? '退出紧凑模式' : '紧凑模式'}
               >
-                {compactMode ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+                {compactMode ? <Maximize2 className="h-3.5 w-3.5" /> : <Minimize2 className="h-3.5 w-3.5" />}
               </button>
             </div>
           </div>
 
           {/* Filters */}
           <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            {/* Type and Source Filters */}
-            <div className="mb-4 space-y-3">
-              {/* Type Filter */}
-              <div>
-                <h3 className="text-xs font-semibold text-neutral-500 mb-2">类型</h3>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => setFilterType(undefined)}
-                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                      filterType === undefined
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
-                  >
-                    All
-                  </button>
-                  <button
-                    onClick={() => setFilterType('IMAGE')}
-                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                      filterType === 'IMAGE'
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
-                  >
-                    图片
-                  </button>
-                  <button
-                    onClick={() => setFilterType('VIDEO')}
-                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                      filterType === 'VIDEO'
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
-                  >
-                    视频
-                  </button>
-                  <button
-                    onClick={() => setFilterType('AUDIO')}
-                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                      filterType === 'AUDIO'
-                        ? 'bg-neutral-900 text-white'
-                        : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                    }`}
-                  >
-                    音频
-                  </button>
-                </div>
-              </div>
-
+            {/* Source Filter */}
+            <div className="mb-4">
               {/* Source Filter */}
               <div>
-                <h3 className="text-xs font-semibold text-neutral-500 mb-2">存储</h3>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     onClick={() => setFilterSource(undefined)}
@@ -1726,15 +1988,15 @@ export default function MediaBrowserPage() {
                               : 'hover:bg-neutral-100'
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <span>
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="flex-1 break-words min-w-0">
                               {folder.name}
                               <span className="ml-2 text-xs opacity-60">
                                 ({(folder as any)._count?.files || 0})
                               </span>
                             </span>
                             {hoveredFolderId === folder.id && (
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
@@ -1817,7 +2079,7 @@ export default function MediaBrowserPage() {
                       onDragOver={(e) => handleDragOverActor(e, actor.id)}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDropToActor(e, actor.id)}
-                      className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors flex items-center gap-2 ${
+                      className={`w-full text-left rounded px-2 py-1.5 text-sm transition-colors flex items-start gap-2 ${
                         selectedActor === actor.id
                           ? 'bg-neutral-900 text-white'
                           : dragOverActor === actor.id
@@ -1826,24 +2088,19 @@ export default function MediaBrowserPage() {
                       }`}
                     >
                       {actor.avatarUrl ? (
-                        <NextImage
+                        <img
                           src={actor.avatarUrl}
                           alt={`${actor.name}的头像`}
-                          width={24}
-                          height={24}
                           className="w-6 h-6 rounded object-cover flex-shrink-0"
-                          placeholder="blur"
-                          blurDataURL={getShimmerPlaceholder(24, 24)}
                           loading="lazy"
-                          quality={75}
                         />
                       ) : (
                         <div className="w-6 h-6 rounded bg-neutral-300 flex items-center justify-center flex-shrink-0">
                           <User className="h-4 w-4 text-neutral-600" />
                         </div>
                       )}
-                      <span className="flex-1 truncate">{actor.name}</span>
-                      <span className="text-xs opacity-60">
+                      <span className="flex-1 break-words min-w-0">{actor.name}</span>
+                      <span className="text-xs opacity-60 flex-shrink-0">
                         ({(actor as any)._count?.files || 0})
                       </span>
                     </button>
@@ -1861,24 +2118,94 @@ export default function MediaBrowserPage() {
         {/* Fixed Header - File count badge and column width slider */}
         <div className="shrink-0 border-b border-neutral-200 bg-white px-6 py-2.5 flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">
-              共 {filesData?.pagination.total || 0} 个文件
-            </span>
-            <button
-              onClick={() => refetchFiles()}
-              disabled={isRefetching}
-              className="p-1.5 rounded-md hover:bg-neutral-100 transition-colors text-neutral-500 hover:text-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="刷新列表"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
-            </button>
+            {bulkSelectionMode ? (
+              <>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                  已选 {selectedFileIds.size} 个文件
+                </span>
+                <button
+                  onClick={selectAllFiles}
+                  className="px-2.5 py-1 rounded-md text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                >
+                  全选
+                </button>
+                <button
+                  onClick={clearSelection}
+                  className="px-2.5 py-1 rounded-md text-xs font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"
+                >
+                  清空
+                </button>
+                <button
+                  onClick={exitBulkMode}
+                  className="px-2.5 py-1 rounded-md text-xs font-medium text-neutral-600 hover:bg-neutral-100 transition-colors"
+                >
+                  退出多选
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-700">
+                  共 {filesData?.pagination.total || 0} 个文件
+                </span>
+                <button
+                  onClick={() => refetchFiles()}
+                  disabled={isRefetching}
+                  className="p-1.5 rounded-md hover:bg-neutral-100 transition-colors text-neutral-500 hover:text-neutral-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="刷新列表"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={() => setBulkSelectionMode(true)}
+                  className="px-2.5 py-1 rounded-md text-xs font-medium bg-neutral-900 text-white hover:bg-neutral-800 transition-colors"
+                >
+                  多选
+                </button>
+              </>
+            )}
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
-            {/* 列宽调整 */}
+          <div className="ml-auto flex items-center gap-4">
+            {/* 文件类型快捷筛选 */}
+            <div className="flex items-center gap-1">
+                <button
+                  onClick={() => toggleFilterType('IMAGE')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                    filterTypes.includes('IMAGE')
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
+                  title={filterTypes.includes('IMAGE') ? '隐藏图片' : '显示图片'}
+                >
+                  <Image className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => toggleFilterType('VIDEO')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                    filterTypes.includes('VIDEO')
+                      ? 'bg-green-600 text-white hover:bg-green-700'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
+                  title={filterTypes.includes('VIDEO') ? '隐藏视频' : '显示视频'}
+                >
+                  <Video className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => toggleFilterType('AUDIO')}
+                  className={`px-2.5 py-1 text-xs font-medium rounded transition-colors ${
+                    filterTypes.includes('AUDIO')
+                      ? 'bg-purple-600 text-white hover:bg-purple-700'
+                      : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                  }`}
+                  title={filterTypes.includes('AUDIO') ? '隐藏音频' : '显示音频'}
+                >
+                  <Music className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+            {/* 列宽/行高调整 */}
             {viewMode === 'grid' && (
               <div className="flex items-center gap-3">
-                <span className="text-xs text-neutral-500">列宽</span>
                 <input
                   type="range"
                   min="140"
@@ -1888,6 +2215,19 @@ export default function MediaBrowserPage() {
                   className="w-32 h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-neutral-900"
                 />
                 <span className="text-xs text-neutral-500 w-12">{columnWidth}px</span>
+              </div>
+            )}
+            {viewMode === 'justified' && (
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min="150"
+                  max="400"
+                  value={justifiedRowHeight}
+                  onChange={(e) => setJustifiedRowHeight(Number(e.target.value))}
+                  className="w-32 h-1.5 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-neutral-900"
+                />
+                <span className="text-xs text-neutral-500 w-12">{justifiedRowHeight}px</span>
               </div>
             )}
           </div>
@@ -1970,9 +2310,11 @@ export default function MediaBrowserPage() {
                           quality={85}
                         />
                       ) : file.type === 'AUDIO' ? (
-                        <div className="w-full h-full bg-neutral-200 flex flex-col items-center justify-center">
-                          <Music className="h-12 w-12 text-neutral-400 mb-2" />
-                          <span className="text-sm font-medium text-neutral-500">Audio</span>
+                        <div className="w-full h-full bg-neutral-200 flex items-center justify-center px-4">
+                          <Music className="h-8 w-8 text-neutral-400 mr-3 flex-shrink-0" />
+                          <span className="text-sm font-medium text-neutral-600 truncate">
+                            {file.remark || file.name}
+                          </span>
                         </div>
                       ) : file.type === 'VIDEO' ? (
                         // 视频没有缩略图时显示生成中状态
@@ -2039,12 +2381,29 @@ export default function MediaBrowserPage() {
                         ) : null
                       })()}
 
-                      {/* Type Icon Badge */}
-                      <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm rounded-md p-1.5 z-10">
-                        {file.type === 'IMAGE' && <Image className="h-4 w-4 text-white" />}
-                        {file.type === 'VIDEO' && <Video className="h-4 w-4 text-white" />}
-                        {file.type === 'AUDIO' && <Music className="h-4 w-4 text-white" />}
-                      </div>
+                      {/* Type Icon Badge / Checkbox */}
+                      {bulkSelectionMode ? (
+                        <div
+                          className="absolute top-2 left-2 z-10"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            toggleBulkSelection(file.id)
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedFileIds.has(file.id)}
+                            onChange={() => {}} // onChange handled by parent div onClick
+                            className="w-5 h-5 rounded border-2 border-white cursor-pointer accent-blue-600"
+                          />
+                        </div>
+                      ) : (
+                        <div className="absolute top-2 left-2 bg-black/60 backdrop-blur-sm rounded-md p-1.5 z-10">
+                          {file.type === 'IMAGE' && <Image className="h-4 w-4 text-white" />}
+                          {file.type === 'VIDEO' && <Video className="h-4 w-4 text-white" />}
+                          {file.type === 'AUDIO' && <Music className="h-4 w-4 text-white" />}
+                        </div>
+                      )}
                     </div>
 
                     {/* Info - 紧凑模式下隐藏 */}
@@ -2215,84 +2574,109 @@ export default function MediaBrowserPage() {
               </div>
               )}
             </>
-          ) : (
-            <div className="rounded-lg border border-neutral-200 bg-white relative"
-              style={{
-                height: `${listVirtualizer.getTotalSize()}px`,
-              }}
-            >
-              {listVirtualizer.getVirtualItems().map((virtualItem) => {
-                const file = memoizedFiles[virtualItem.index]!
-                return (
-                <div
-                  key={file.id}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualItem.start}px)`,
-                  }}
-                  className="flex items-center gap-4 p-4 hover:bg-neutral-50 cursor-pointer border-b border-neutral-200"
-                  onClick={() => {
-                    if (editingInlineFileId !== file.id) {
-                      setSelectedFileForDetails(file as MediaFile)
-                      setTempFileRemark((file as MediaFile).remark || (file as MediaFile).name)
-                      setEditingFileRemark(false)
-                    }
-                  }}
-                >
-                  <div className="flex-shrink-0">{getMediaIcon(file.type)}</div>
-                  <div className="flex-1 min-w-0">
-                    {editingInlineFileId === file.id ? (
-                      <input
-                        type="text"
-                        value={tempInlineRemark}
-                        onChange={(e) => setTempInlineRemark(e.target.value)}
-                        onBlur={() => handleInlineRemarkEdit(file.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            void handleInlineRemarkEdit(file.id)
-                          }
-                          if (e.key === 'Escape') {
-                            setEditingInlineFileId(null)
-                          }
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        autoFocus
-                        className="w-full text-sm font-medium px-2 py-1 border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
-                      />
-                    ) : (
-                      <p
-                        className="text-sm font-medium truncate cursor-text hover:bg-neutral-100 px-2 py-1 rounded -mx-2"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setEditingInlineFileId(file.id)
-                          setTempInlineRemark(file.remark || file.name)
-                        }}
-                      >
-                        {file.remark || file.name}
-                      </p>
-                    )}
-                    <p className="text-xs text-neutral-500">
-                      {file.folder?.name || file.actor?.name || '未分类'} • {file.type}
-                    </p>
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setPreviewFile(file as MediaFile)
-                    }}
-                    className="rounded-full bg-neutral-100 p-2 text-neutral-600 hover:bg-neutral-200 transition-colors"
-                    title="预览"
-                  >
-                    <Search className="h-4 w-4" />
-                  </button>
+          ) : viewMode === 'justified' ? (
+            <>
+            {/* Justified Layout Container */}
+              {mounted && (
+                <div className="space-y-2">
+                  {justifiedRows.map((rowFiles, rowIndex) => {
+                    // Calculate total aspect ratio for this row
+                    const totalAspectRatio = rowFiles.reduce((sum, file) => {
+                      const aspectRatio = file.width && file.height ? file.width / file.height : 1
+                      return sum + aspectRatio
+                    }, 0)
+
+                    // Calculate width for each item to fill the row
+                    const gap = 8
+                    const totalGap = (rowFiles.length - 1) * gap
+                    const availableWidth = containerWidth - 48 - totalGap
+
+                    return (
+                      <div key={rowIndex} className="flex gap-2">
+                        {rowFiles.map((file) => {
+                          const aspectRatio = file.width && file.height ? file.width / file.height : 1
+                          const itemWidth = (aspectRatio / totalAspectRatio) * availableWidth
+
+                          return (
+                            <div
+                              key={file.id}
+                              className="group relative rounded-lg border border-neutral-200 bg-white overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
+                              style={{
+                                width: `${itemWidth}px`,
+                                height: `${justifiedRowHeight}px`,
+                                flexShrink: 0,
+                              }}
+                              onClick={() => {
+                                setSelectedFileForDetails(file)
+                                setTempFileRemark(file.remark || file.name)
+                                setEditingFileRemark(false)
+                              }}
+                            >
+                              {/* 缩略图 */}
+                              {getThumbnailUrl(file) ? (
+                                <NextImage
+                                  src={getThumbnailUrl(file)!}
+                                  alt={file.name}
+                                  width={Math.round(itemWidth)}
+                                  height={justifiedRowHeight}
+                                  className="w-full h-full object-cover"
+                                  placeholder="blur"
+                                  blurDataURL={getShimmerPlaceholder(Math.round(itemWidth), justifiedRowHeight)}
+                                  loading="lazy"
+                                  quality={85}
+                                />
+                              ) : file.type === 'AUDIO' ? (
+                                <div className="w-full h-full bg-neutral-200 flex items-center justify-center px-4">
+                                  <Music className="h-8 w-8 text-neutral-400 mr-3 flex-shrink-0" />
+                                  <span className="text-sm font-medium text-neutral-600 truncate">
+                                    {file.remark || file.name}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-neutral-100">
+                                  <Loader2 className="h-8 w-8 text-neutral-400 animate-spin" />
+                                </div>
+                              )}
+
+                              {/* Hover Overlay */}
+                              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-start justify-end p-3">
+                                <p className="text-white text-sm font-medium truncate w-full">
+                                  {file.remark || file.name}
+                                </p>
+                                <div className="flex items-center flex-wrap gap-1.5 mt-1">
+                                  <span className="text-xs text-white/90">
+                                    {file.type === 'VIDEO' || file.type === 'AUDIO'
+                                      ? file.duration && file.duration > 0
+                                        ? file.duration < 60
+                                          ? `${Math.round(file.duration)}秒`
+                                          : `${Math.round(file.duration / 60)}分钟`
+                                        : '-'
+                                      : file.fileSize
+                                      ? `${Math.round(file.fileSize / 1024)}KB`
+                                      : '-'}
+                                  </span>
+                                  {file.folder && (
+                                    <span className="px-2 py-0.5 bg-blue-500/30 text-blue-100 rounded text-xs">
+                                      {file.folder.name}
+                                    </span>
+                                  )}
+                                  {file.actor && (
+                                    <span className="px-2 py-0.5 bg-purple-500/30 text-purple-100 rounded text-xs">
+                                      {file.actor.name}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
                 </div>
-                )
-              })}
-            </div>
-          )}
+              )}
+            </>
+          ) : null}
 
           {/* Infinite Scroll Loading Indicator */}
           {isFetchingNextPage && viewMode === 'grid' && (
@@ -2321,7 +2705,7 @@ export default function MediaBrowserPage() {
               ))}
             </div>
           )}
-          {isFetchingNextPage && viewMode === 'list' && (
+          {isFetchingNextPage && viewMode === 'justified' && (
             <div className="flex justify-center items-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
               <span className="ml-2 text-sm text-neutral-500">加载更多...</span>
@@ -2361,31 +2745,53 @@ export default function MediaBrowserPage() {
           {/* Actor Info - Hidden when collapsed */}
           {!actorPanelCollapsed && (
             <div className="flex-1 overflow-y-auto p-6">
-            {/* Actor Avatar */}
-            <div className="mb-6">
+            {/* Actor Avatar - Compact */}
+            <div className="mb-4">
               <div
-                className="w-full aspect-square rounded-lg bg-neutral-200 flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                className="w-32 h-32 mx-auto rounded-lg bg-neutral-200 flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => {
                   setTempActorAvatarUrl(selectedActorData.avatarUrl || '')
                   setShowAvatarUrlDialog(true)
                 }}
               >
                 {selectedActorData.avatarUrl ? (
-                  <NextImage
+                  <img
                     src={selectedActorData.avatarUrl}
                     alt={`${selectedActorData.name}的头像`}
-                    width={320}
-                    height={320}
                     className="w-full h-full object-cover"
-                    placeholder="blur"
-                    blurDataURL={getShimmerPlaceholder(320, 320)}
                     loading="lazy"
-                    quality={85}
                   />
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-neutral-400">
-                    <User className="h-16 w-16" />
-                    <span className="text-sm">点击添加头像</span>
+                    <User className="h-12 w-12" />
+                    <span className="text-xs">点击添加头像</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Actor Reference Image - 16:9 aspect ratio */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-neutral-700 mb-2">形象参考图</label>
+              <div
+                className="w-full rounded-lg bg-neutral-200 flex items-center justify-center overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                style={{ aspectRatio: '16 / 9' }}
+                onClick={() => {
+                  setTempActorReferenceImageUrl(selectedActorData.referenceImageUrl || '')
+                  setShowReferenceImageUrlDialog(true)
+                }}
+              >
+                {selectedActorData.referenceImageUrl ? (
+                  <img
+                    src={selectedActorData.referenceImageUrl}
+                    alt={`${selectedActorData.name}的形象参考图`}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-neutral-400">
+                    <User className="h-12 w-12" />
+                    <span className="text-sm">点击添加形象参考图</span>
                   </div>
                 )}
               </div>
@@ -2465,6 +2871,114 @@ export default function MediaBrowserPage() {
         </div>
       )}
 
+      {/* Bulk Actions Floating Toolbar */}
+      {bulkSelectionMode && selectedFileIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="bg-neutral-900 text-white rounded-lg shadow-2xl px-6 py-4 flex items-center gap-4">
+            <span className="text-sm font-medium">
+              已选择 {selectedFileIds.size} 个文件
+            </span>
+            <div className="h-6 w-px bg-neutral-700"></div>
+
+            {/* 分配文件夹 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowBulkFolderSelector(!showBulkFolderSelector)}
+                className="px-4 py-2 text-sm font-medium bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors flex items-center gap-2"
+              >
+                <Folder className="h-4 w-4" />
+                分配文件夹
+              </button>
+
+              {showBulkFolderSelector && (
+                <div
+                  className="absolute bottom-full left-0 mb-2 bg-white text-neutral-900 rounded-lg border border-neutral-300 shadow-lg min-w-48 max-h-64 overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {folders?.map((folder) => (
+                    <button
+                      key={folder.id}
+                      onClick={() => {
+                        // 批量分配逻辑稍后实现
+                        Array.from(selectedFileIds).forEach((fileId) => {
+                          moveFileToFolderMutation.mutate({ fileId, folderId: folder.id })
+                        })
+                        setShowBulkFolderSelector(false)
+                        exitBulkMode()
+                      }}
+                      className="w-full px-4 py-2 text-sm text-left hover:bg-neutral-100 transition-colors flex items-center gap-2"
+                    >
+                      <Folder className="h-4 w-4" style={{ color: folder.color || '#gray' }} />
+                      <span className="truncate">{folder.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 分配演员 */}
+            <div className="relative">
+              <button
+                onClick={() => setShowBulkActorSelector(!showBulkActorSelector)}
+                className="px-4 py-2 text-sm font-medium bg-neutral-800 hover:bg-neutral-700 rounded-md transition-colors flex items-center gap-2"
+              >
+                <User className="h-4 w-4" />
+                分配演员
+              </button>
+
+              {showBulkActorSelector && (
+                <div
+                  className="absolute bottom-full left-0 mb-2 bg-white text-neutral-900 rounded-lg border border-neutral-300 shadow-lg min-w-48 max-h-64 overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {actors?.map((actor) => (
+                    <button
+                      key={actor.id}
+                      onClick={() => {
+                        // 批量分配逻辑
+                        Array.from(selectedFileIds).forEach((fileId) => {
+                          moveFileToActorMutation.mutate({ fileId, actorId: actor.id })
+                        })
+                        setShowBulkActorSelector(false)
+                        exitBulkMode()
+                      }}
+                      className="w-full px-4 py-2 text-sm text-left hover:bg-neutral-100 transition-colors flex items-center gap-2"
+                    >
+                      {actor.avatarUrl ? (
+                        <img
+                          src={actor.avatarUrl}
+                          alt={actor.name}
+                          className="h-4 w-4 rounded-full object-cover"
+                        />
+                      ) : (
+                        <User className="h-4 w-4 text-neutral-400" />
+                      )}
+                      <span className="truncate">{actor.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 批量删除 */}
+            <button
+              onClick={() => {
+                if (confirm(`确定要删除选中的 ${selectedFileIds.size} 个文件吗？此操作无法撤销。`)) {
+                  Array.from(selectedFileIds).forEach((fileId) => {
+                    deleteFileMutation.mutate({ id: fileId })
+                  })
+                  exitBulkMode()
+                }
+              }}
+              className="px-4 py-2 text-sm font-medium bg-red-600 hover:bg-red-700 rounded-md transition-colors flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              删除
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Right Sidebar - File Details (show when file is selected) */}
       {selectedFileForDetails && (
         <div className="shrink-0 w-80 flex flex-col border-l border-neutral-200 bg-white">
@@ -2500,6 +3014,165 @@ export default function MediaBrowserPage() {
               ) : (
                 getMediaIcon(selectedFileForDetails.type)
               )}
+            </div>
+
+            {/* Folder and Actor Assignment */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Folder Assignment */}
+              <div className="relative">
+                <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                  文件夹
+                </label>
+                <div
+                  tabIndex={0}
+                  onBlur={(e) => {
+                    // 检查新焦点是否在下拉菜单内
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setShowFolderSelector(false)
+                    }
+                  }}
+                >
+                  <button
+                    onClick={() => setShowFolderSelector(!showFolderSelector)}
+                    className="w-full px-3 py-2 text-sm bg-white rounded border border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50 transition-colors text-left flex items-center gap-2"
+                  >
+                    <Folder className="h-4 w-4 flex-shrink-0 text-neutral-500" />
+                    <span className={`flex-1 truncate ${selectedFileForDetails.folder ? 'text-neutral-900' : 'text-neutral-400'}`}>
+                      {selectedFileForDetails.folder?.name || '未分配文件夹'}
+                    </span>
+                    <ChevronRight className={`h-4 w-4 flex-shrink-0 text-neutral-400 transition-transform ${showFolderSelector ? 'rotate-90' : ''}`} />
+                  </button>
+
+                {/* Folder Selector Dropdown */}
+                {showFolderSelector && (
+                  <div
+                    className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg border border-neutral-300 shadow-lg z-50 overflow-hidden"
+                    style={{ maxHeight: '30vh' }}
+                  >
+                    <div className="overflow-y-auto max-h-full">
+                      {/* 未分配选项 */}
+                      <button
+                        onClick={() => {
+                          moveFileToFolderMutation.mutate({
+                            fileId: selectedFileForDetails.id,
+                            folderId: null,
+                          })
+                          setShowFolderSelector(false)
+                        }}
+                        className={`w-full px-3 py-2 text-sm text-left hover:bg-neutral-100 transition-colors flex items-center gap-2 ${
+                          !selectedFileForDetails.folder ? 'bg-neutral-100' : ''
+                        }`}
+                      >
+                        <Folder className="h-4 w-4 text-neutral-400" />
+                        <span className="text-neutral-500">未分配</span>
+                      </button>
+
+                      {/* 文件夹列表 */}
+                      {folders?.map((folder) => (
+                        <button
+                          key={folder.id}
+                          onClick={() => {
+                            moveFileToFolderMutation.mutate({
+                              fileId: selectedFileForDetails.id,
+                              folderId: folder.id,
+                            })
+                            setShowFolderSelector(false)
+                          }}
+                          className={`w-full px-3 py-2 text-sm text-left hover:bg-neutral-100 transition-colors flex items-center gap-2 ${
+                            selectedFileForDetails.folder?.id === folder.id ? 'bg-blue-50 text-blue-700' : ''
+                          }`}
+                        >
+                          <Folder className="h-4 w-4" style={{ color: folder.color || '#gray' }} />
+                          <span className="truncate">{folder.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                </div>
+              </div>
+
+              {/* Actor Assignment */}
+              <div className="relative">
+                <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                  演员
+                </label>
+                <div
+                  tabIndex={0}
+                  onBlur={(e) => {
+                    // 检查新焦点是否在下拉菜单内
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setShowActorSelector(false)
+                    }
+                  }}
+                >
+                  <button
+                    onClick={() => setShowActorSelector(!showActorSelector)}
+                    className="w-full px-3 py-2 text-sm bg-white rounded border border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50 transition-colors text-left flex items-center gap-2"
+                  >
+                    <User className="h-4 w-4 flex-shrink-0 text-neutral-500" />
+                    <span className={`flex-1 truncate ${selectedFileForDetails.actor ? 'text-neutral-900' : 'text-neutral-400'}`}>
+                      {selectedFileForDetails.actor?.name || '未分配演员'}
+                    </span>
+                    <ChevronRight className={`h-4 w-4 flex-shrink-0 text-neutral-400 transition-transform ${showActorSelector ? 'rotate-90' : ''}`} />
+                  </button>
+
+                {/* Actor Selector Dropdown */}
+                {showActorSelector && (
+                  <div
+                    className="absolute top-full left-0 right-0 mt-1 bg-white rounded-lg border border-neutral-300 shadow-lg z-50 overflow-hidden"
+                    style={{ maxHeight: '30vh' }}
+                  >
+                    <div className="overflow-y-auto max-h-full">
+                      {/* 未分配选项 */}
+                      <button
+                        onClick={() => {
+                          moveFileToActorMutation.mutate({
+                            fileId: selectedFileForDetails.id,
+                            actorId: null,
+                          })
+                          setShowActorSelector(false)
+                        }}
+                        className={`w-full px-3 py-2 text-sm text-left hover:bg-neutral-100 transition-colors flex items-center gap-2 ${
+                          !selectedFileForDetails.actor ? 'bg-neutral-100' : ''
+                        }`}
+                      >
+                        <User className="h-4 w-4 text-neutral-400" />
+                        <span className="text-neutral-500">未分配</span>
+                      </button>
+
+                      {/* 演员列表 */}
+                      {actors?.map((actor) => (
+                        <button
+                          key={actor.id}
+                          onClick={() => {
+                            moveFileToActorMutation.mutate({
+                              fileId: selectedFileForDetails.id,
+                              actorId: actor.id,
+                            })
+                            setShowActorSelector(false)
+                          }}
+                          className={`w-full px-3 py-2 text-sm text-left hover:bg-neutral-100 transition-colors flex items-center gap-2 ${
+                            selectedFileForDetails.actor?.id === actor.id ? 'bg-purple-50 text-purple-700' : ''
+                          }`}
+                        >
+                          {actor.avatarUrl ? (
+                            <img
+                              src={actor.avatarUrl}
+                              alt={actor.name}
+                              className="h-4 w-4 rounded-full object-cover"
+                            />
+                          ) : (
+                            <User className="h-4 w-4 text-neutral-400" />
+                          )}
+                          <span className="truncate">{actor.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                </div>
+              </div>
             </div>
 
             {/* Original Filename */}
@@ -2634,11 +3307,11 @@ export default function MediaBrowserPage() {
                 </label>
                 <div className="flex items-start gap-2">
                   <div className="flex-1 px-3 py-2 text-sm bg-neutral-50 rounded border border-neutral-200 break-all font-mono text-neutral-600">
-                    {`${window.location.origin}/api/media-file/${selectedFileForDetails.localPath.replace('data/media-uploads/', '')}`}
+                    {`${window.location.origin}/api/media-file/${selectedFileForDetails.localPath?.replace('data/media-uploads/', '') || ''}`}
                   </div>
                   <button
                     onClick={() => {
-                      const url = `${window.location.origin}/api/media-file/${selectedFileForDetails.localPath.replace('data/media-uploads/', '')}`
+                      const url = `${window.location.origin}/api/media-file/${selectedFileForDetails.localPath?.replace('data/media-uploads/', '') || ''}`
                       handleCopyToClipboard(url)
                     }}
                     className="p-2 text-neutral-600 hover:text-neutral-900 border border-neutral-200 rounded hover:bg-neutral-100"
@@ -2699,9 +3372,49 @@ export default function MediaBrowserPage() {
                   {regenerateThumbnailMutation.isPending ? '重新生成中...' : '重新生成缩略图'}
                 </button>
               )}
+              {selectedFileForDetails.type === 'VIDEO' && (selectedFileForDetails.localPath || selectedFileForDetails.originalPath) && (
+                <>
+                  <button
+                    onClick={() => setVideoTrimModalOpen(true)}
+                    className="w-full flex items-center justify-center gap-2 rounded-md bg-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-purple-700"
+                  >
+                    <Scissors className="h-4 w-4" />
+                    裁剪视频
+                  </button>
+                  <button
+                    onClick={() => handleRotateVideo(selectedFileForDetails.id)}
+                    disabled={isRotating}
+                    className="w-full flex items-center justify-center gap-2 rounded-md bg-orange-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isRotating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        旋转中...
+                      </>
+                    ) : (
+                      <>
+                        <RotateCw className="h-4 w-4" />
+                        旋转视频90°
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* Video Trim Modal */}
+      {selectedFileForDetails && videoTrimModalOpen && (
+        <VideoTrimModal
+          isOpen={videoTrimModalOpen}
+          onClose={() => setVideoTrimModalOpen(false)}
+          videoFile={selectedFileForDetails}
+          onTrimComplete={() => {
+            refetchFiles()
+          }}
+        />
       )}
 
       {/* Add URL Dialog */}
@@ -2910,6 +3623,50 @@ export default function MediaBrowserPage() {
               </button>
               <button
                 onClick={handleActorAvatarUpdate}
+                disabled={updateActorMutation.isPending}
+                className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {updateActorMutation.isPending ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Actor Reference Image URL Dialog */}
+      <Dialog open={showReferenceImageUrlDialog} onOpenChange={setShowReferenceImageUrlDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>设置形象参考图</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">形象参考图 URL</label>
+              <input
+                type="text"
+                value={tempActorReferenceImageUrl}
+                onChange={(e) => setTempActorReferenceImageUrl(e.target.value)}
+                placeholder="https://example.com/reference.jpg"
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-900 focus:outline-none"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleActorReferenceImageUpdate()
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowReferenceImageUrlDialog(false)
+                  setTempActorReferenceImageUrl('')
+                }}
+                className="rounded-md border border-neutral-300 px-4 py-2 text-sm hover:bg-neutral-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleActorReferenceImageUpdate}
                 disabled={updateActorMutation.isPending}
                 className="rounded-md bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-800 disabled:opacity-50"
               >
@@ -3137,6 +3894,7 @@ export default function MediaBrowserPage() {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }

@@ -271,6 +271,31 @@ if (successFlag === 1 && resultInfoJson) {
 4. **视频生成测试**: 使用 `mj_video` 和 `mj_video_hd` 生成视频
 5. **Omni Reference 测试**: 使用 `mj_omni_reference` 并配置 `ow` 参数
 
+## Bug 修复 (2025-10-18)
+
+### 问题：视频生成时报错 "The speed parameter is incorrect"
+
+**原因**:
+- `speed` 参数仅适用于图像生成任务，不适用于视频生成任务
+- 适配器之前会无条件发送所有参数，包括不适用的 `speed` 参数
+
+**解决方案**:
+在 `kie-midjourney-adapter.ts` 中添加任务类型判断：
+```typescript
+// 判断任务类型
+const isVideoTask = payload.taskType === 'mj_video' || payload.taskType === 'mj_video_hd'
+
+// 只在非视频任务时发送图像专用参数
+if (!isVideoTask) {
+  // speed, version, variety, stylization, weirdness, ow
+}
+
+// 只在视频任务时发送视频专用参数
+if (isVideoTask) {
+  // videoBatchSize, motion
+}
+```
+
 ## 相关文件
 
 - `/src/lib/ai-generation/adapters/kie/kie-midjourney-adapter.ts`
@@ -280,5 +305,6 @@ if (successFlag === 1 && resultInfoJson) {
 
 - [KIE Midjourney Generate API](https://api.kie.ai/docs/mj-api/generate-mj-image)
 - [KIE Midjourney Task Details API](https://api.kie.ai/docs/mj-api/get-mj-task-details)
+
 
 

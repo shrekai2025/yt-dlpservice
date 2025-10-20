@@ -10,6 +10,9 @@ import { storageRouter } from "~/server/api/routers/storage"
 import { storageAdminRouter } from "~/server/api/routers/storage-admin"
 import { userRouter } from "~/server/api/routers/user"
 import { mediaBrowserRouter } from "~/server/api/routers/media-browser"
+import { llmProvidersRouter } from "~/server/api/routers/llm-providers"
+import { chatRouter } from "~/server/api/routers/chat"
+import { studioRouter } from "~/server/api/routers/studio"
 
 /**
  * This is the primary router for your server.
@@ -28,6 +31,9 @@ export const appRouter = createTRPCRouter({
   storageAdmin: storageAdminRouter,
   user: userRouter,
   mediaBrowser: mediaBrowserRouter,
+  llmProviders: llmProvidersRouter,
+  chat: chatRouter,
+  studio: studioRouter,
 })
 
 // export type definition of API

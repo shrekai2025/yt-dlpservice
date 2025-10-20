@@ -42,10 +42,14 @@ next-env.d.ts
 /prisma/dev.db-journal
 
 # 数据库文件
+# 注意：数据库统一使用 /prisma/data/app.db，不要在其他位置创建
 /data/*.db
 /data/*.db-journal
 *.db
 *.db-journal
+# 但要保留真实的数据库
+!/prisma/data/
+!/prisma/data/app.db
 
 # 浏览器数据（隐私相关）
 /data/browser_data/

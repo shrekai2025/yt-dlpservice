@@ -31,7 +31,7 @@ class S3Uploader {
    */
   initialize(config: S3Config): void {
     if (this.initialized) {
-      // 已经初始化过，跳过
+      // 已经初始化过，跳过（不打印日志避免重复）
       return
     }
 

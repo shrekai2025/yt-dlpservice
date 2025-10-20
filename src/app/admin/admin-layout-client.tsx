@@ -18,7 +18,9 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'ai-generation',
     label: 'AI生成',
     items: [
-      { id: 'generation', label: '生成', href: '/admin/ai-generation' },
+      { id: 'studio', label: 'Studio', href: '/admin/ai-generation/studio' },
+      { id: 'image-generation', label: '生image', href: '/admin/ai-generation' },
+      { id: 'chat', label: '对话', href: '/admin/ai-chat' },
       { id: 'generation-tasks', label: '任务历史', href: '/admin/ai-generation/tasks' },
       { id: 'generation-providers', label: '供应商管理', href: '/admin/ai-generation/providers' },
     ],
@@ -264,7 +266,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <main
           className={cn(
             "flex-1 overflow-y-auto",
-            pathname === '/admin/media-browser' ? '' : 'px-8 py-10'
+            pathname === '/admin/media-browser' || pathname.startsWith('/admin/ai-generation/studio') ? '' : 'px-3 py-4'
           )}
           role="main"
         >

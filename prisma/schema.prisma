@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,80 +7,46 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// 任务状态枚举
-enum TaskStatus {
-  PENDING      // 等待处理
-  EXTRACTING   // 下载并提取音频中
-  TRANSCRIBING // 转录中
-  COMPLETED    // 完成
-  FAILED       // 失败
-}
-
-// 下载类型枚举
-enum DownloadType {
-  AUDIO_ONLY   // 只下载音频
-  VIDEO_ONLY   // 只下载视频
-  BOTH         // 同时下载视频和音频
-}
-
-// 任务表
 model Task {
-  id            String     @id @default(cuid())
-  url           String     // 原始视频URL
-  platform      String     // 平台类型 (youtube, bilibili, etc.)
-  title         String?    // 视频标题
-  status        TaskStatus // 任务状态
-  downloadType  DownloadType @default(AUDIO_ONLY) // 下载类型
-  
-  // 文件路径 (可能只有其中一个或两个都有)
-  videoPath     String?    // 下载的视频文件路径
-  audioPath     String?    // 提取的音频文件路径
-  originalVideoPath String? // 压缩前的原始视频路径 (用于S3转存原文件)
-  originalAudioPath String? // 压缩前的原始音频路径 (用于S3转存原文件)
-  
-  // 转录相关
-  transcription String?    // 转录文本
-  tingwuTaskId  String?    // 通义转录任务ID
-  sttProvider   String?    // STT服务提供商 (google, doubao, doubao-small, tingwu)
-  googleSttLanguage String?  // Google STT语言代码 (cmn-Hans-CN, en-US)
-  enableTranscription Boolean @default(true)  // 是否启用语音识别
-
-  // 元数据
-  duration      Int?       // 视频时长（秒）
-  fileSize      Int?       // 文件大小（字节）
-  thumbnail     String?    // 缩略图URL
-  description   String?    // 内容描述
-  
-  // 音频压缩相关
-  compressionPreset    String?  @default("none")  // 压缩预设: none, light, standard, heavy
-  originalFileSize     Int?     // 压缩前文件大小（字节）
-  compressedFileSize   Int?     // 压缩后文件大小（字节）
-  compressionRatio     Float?   // 压缩比例 (0-1)
-  compressionDuration  Int?     // 压缩耗时（毫秒）
-  
-  // 重试和错误处理
-  retryCount    Int        @default(0)
-  errorMessage  String?    // 错误信息
-  
-  // 额外元数据（JSON格式存储平台特定数据和评论等）
-  extraMetadata String?    // JSON格式存储额外元数据
-
-  // S3转存相关
-  s3Url         String?    // S3存储URL (如果已转存)
-  s3TransferStatus String? @default("none") // 转存状态: none, pending, uploading, completed, failed
-  s3TransferFileType String? @default("none") // 转存文件类型: none, compressed, original
-  s3TransferProgress String? // 转存进度信息或错误消息
-  s3TransferredAt DateTime? // 转存完成时间
-
-  // 时间戳
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  id                  String    @id @default(cuid())
+  url                 String
+  platform            String
+  title               String?
+  status              String
+  downloadType        String    @default("AUDIO_ONLY")
+  videoPath           String?
+  audioPath           String?
+  originalVideoPath   String?
+  originalAudioPath   String?
+  transcription       String?
+  tingwuTaskId        String?
+  sttProvider         String?
+  googleSttLanguage   String?
+  enableTranscription Boolean   @default(true)
+  duration            Int?
+  fileSize            Int?
+  thumbnail           String?
+  description         String?
+  compressionPreset   String?   @default("none")
+  originalFileSize    Int?
+  compressedFileSize  Int?
+  compressionRatio    Float?
+  compressionDuration Int?
+  retryCount          Int       @default(0)
+  errorMessage        String?
+  extraMetadata       String?
+  s3Url               String?
+  s3TransferStatus    String?   @default("none")
+  s3TransferFileType  String?   @default("none")
+  s3TransferProgress  String?
+  s3TransferredAt     DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   @@index([status])
   @@map("tasks")
 }
 
-// 配置表
 model Config {
   id        String   @id @default(cuid())
   key       String   @unique
@@ -94,153 +57,88 @@ model Config {
   @@map("configs")
 }
 
-// STT任务状态枚举
-enum SttJobStatus {
-  PENDING      // 等待处理
-  PROCESSING   // 处理中
-  COMPLETED    // 完成
-  FAILED       // 失败
-}
-
-// STT任务表（REST API异步任务记录）
 model SttJob {
-  id            String       @id @default(cuid())
-
-  // 音频文件信息
-  audioPath     String       // 音频文件路径
-  originalName  String       // 原始文件名
-  fileSize      Int          // 文件大小（字节）
-  duration      Float?       // 音频时长（秒）
-
-  // STT配置
-  provider      String       // STT服务提供商 (google, doubao, doubao-small)
-  languageCode  String?      // 语言代码（Google STT专用）
-
-  // 压缩信息
-  compressionPreset    String?  // 压缩预设: none, light, standard, heavy
-  originalFileSize     Int?     // 压缩前文件大小（字节）
-  compressedFileSize   Int?     // 压缩后文件大小（字节）
-  compressionRatio     Float?   // 压缩比例 (0-1)
-
-  // 任务状态
-  status        SttJobStatus @default(PENDING)
-  errorMessage  String?      // 错误信息
-
-  // 转录结果
-  transcription String?      // 转录文本
-
-  // 元数据
-  metadata      String?      // JSON格式存储额外信息
-
-  // 时间戳
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  completedAt   DateTime?    // 完成时间
+  id                 String    @id @default(cuid())
+  audioPath          String
+  originalName       String
+  fileSize           Int
+  duration           Float?
+  provider           String
+  languageCode       String?
+  compressionPreset  String?
+  originalFileSize   Int?
+  compressedFileSize Int?
+  compressionRatio   Float?
+  status             String    @default("PENDING")
+  errorMessage       String?
+  transcription      String?
+  metadata           String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  completedAt        DateTime?
 
   @@index([status])
   @@index([createdAt])
   @@map("stt_jobs")
 }
 
-// ============================================
-// AI 内容生成服务 - V2 架构
-// ============================================
-
-// 平台表（第三方平台：TuZi, Replicate, Pollo 等）
 model AIPlatform {
-  id          String      @id @default(cuid())
-  name        String      @unique // "TuZi", "Replicate", "Pollo"
-  slug        String      @unique // "tuzi", "replicate", "pollo"
+  id          String       @id @default(cuid())
+  name        String       @unique
+  slug        String       @unique
   description String?
-  website     String?     // 官网
-
+  website     String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   providers   AIProvider[]
-
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
 
   @@index([slug])
   @@map("ai_platforms")
 }
 
-// 供应商表
 model AIProvider {
-  id              String      @id @default(cuid())
-  name            String      // "Kie.ai", "OpenAI", "TuZi", "Replicate"
-  slug            String      @unique // "kie-ai", "openai", "tuzi", "replicate"
-  description     String?
-
-  // 平台关联（可选，官方供应商没有平台）
-  platformId      String?
-  platform        AIPlatform? @relation(fields: [platformId], references: [id])
-
-  // API 配置（供应商级别）
-  apiEndpoint     String?     // 基础 API 端点
-  apiKey          String?     // API Key（明文存储，系统安全性要求不高）
-
-  // S3存储配置（可选，用于自动上传生成结果）
-  uploadToS3      Boolean     @default(false) // 是否自动上传到S3
-  s3PathPrefix    String?     // S3路径前缀，如 "ai-generation/kie/"
-
-  // 关联模型
-  models          AIModel[]
-
-  isActive        Boolean     @default(true)
-  sortOrder       Int         @default(0) // 前端排序
-
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id           String      @id @default(cuid())
+  name         String
+  slug         String      @unique
+  description  String?
+  platformId   String?
+  apiEndpoint  String?
+  apiKey       String?
+  uploadToS3   Boolean     @default(false)
+  s3PathPrefix String?
+  isActive     Boolean     @default(true)
+  sortOrder    Int         @default(0)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  models       AIModel[]
+  platform     AIPlatform? @relation(fields: [platformId], references: [id])
 
   @@index([slug])
   @@index([isActive])
   @@map("ai_providers")
 }
 
-// 输出类型枚举
-enum AIOutputType {
-  IMAGE
-  VIDEO
-  AUDIO
-}
-
-// 模型表
 model AIModel {
-  id              String       @id @default(cuid())
-  name            String       // "4o Image", "Flux Kontext", "Midjourney"
-  slug            String       @unique // "4o-image", "flux-kontext", "midjourney"
-  description     String?
-
-  // 供应商关联
-  providerId      String
-  provider        AIProvider   @relation(fields: [providerId], references: [id], onDelete: Cascade)
-
-  // 输出类型
-  outputType      AIOutputType // IMAGE, VIDEO, AUDIO
-
-  // 适配器配置
-  adapterName     String       // "KieImageAdapter", "KieFluxKontextAdapter"
-
-  // 能力标签（JSON 数组字符串）
-  inputCapabilities  String?   // ["text-input", "image-input", "video-input"]
-  outputCapabilities String?   // ["image-output", "video-output"]
-  featureTags        String?   // ["high-quality", "fast", "low-cost", "4k", "hd"]
-  functionTags       String?   // ["text-to-image", "image-to-image", "text-to-video"]
-
-  // 使用统计
-  usageCount      Int          @default(0)
-
-  // 费用说明
-  pricingInfo     String?      // 费用说明（可选，显示在生成按钮下方）
-
-  // 状态
-  isActive        Boolean      @default(true)
-  sortOrder       Int          @default(0) // 前端排序
-
-  // 关联任务
-  tasks           AIGenerationTask[]
-
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id                 String             @id @default(cuid())
+  name               String
+  slug               String             @unique
+  description        String?
+  providerId         String
+  outputType         String
+  adapterName        String
+  inputCapabilities  String?
+  outputCapabilities String?
+  featureTags        String?
+  functionTags       String?
+  usageCount         Int                @default(0)
+  isActive           Boolean            @default(true)
+  sortOrder          Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  pricingInfo        String?
+  tasks              AIGenerationTask[]
+  studioFrames       StudioFrame[]
+  provider           AIProvider         @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
   @@index([slug])
   @@index([providerId])
@@ -249,169 +147,106 @@ model AIModel {
   @@map("ai_models")
 }
 
-// 任务状态枚举
-enum AITaskStatus {
-  PENDING      // 等待处理
-  PROCESSING   // 处理中
-  SUCCESS      // 成功
-  FAILED       // 失败
-  CANCELLED    // 已取消
-}
-
-// 生成任务表
 model AIGenerationTask {
-  id              String       @id @default(cuid())
-
-  // 模型关联
+  id              String         @id @default(cuid())
   modelId         String
-  model           AIModel      @relation(fields: [modelId], references: [id], onDelete: Cascade)
-
-  // 请求信息
   prompt          String
-  inputImages     String?      // JSON 数组: ["url1", "url2"]
-  numberOfOutputs Int          @default(1)
-  parameters      String?      // JSON 对象（动态参数）
-
-  // 状态
-  status          AITaskStatus @default(PENDING)
-  progress        Float?       // 0-1
-
-  // 结果
-  results         String?      // JSON: [{type, url, metadata}]
+  inputImages     String?
+  numberOfOutputs Int            @default(1)
+  parameters      String?
+  status          String         @default("PENDING")
+  progress        Float?
+  results         String?
   errorMessage    String?
-
-  // 供应商任务ID（用于轮询）
   providerTaskId  String?
-
-  // 元数据（可选，用于调试）
   requestPayload  String?
   responsePayload String?
-
-  // 统计
   durationMs      Int?
-
-  // 时间戳
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  shotId          String?        // 关联的镜头ID（可选）
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   completedAt     DateTime?
-
-  // 软删除
   deletedAt       DateTime?
+  model           AIModel        @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  studioFrames    StudioFrame[]
+  shot            StudioShot?    @relation(fields: [shotId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([modelId])
   @@index([createdAt])
   @@index([deletedAt])
+  @@index([shotId])
   @@map("ai_generation_tasks")
 }
 
-// API 密钥管理表（保留用于访问控制）
 model ApiKey {
-  id           String   @id @default(cuid())
-  name         String   // 密钥描述
-  keyPrefix    String   @unique // 密钥前6位
-  hashedKey    String   // SHA256 哈希值
-  isActive     Boolean  @default(true)
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  keyPrefix String   @unique
+  hashedKey String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([keyPrefix])
   @@map("api_keys")
 }
 
-// S3 存储文件记录表
 model StorageFile {
-  id           String   @id @default(cuid())
-  fileName     String   // 原始文件名
-  storedName   String   // 存储的文件名
-  s3Url        String   // S3完整URL
-  s3Key        String   // S3 Key (pathPrefix/fileName)
-  fileSize     Int      // 文件大小（字节）
-  mimeType     String?  // MIME类型
-  pathPrefix   String   @default("yt") // 路径前缀，默认"yt"
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id         String   @id @default(cuid())
+  fileName   String
+  storedName String
+  s3Url      String
+  s3Key      String
+  fileSize   Int
+  mimeType   String?
+  pathPrefix String   @default("yt")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([createdAt])
   @@map("storage_files")
 }
 
-// ============================================
-// 用户管理
-// ============================================
-
-// 用户表
 model User {
-  id        String   @id @default(cuid())
-  username  String   @unique // 用户名（唯一）
-  password  String   // 密码（明文存储）
-
-  // 媒体文件关联
-  mediaFiles   MediaFile[]
-  mediaFolders MediaFolder[]
-  mediaTags    MediaTag[]
-  mediaActors  MediaActor[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String           @id @default(cuid())
+  username       String           @unique
+  password       String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  mediaActors    MediaActor[]
+  mediaFiles     MediaFile[]
+  mediaFolders   MediaFolder[]
+  mediaTags      MediaTag[]
+  studioProjects StudioProject[]
 
   @@map("users")
 }
 
-// ============================================
-// 媒体文件管理
-// ============================================
-
-// 媒体文件类型枚举
-enum MediaFileType {
-  IMAGE
-  VIDEO
-  AUDIO
-}
-
-// 媒体文件来源枚举
-enum MediaFileSource {
-  URL       // 远程URL
-  LOCAL     // 复制到服务端
-  LOCAL_REF // 引用本地文件（不复制）
-}
-
-// 媒体文件表
 model MediaFile {
-  id            String          @id @default(cuid())
-  userId        String          // 所属用户ID
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // 文件基本信息
-  name          String          // 文件名称
-  remark        String?         // 备注名称（用户自定义显示名称）
-  type          MediaFileType   // 类型: IMAGE, VIDEO, AUDIO
-  source        MediaFileSource // 来源: URL, LOCAL, LOCAL_REF
-  sourceUrl     String?         // 远程URL（如果是URL来源）
-  localPath     String?         // 本地文件路径（LOCAL=复制到服务端，LOCAL_REF=引用原始路径）
-  originalPath  String?         // 原始文件绝对路径（仅用于LOCAL_REF模式）
-
-  // 缩略图/封面
-  thumbnailPath String?         // 缩略图本地路径
-
-  // 元数据
-  fileSize      Int?            // 文件大小（字节）
-  mimeType      String?         // MIME类型
-  width         Int?            // 宽度（图片/视频）
-  height        Int?            // 高度（图片/视频）
-  duration      Float?          // 时长（视频/音频，秒）
-
-  // 组织结构
+  id            String       @id @default(cuid())
+  userId        String
+  name          String
+  remark        String?
+  type          String
+  source        String
+  sourceUrl     String?
+  localPath     String?
+  originalPath  String?
+  thumbnailPath String?
+  fileSize      Int?
+  mimeType      String?
+  width         Int?
+  height        Int?
+  duration      Float?
   folderId      String?
-  folder        MediaFolder?    @relation(fields: [folderId], references: [id], onDelete: SetNull)
   actorId       String?
-  actor         MediaActor?     @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  tags          MediaTag[]
-
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  actor         MediaActor?  @relation(fields: [actorId], references: [id])
+  folder        MediaFolder? @relation(fields: [folderId], references: [id])
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tags          MediaTag[]   @relation("MediaFileToMediaTag")
 
   @@index([userId])
   @@index([folderId])
@@ -421,95 +256,127 @@ model MediaFile {
   @@map("media_files")
 }
 
-// 文件夹表（单层）
 model MediaFolder {
   id        String      @id @default(cuid())
-  userId    String      // 所属用户ID
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  name      String      // 文件夹名称
-  color     String?     // 文件夹颜色（可选）
-  icon      String?     // 文件夹图标（可选）
+  userId    String
+  name      String
+  color     String?
+  icon      String?
   sortOrder Int         @default(0)
-
-  files     MediaFile[]
-
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  files     MediaFile[]
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
   @@index([userId])
   @@map("media_folders")
 }
 
-// 演员表
 model MediaActor {
-  id          String      @id @default(cuid())
-  userId      String      // 所属用户ID
-  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  name        String      // 演员昵称
-  avatarUrl   String?     // 头像URL
-  bio         String?     // 演员个性与背景
-  sortOrder   Int         @default(0)
-
-  files       MediaFile[]
-
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                 String             @id @default(cuid())
+  userId             String
+  name               String
+  avatarUrl          String?
+  referenceImageUrl  String?            // 形象参考图
+  bio                String?
+  appearancePrompt   String?            // AI 生成用的外观描述
+  tags               String?            // JSON: 标签数组
+  sortOrder          Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files              MediaFile[]
+  studioCharacters   StudioCharacter[]
 
   @@unique([userId, name])
   @@index([userId])
   @@map("media_actors")
 }
 
-// 标签表（已废弃，保留以兼容现有数据）
 model MediaTag {
   id        String      @id @default(cuid())
-  userId    String      // 所属用户ID
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  name      String      // 标签名称
-  color     String      @default("#gray") // 标签颜色
-
-  files     MediaFile[]
-
+  userId    String
+  name      String
+  color     String      @default("#gray")
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files     MediaFile[] @relation("MediaFileToMediaTag")
 
   @@unique([userId, name])
   @@index([userId])
   @@map("media_tags")
 }
 
-// ============================================
-// 错误监控和告警
-// ============================================
+model LLMProvider {
+  id          String        @id @default(cuid())
+  name        String
+  slug        String        @unique
+  description String?
+  apiKey      String?
+  isActive    Boolean       @default(true)
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  endpoints   LLMEndpoint[]
 
-// 错误日志级别
-enum ErrorLevel {
-  WARN
-  ERROR
-  CRITICAL
+  @@index([slug])
+  @@index([isActive])
+  @@map("llm_providers")
 }
 
-// 错误日志表
+model LLMEndpoint {
+  id          String      @id @default(cuid())
+  providerId  String
+  name        String
+  url         String
+  type        String      @default("openai") // openai, claude, etc.
+  description String?
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  provider    LLMProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  models      LLMModel[]
+
+  @@unique([providerId, name])
+  @@index([providerId])
+  @@index([isActive])
+  @@map("llm_endpoints")
+}
+
+model LLMModel {
+  id          String      @id @default(cuid())
+  endpointId  String
+  name        String
+  slug        String
+  description String?
+  isActive    Boolean     @default(true)
+  sortOrder   Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  endpoint    LLMEndpoint @relation(fields: [endpointId], references: [id], onDelete: Cascade)
+
+  @@unique([endpointId, slug])
+  @@index([endpointId])
+  @@index([isActive])
+  @@map("llm_models")
+}
+
 model ErrorLog {
-  id           String     @id @default(cuid())
-  level        ErrorLevel // 错误级别
-  source       String     // 来源 (adapter name, service name)
-  message      String     // 错误消息
-  stack        String?    // 错误堆栈
-  context      String?    // JSON: 请求详情、任务信息
-
-  requestId    String?    // 关联的 GenerationRequest
-  taskId       String?    // 供应商任务 ID
-
-  resolved     Boolean    @default(false)
-  resolvedAt   DateTime?
-  resolvedBy   String?
-
-  createdAt    DateTime   @default(now())
+  id         String    @id @default(cuid())
+  level      String
+  source     String
+  message    String
+  stack      String?
+  context    String?
+  requestId  String?
+  taskId     String?
+  resolved   Boolean   @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+  createdAt  DateTime  @default(now())
 
   @@index([level])
   @@index([source])
@@ -518,33 +385,221 @@ model ErrorLog {
   @@map("error_logs")
 }
 
-// 系统告警类型
-enum AlertSeverity {
-  LOW
-  MEDIUM
-  HIGH
-  CRITICAL
-}
-
-// 系统告警表
 model SystemAlert {
-  id          String        @id @default(cuid())
-  type        String        // ERROR_RATE_HIGH, TASK_TIMEOUT, API_DOWN
-  severity    AlertSeverity // LOW, MEDIUM, HIGH, CRITICAL
-  message     String
-  details     String?       // JSON
-
-  sentAt      DateTime?
-  channel     String?       // email, webhook, slack
-
+  id             String    @id @default(cuid())
+  type           String
+  severity       String
+  message        String
+  details        String?
+  sentAt         DateTime?
+  channel        String?
   acknowledged   Boolean   @default(false)
   acknowledgedAt DateTime?
   acknowledgedBy String?
-
-  createdAt   DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   @@index([severity])
   @@index([acknowledged])
   @@index([createdAt])
   @@map("system_alerts")
+}
+
+// ============================================
+// AI 对话功能
+// ============================================
+
+// AI对话会话表
+model ChatConversation {
+  id                String        @id @default(cuid())
+  provider          String        // 供应商：gemini, deepseek, grok
+  model             String        // 模型名称
+  systemInstruction String?       // 系统提示词
+  enableWebSearch   Boolean       @default(false) // 是否启用联网搜索（仅Gemini）
+  messages          ChatMessage[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([updatedAt])
+  @@map("chat_conversations")
+}
+
+// AI对话消息表
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  role           String           // user, assistant
+  content        String           // 消息内容
+  metadata       String?          // JSON格式元数据（如Gemini的groundingMetadata）
+  createdAt      DateTime         @default(now())
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("chat_messages")
+}
+
+// ============================================
+// Studio - AI 短片制作工作流系统
+// ============================================
+
+// Studio 项目(工作流类型)
+model StudioProject {
+  id          String            @id @default(cuid())
+  userId      String
+  name        String            // 如 "英语对话教学"
+  description String?
+  slug        String            @unique // workflow-english-dialog
+  config      String?           // JSON: 工作流特定配置
+  sortOrder   Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  episodes    StudioEpisode[]
+  characters  StudioCharacter[]
+
+  @@unique([userId, slug])
+  @@index([userId])
+  @@map("studio_projects")
+}
+
+// 集(Episode) - 归档单位
+model StudioEpisode {
+  id            String         @id @default(cuid())
+  projectId     String
+  episodeNumber Int            // 第几集
+  title         String?
+  status        String         @default("draft") // draft/in-progress/completed/archived
+  rawInput      String?        // JSON: 原始输入素材
+  corePoint     String?        // 核心看点
+  objective     String?        // 目标确定结果
+  objectiveLLM  String?        // 使用的LLM记录(JSON)
+  systemPrompt  String?        // 目标确定的 System Prompt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  archivedAt    DateTime?
+  project       StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  setting       StudioSetting?
+  shots         StudioShot[]
+
+  @@unique([projectId, episodeNumber])
+  @@index([projectId])
+  @@index([status])
+  @@map("studio_episodes")
+}
+
+// 背景/场景/全局设定
+model StudioSetting {
+  id              String        @id @default(cuid())
+  episodeId       String        @unique
+  era             String?       // 时代
+  genre           String?       // 类型
+  visualStyle     String?       // 视觉风格描述
+  referenceImages String?       // JSON: 参考图像URL数组
+  stylePrompt     String?       // 全局风格Prompt
+  lightingPrompt  String?       // 灯光Prompt
+  colorPrompt     String?       // 色调Prompt
+  customPrompts   String?       // JSON: 自定义Prompt片段
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  episode         StudioEpisode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+
+  @@index([episodeId])
+  @@map("studio_settings")
+}
+
+// 角色库(可从MediaActor导入)
+model StudioCharacter {
+  id               String                @id @default(cuid())
+  projectId        String
+  name             String
+  description      String?
+  sourceActorId    String?               // 从MediaActor导入时记录来源
+  appearancePrompt String?               // 角色外观描述
+  referenceImage   String?               // 参考图URL
+  metadata         String?               // JSON: 其他元数据
+  sortOrder        Int                   @default(0)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  project          StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceActor      MediaActor?           @relation(fields: [sourceActorId], references: [id], onDelete: SetNull)
+  shotCharacters   StudioShotCharacter[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([sourceActorId])
+  @@map("studio_characters")
+}
+
+// 镜头
+model StudioShot {
+  id              String                @id @default(cuid())
+  episodeId       String
+  shotNumber      Int                   // 镜头序号
+  name            String?               // 镜头名称
+  description     String?               // 镜头描述
+  scenePrompt     String?               // 场景描述
+  actionPrompt    String?               // 动作描述
+  cameraPrompt    String?               // 镜头运动
+  dialogue        String?               // 对话内容(全局)
+  duration        Float?                // 预期时长(秒)
+  notes           String?               // 备注
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  episode         StudioEpisode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  characters      StudioShotCharacter[]
+  frames          StudioFrame[]
+  generationTasks AIGenerationTask[]    // 关联的AI生成任务
+
+  @@unique([episodeId, shotNumber])
+  @@index([episodeId])
+  @@map("studio_shots")
+}
+
+// 镜头-角色关联表
+model StudioShotCharacter {
+  id          String          @id @default(cuid())
+  shotId      String
+  characterId String
+  dialogue    String?         // 该角色在这个镜头的台词
+  position    String?         // 角色位置描述
+  action      String?         // 角色动作
+  sortOrder   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  shot        StudioShot      @relation(fields: [shotId], references: [id], onDelete: Cascade)
+  character   StudioCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([shotId, characterId])
+  @@index([shotId])
+  @@index([characterId])
+  @@map("studio_shot_characters")
+}
+
+// 帧/生成资产(首帧图、动画视频)
+model StudioFrame {
+  id            String               @id @default(cuid())
+  shotId        String
+  type          String               // 'keyframe' | 'animation'
+  version       Int                  // 版本号
+  prompt        String               // 完整prompt(合并了全局设定)
+  modelId       String
+  taskId        String?              // 关联的生成任务
+  inputImages   String?              // JSON: 输入图像(如基于首帧生成动画)
+  parameters    String?              // JSON: 生成参数
+  resultUrl     String?              // 结果URL
+  status        String               @default("pending") // pending/generating/completed/failed
+  errorMessage  String?
+  isSelected    Boolean              @default(false) // 是否为当前选中版本
+  metadata      String?              // JSON: 其他元数据
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  shot          StudioShot           @relation(fields: [shotId], references: [id], onDelete: Cascade)
+  model         AIModel              @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  task          AIGenerationTask?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@unique([shotId, type, version])
+  @@index([shotId])
+  @@index([modelId])
+  @@index([taskId])
+  @@index([status])
+  @@map("studio_frames")
 }
