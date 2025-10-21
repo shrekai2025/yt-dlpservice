@@ -20,14 +20,15 @@ type UploadedImage = {
 interface ShotAIGenerationPanelProps {
   shotId: string
   onTaskCreated?: () => void
+  sceneDescriptions?: Array<{ characterName: string; description: string }> | null
 }
 
-export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGenerationPanelProps) {
+export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions }: ShotAIGenerationPanelProps) {
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType>('IMAGE')
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
   const [prompt, setPrompt] = useState('')
-  const [numberOfOutputs, setNumberOfOutputs] = useState(1)
+  const [numberOfOutputs] = useState(1) // 固定为1，不允许修改
   const [parameters, setParameters] = useState<Record<string, unknown>>({})
   const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([])
   const [isUploadingImage, setIsUploadingImage] = useState(false)
@@ -52,7 +53,6 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
       setIsGenerating(false)
       setError(null)
       toast.success('任务已创建')
-      setPrompt('')
       onTaskCreated?.()
     },
     onError: (error) => {
@@ -95,6 +95,7 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
     }
   }, [selectedModel])
 
+
   useEffect(() => {
     if (!availableProviders || availableProviders.length === 0) return
     if (selectedProviderId) return
@@ -109,7 +110,13 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
   useEffect(() => {
     if (selectedProviderId && availableModels.length > 0) {
       const savedModelId = localStorage.getItem('shot-ai-model-id')
-      if (savedModelId && availableModels.some(m => m.id === savedModelId)) {
+      // 检查保存的模型是否是 v2.5 turbo pro，如果是则清除（因为该模型不可用）
+      const savedModel = availableModels.find(m => m.id === savedModelId)
+      if (savedModel?.slug === 'kie-kling-v2-5-turbo-pro') {
+        console.warn('清除不可用的模型缓存: v2.5 turbo pro')
+        localStorage.removeItem('shot-ai-model-id')
+        setSelectedModelId(availableModels[0]!.id)
+      } else if (savedModelId && availableModels.some(m => m.id === savedModelId)) {
         setSelectedModelId(savedModelId)
       } else {
         setSelectedModelId(availableModels[0]!.id)
@@ -352,6 +359,17 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
     }
   }
 
+  // 处理转视频
+  const handleConvertToVideo = (imageUrl: string) => {
+    // 先切换到视频输出类型，等待 modelsData 更新后再选择模型
+    setSelectedOutputType('VIDEO')
+
+    // 设置输入图片
+    setUploadedImages([{ url: imageUrl, name: '转视频源图片' }])
+
+    toast.success('已切换到视频生成模式，推荐使用 Kling v2.1 Master 模型')
+  }
+
   // 处理应用历史任务
   const handleApplyTask = (task: TaskHistoryTask) => {
     // 应用模型选择
@@ -439,17 +457,7 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
             ))}
           </select>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-gray-500">输出数量</span>
-          <input
-            type="number"
-            value={numberOfOutputs}
-            onChange={(e) => setNumberOfOutputs(Math.max(1, parseInt(e.target.value) || 1))}
-            min={1}
-            max={10}
-            className="h-9 w-20 rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none"
-          />
-        </div>
+        {/* 输出数量字段已隐藏，固定为1 */}
       </div>
 
       <div className="space-y-4">
@@ -462,6 +470,41 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
             placeholder="描述你想要生成的内容..."
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
           />
+
+          {/* 快捷填充按钮 */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPrompt("将参考图中的角色更换为如下装扮和场景，保持角色一致即可：")}
+              className="px-3 py-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 transition-colors"
+            >
+              保持人
+            </button>
+            <button
+              type="button"
+              onClick={() => setPrompt("调整参考图的角色和环境，保持角色外观、场景、镜头角度一致：")}
+              className="px-3 py-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-green-200 transition-colors"
+            >
+              延续人+场景
+            </button>
+
+            {/* 角色模板词按钮 */}
+            {sceneDescriptions && sceneDescriptions.length > 0 && (
+              <>
+                {sceneDescriptions.map((scene, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => setPrompt(prev => prev + (prev ? ' ' : '') + scene.description)}
+                    className="px-3 py-1 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-purple-200 transition-colors"
+                    title={scene.description}
+                  >
+                    {scene.characterName}模板词
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
         </div>
 
         {/* 输入图片 - 仅当模型支持图片输入时显示 */}
@@ -597,6 +640,7 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated }: ShotAIGeneratio
       shotId={shotId}
       onRefreshShot={onTaskCreated}
       onApplyTask={handleApplyTask}
+      onConvertToVideo={handleConvertToVideo}
     />
 
     {/* 图片预览对话框 */}

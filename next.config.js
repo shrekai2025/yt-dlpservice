@@ -18,6 +18,14 @@ const config = {
   skipTrailingSlashRedirect: true,
   // Use standalone output to bypass static page generation issues
   output: 'standalone',
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'image.civitai.com',
+      },
+    ],
+  },
 };
 
 export default config;

@@ -17,6 +17,8 @@ import { KieSora2ImageToVideoAdapter } from './kie/kie-sora2-image-to-video-adap
 import { KieSora2ProAdapter } from './kie/kie-sora2-pro-adapter'
 import { KieSora2ProImageToVideoAdapter } from './kie/kie-sora2-pro-image-to-video-adapter'
 import { KieVeo3Adapter } from './kie/kie-veo3-adapter'
+import { KieVeo31Adapter } from './kie/kie-veo3-1-adapter'
+import { KieVeo31ExtendAdapter } from './kie/kie-veo3-1-extend-adapter'
 import { KieNanoBananaAdapter } from './kie/kie-nano-banana-adapter'
 import { KieNanoBananaEditAdapter } from './kie/kie-nano-banana-edit-adapter'
 import { KieNanoBananaUpscaleAdapter } from './kie/kie-nano-banana-upscale-adapter'
@@ -50,6 +52,8 @@ import { OpenAIDalleAdapter } from './openai/openai-dalle-adapter'
 import { PolloVeo3Adapter } from './pollo/pollo-veo3-adapter'
 import { PolloKlingAdapter } from './pollo/pollo-kling-adapter'
 
+import { ElevenLabsTTSAdapter } from './elevenlabs/elevenlabs-tts-adapter'
+
 /**
  * 适配器注册表
  * key: adapterName
@@ -66,6 +70,8 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   KieSora2ProAdapter,
   KieSora2ProImageToVideoAdapter,
   KieVeo3Adapter,
+  KieVeo31Adapter,
+  KieVeo31ExtendAdapter,
   KieNanoBananaAdapter,
   KieNanoBananaEditAdapter,
   KieNanoBananaUpscaleAdapter,
@@ -102,6 +108,9 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   // Pollo
   PolloVeo3Adapter,
   PolloKlingAdapter,
+
+  // ElevenLabs
+  ElevenLabsTTSAdapter,
 }
 
 /**

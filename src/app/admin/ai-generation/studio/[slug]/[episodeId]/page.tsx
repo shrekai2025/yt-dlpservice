@@ -20,9 +20,9 @@ import { PreviewTab } from '~/components/studio/PreviewTab'
 type WorkflowTab = 'input' | 'objective' | 'setting' | 'shots' | 'preview'
 
 const TABS: Array<{ id: WorkflowTab; label: string; icon: any }> = [
-  { id: 'input', label: '原始输入', icon: FileText },
-  { id: 'objective', label: '目标（脚本）', icon: Target },
-  { id: 'setting', label: '背景设定(视觉深化)', icon: Settings },
+  { id: 'input', label: '概念', icon: FileText },
+  { id: 'objective', label: '设定+脚本', icon: Target },
+  { id: 'setting', label: '角色', icon: Settings },
   { id: 'shots', label: '镜头制作', icon: Film },
   { id: 'preview', label: '预览导出', icon: Eye },
 ]

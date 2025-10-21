@@ -6,6 +6,7 @@
 
 import { db } from '~/server/db'
 import type { AITaskStatus } from '@prisma/client'
+import { calculateTaskCost } from '~/lib/ai-generation/config/pricing-info'
 
 export interface CreateTaskInput {
   modelId: string
@@ -41,6 +42,22 @@ export class TaskManager {
    * 创建新任务
    */
   async createTask(input: CreateTaskInput) {
+    // 获取模型信息以计算成本
+    const model = await db.aIModel.findUnique({
+      where: { id: input.modelId },
+      select: { slug: true },
+    })
+
+    // 计算任务成本
+    let costUSD: number | null = null
+    if (model) {
+      const params = {
+        ...(input.parameters || {}),
+        numberOfOutputs: input.numberOfOutputs || 1,
+      }
+      costUSD = calculateTaskCost(model.slug, params)
+    }
+
     const task = await db.aIGenerationTask.create({
       data: {
         modelId: input.modelId,
@@ -49,6 +66,7 @@ export class TaskManager {
         numberOfOutputs: input.numberOfOutputs || 1,
         parameters: input.parameters ? JSON.stringify(input.parameters) : null,
         shotId: input.shotId, // 关联镜头ID
+        costUSD, // 保存计算的成本
         status: 'PENDING',
       },
       include: {

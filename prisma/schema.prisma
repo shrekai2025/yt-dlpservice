@@ -163,6 +163,7 @@ model AIGenerationTask {
   responsePayload String?
   durationMs      Int?
   shotId          String?        // 关联的镜头ID（可选）
+  costUSD         Float?         // 任务消耗成本（美元）
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   completedAt     DateTime?
@@ -241,6 +242,7 @@ model MediaFile {
   duration      Float?
   folderId      String?
   actorId       String?
+  starred       Boolean      @default(false)
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
   actor         MediaActor?  @relation(fields: [actorId], references: [id])
@@ -253,6 +255,7 @@ model MediaFile {
   @@index([actorId])
   @@index([type])
   @@index([source])
+  @@index([starred])
   @@map("media_files")
 }
 
@@ -463,22 +466,23 @@ model StudioProject {
 
 // 集(Episode) - 归档单位
 model StudioEpisode {
-  id            String         @id @default(cuid())
+  id            String            @id @default(cuid())
   projectId     String
-  episodeNumber Int            // 第几集
+  episodeNumber Int               // 第几集
   title         String?
-  status        String         @default("draft") // draft/in-progress/completed/archived
-  rawInput      String?        // JSON: 原始输入素材
-  corePoint     String?        // 核心看点
-  objective     String?        // 目标确定结果
-  objectiveLLM  String?        // 使用的LLM记录(JSON)
-  systemPrompt  String?        // 目标确定的 System Prompt
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  status        String            @default("draft") // draft/in-progress/completed/archived
+  rawInput      String?           // JSON: 原始输入素材
+  corePoint     String?           // 核心看点
+  objective     String?           // 目标确定结果
+  objectiveLLM  String?           // 使用的LLM记录(JSON)
+  systemPrompt  String?           // 目标确定的 System Prompt
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
   archivedAt    DateTime?
-  project       StudioProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project       StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
   setting       StudioSetting?
   shots         StudioShot[]
+  characters    StudioCharacter[] // 从该集提取的角色
 
   @@unique([projectId, episodeNumber])
   @@index([projectId])
@@ -513,6 +517,7 @@ model StudioCharacter {
   name             String
   description      String?
   sourceActorId    String?               // 从MediaActor导入时记录来源
+  sourceEpisodeId  String?               // 从Episode的objective提取时记录来源
   appearancePrompt String?               // 角色外观描述
   referenceImage   String?               // 参考图URL
   metadata         String?               // JSON: 其他元数据
@@ -521,11 +526,13 @@ model StudioCharacter {
   updatedAt        DateTime              @updatedAt
   project          StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   sourceActor      MediaActor?           @relation(fields: [sourceActorId], references: [id], onDelete: SetNull)
+  sourceEpisode    StudioEpisode?        @relation(fields: [sourceEpisodeId], references: [id], onDelete: SetNull)
   shotCharacters   StudioShotCharacter[]
 
   @@unique([projectId, name])
   @@index([projectId])
   @@index([sourceActorId])
+  @@index([sourceEpisodeId])
   @@map("studio_characters")
 }
 

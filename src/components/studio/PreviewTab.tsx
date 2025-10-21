@@ -43,8 +43,10 @@ export function PreviewTab({ episode, shots, setting }: Props) {
         dialogue: sc.dialogue,
         position: sc.position,
       })),
-      keyframe: shot.frames?.find((f: any) => f.type === 'keyframe' && f.isSelected)?.resultUrl,
-      animation: shot.frames?.find((f: any) => f.type === 'animation' && f.isSelected)?.resultUrl,
+      // 优先使用 scenePrompt（用户设置的首帧），如果没有则使用 AI 生成的 keyframe
+      keyframe: shot.scenePrompt || shot.frames?.find((f: any) => f.type === 'keyframe' && f.isSelected)?.resultUrl,
+      // 优先使用 actionPrompt（用户设置的视频），如果没有则使用 AI 生成的 animation
+      video: shot.actionPrompt || shot.frames?.find((f: any) => f.type === 'animation' && f.isSelected)?.resultUrl,
     })),
   }
 
@@ -99,16 +101,17 @@ export function PreviewTab({ episode, shots, setting }: Props) {
         <h3 className="font-medium mb-4">分镜板</h3>
         <div className="grid grid-cols-3 gap-4">
           {shots.map((shot) => {
-            const keyframe = shot.frames?.find((f: any) => f.type === 'keyframe' && f.isSelected)
-            const animation = shot.frames?.find((f: any) => f.type === 'animation' && f.isSelected)
+            // 优先使用 scenePrompt（用户设置的首帧），如果没有则尝试使用 AI 生成的 keyframe
+            const imageUrl = shot.scenePrompt || shot.frames?.find((f: any) => f.type === 'keyframe' && f.isSelected)?.resultUrl
+            const hasVideo = !!shot.actionPrompt || !!shot.frames?.find((f: any) => f.type === 'animation' && f.isSelected)
 
             return (
               <div key={shot.id} className="border rounded-lg overflow-hidden">
                 {/* 图像预览 */}
                 <div className="aspect-video bg-gray-100 relative">
-                  {keyframe?.resultUrl ? (
+                  {imageUrl ? (
                     <img
-                      src={keyframe.resultUrl}
+                      src={imageUrl}
                       alt={`Shot ${shot.shotNumber}`}
                       className="w-full h-full object-cover"
                     />
@@ -145,11 +148,11 @@ export function PreviewTab({ episode, shots, setting }: Props) {
                   )}
 
                   <div className="flex gap-2 text-xs">
-                    {keyframe?.resultUrl && (
+                    {imageUrl && (
                       <span className="px-2 py-1 bg-green-100 text-green-700 rounded">✓ 首帧</span>
                     )}
-                    {animation?.resultUrl && (
-                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">✓ 动画</span>
+                    {hasVideo && (
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded">✓ 视频</span>
                     )}
                   </div>
                 </div>

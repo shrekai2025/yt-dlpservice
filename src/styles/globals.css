@@ -137,3 +137,8 @@ a {
 .animate-slide-in-right {
   animation: slide-in-right 0.3s ease-out;
 }
+
+/* 媒体浏览器最大化模式 - 隐藏系统侧边栏 */
+body.media-browser-maximized aside {
+  display: none !important;
+}

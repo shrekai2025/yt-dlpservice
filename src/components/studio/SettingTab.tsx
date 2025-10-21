@@ -1,10 +1,10 @@
 /**
- * 背景设定 Tab 组件
- * 全局风格、场景设定、角色管理
+ * 角色 Tab 组件
+ * 角色管理
  */
 
-import { useState, useEffect } from 'react'
-import { Save, Plus, User, RefreshCw, Trash2, Upload, X, Link, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, User, RefreshCw, Trash2, Upload, Link, Sparkles } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import { api } from '~/components/providers/trpc-provider'
 import { toast } from '~/components/ui/toast'
@@ -17,16 +17,6 @@ type Props = {
 }
 
 export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
-  // 全局设定状态
-  const [era, setEra] = useState('')
-  const [genre, setGenre] = useState('')
-  const [visualStyle, setVisualStyle] = useState('')
-  const [stylePrompt, setStylePrompt] = useState('')
-  const [lightingPrompt, setLightingPrompt] = useState('')
-  const [colorPrompt, setColorPrompt] = useState('')
-  const [referenceImages, setReferenceImages] = useState<string[]>([])
-  const [imageUrlInput, setImageUrlInput] = useState('')
-
   // 角色管理状态
   const [showCreateCharacter, setShowCreateCharacter] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -46,10 +36,6 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
   })
 
   // Mutations
-  const updateSettingMutation = api.studio.updateSetting.useMutation({
-    onSuccess: () => onSave?.(),
-  })
-
   const createCharacterMutation = api.studio.createCharacter.useMutation({
     onSuccess: () => {
       void refetchCharacters()
@@ -92,51 +78,6 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
     },
   })
 
-  // 初始化设定
-  useEffect(() => {
-    if (setting) {
-      setEra(setting.era || '')
-      setGenre(setting.genre || '')
-      setVisualStyle(setting.visualStyle || '')
-      setStylePrompt(setting.stylePrompt || '')
-      setLightingPrompt(setting.lightingPrompt || '')
-      setColorPrompt(setting.colorPrompt || '')
-
-      if (setting.referenceImages) {
-        try {
-          setReferenceImages(JSON.parse(setting.referenceImages))
-        } catch {
-          setReferenceImages([])
-        }
-      }
-    }
-  }, [setting])
-
-  const handleSaveSetting = () => {
-    updateSettingMutation.mutate({
-      episodeId,
-      era: era || undefined,
-      genre: genre || undefined,
-      visualStyle: visualStyle || undefined,
-      stylePrompt: stylePrompt || undefined,
-      lightingPrompt: lightingPrompt || undefined,
-      colorPrompt: colorPrompt || undefined,
-      referenceImages: referenceImages.length > 0 ? JSON.stringify(referenceImages) : undefined,
-    })
-  }
-
-  const handleAddImageUrl = () => {
-    const url = imageUrlInput.trim()
-    if (url && !referenceImages.includes(url)) {
-      setReferenceImages([...referenceImages, url])
-      setImageUrlInput('')
-    }
-  }
-
-  const handleRemoveImage = (url: string) => {
-    setReferenceImages(referenceImages.filter(img => img !== url))
-  }
-
   const handleExtractCharacters = () => {
     if (!confirm('从核心目标提取角色？这会根据目标确定中的JSON数据创建或更新角色。')) return
     extractCharactersMutation.mutate({ episodeId })
@@ -144,130 +85,8 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
 
   return (
     <div className="space-y-8">
-      {/* 全局风格设定 */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">全局风格设定</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              这些设定将自动应用到所有镜头的 Prompt 中
-            </p>
-          </div>
-          <Button onClick={handleSaveSetting} className="gap-2" disabled={updateSettingMutation.isPending}>
-            <Save className="h-4 w-4" />
-            {updateSettingMutation.isPending ? '保存中...' : '保存设定'}
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-3 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">时代</label>
-            <input
-              type="text"
-              value={era}
-              onChange={(e) => setEra(e.target.value)}
-              placeholder="如: 现代, 80年代, 未来"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">类型</label>
-            <input
-              type="text"
-              value={genre}
-              onChange={(e) => setGenre(e.target.value)}
-              placeholder="如: 科幻, 日常, 教学"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">视觉风格</label>
-            <input
-              type="text"
-              value={visualStyle}
-              onChange={(e) => setVisualStyle(e.target.value)}
-              placeholder="如: 温馨自然, 赛博朋克"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="text-sm font-medium">风格 Prompt</label>
-          <textarea
-            value={stylePrompt}
-            onChange={(e) => setStylePrompt(e.target.value)}
-            rows={2}
-            placeholder="如: warm colors, cozy atmosphere, casual modern setting"
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">灯光 Prompt</label>
-            <textarea
-              value={lightingPrompt}
-              onChange={(e) => setLightingPrompt(e.target.value)}
-              rows={2}
-              placeholder="如: soft natural lighting, warm ambient"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">色调 Prompt</label>
-            <textarea
-              value={colorPrompt}
-              onChange={(e) => setColorPrompt(e.target.value)}
-              rows={2}
-              placeholder="如: warm browns, creams, natural tones"
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
-            />
-          </div>
-        </div>
-
-        {/* 参考图片 */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium">参考图片</label>
-          <div className="flex gap-3 flex-wrap">
-            {referenceImages.map((url) => (
-              <div key={url} className="relative group">
-                <img
-                  src={url}
-                  alt="Reference"
-                  className="h-24 w-24 object-cover rounded border"
-                />
-                <button
-                  onClick={() => handleRemoveImage(url)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={imageUrlInput}
-              onChange={(e) => setImageUrlInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddImageUrl()}
-              placeholder="粘贴图片 URL"
-              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-            <Button variant="outline" size="sm" onClick={handleAddImageUrl}>
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t pt-8">
-        {/* 角色管理 */}
-        <div className="space-y-4">
+      {/* 角色管理 */}
+      <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold">角色库</h2>
@@ -317,6 +136,11 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
                     <h3 className="font-medium truncate">{char.name}</h3>
                     <p className="text-xs text-gray-500 line-clamp-2">{char.description || '无描述'}</p>
                     <div className="mt-2 flex gap-2 items-center flex-wrap">
+                      {char.sourceEpisodeId && (char as any).sourceEpisode && (
+                        <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded">
+                          同步自{(char as any).sourceEpisode.title || `第${(char as any).sourceEpisode.episodeNumber}集`}
+                        </span>
+                      )}
                       {char.sourceActorId ? (
                         <>
                           <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded flex items-center gap-1">
@@ -364,9 +188,7 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      if (confirm(`确定删除角色"${char.name}"吗?`)) {
-                        deleteCharacterMutation.mutate({ characterId: char.id })
-                      }
+                      deleteCharacterMutation.mutate({ characterId: char.id })
                     }}
                     className="text-red-500 hover:text-red-700"
                   >
@@ -394,7 +216,6 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
             )}
           </div>
         </div>
-      </div>
 
       {/* 导入演员对话框 - 简化版,完整实现需要单独组件 */}
       {showImportDialog && (

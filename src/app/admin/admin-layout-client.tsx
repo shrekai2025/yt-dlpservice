@@ -19,27 +19,25 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'AI生成',
     items: [
       { id: 'studio', label: 'Studio', href: '/admin/ai-generation/studio' },
-      { id: 'image-generation', label: '生image', href: '/admin/ai-generation' },
-      { id: 'chat', label: '对话', href: '/admin/ai-chat' },
-      { id: 'generation-tasks', label: '任务历史', href: '/admin/ai-generation/tasks' },
-      { id: 'generation-providers', label: '供应商管理', href: '/admin/ai-generation/providers' },
-    ],
-  },
-  {
-    id: 'text-extraction',
-    label: '文案提取',
-    items: [
-      { id: 'url2stt', label: 'URL2STT', href: '/admin' },
-      { id: 'standalone-stt', label: '独立STT', href: '/admin/standalone-stt' },
-      { id: 'info-fetch', label: '视频信息预览', href: '/admin/info-fetch' },
+      { id: 'image-generation', label: 'Generator', href: '/admin/ai-generation' },
+      { id: 'chat', label: 'Chat', href: '/admin/ai-chat' },
     ],
   },
   {
     id: 'file-library',
-    label: '文件库',
+    label: '文件管理',
     items: [
       { id: 'media-browser', label: '媒体浏览器', href: '/admin/media-browser' },
       { id: 'storage', label: 'AWS S3存储', href: '/admin/storage' },
+    ],
+  },
+  {
+    id: 'text-extraction',
+    label: '提取器',
+    items: [
+      { id: 'url2stt', label: 'URL2STT', href: '/admin' },
+      { id: 'standalone-stt', label: '独立STT', href: '/admin/standalone-stt' },
+      { id: 'info-fetch', label: '视频信息预览', href: '/admin/info-fetch' },
     ],
   },
 ]

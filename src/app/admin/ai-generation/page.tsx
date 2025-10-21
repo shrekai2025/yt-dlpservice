@@ -8,7 +8,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import { X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { X, Settings } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
 import { Card } from '~/components/ui/card'
 import { Button } from '~/components/ui/button'
@@ -31,6 +32,8 @@ const OUTPUT_VARIANT_HINTS: Record<string, string> = {
 }
 
 export default function AIGenerationPage() {
+  const router = useRouter()
+
   // 状态管理
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType>('IMAGE')
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
@@ -549,6 +552,13 @@ export default function AIGenerationPage() {
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">AI 内容生成</h1>
+        <Button
+          variant="outline"
+          onClick={() => router.push('/admin/ai-generation/providers')}
+        >
+          <Settings className="h-4 w-4 mr-2" />
+          供应商管理
+        </Button>
       </div>
 
       <div className="space-y-6">

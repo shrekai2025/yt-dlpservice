@@ -245,6 +245,15 @@ export default function TaskDetailPage() {
               </div>
             )}
 
+            {task.costUSD !== null && task.costUSD !== undefined && (
+              <div>
+                <div className="text-sm font-medium text-neutral-500">成本</div>
+                <div className="mt-1 text-lg font-semibold text-green-600">
+                  ${task.costUSD.toFixed(4)} USD
+                </div>
+              </div>
+            )}
+
             <div>
               <div className="text-sm font-medium text-neutral-500">创建时间</div>
               <div className="mt-1">{formatDate(task.createdAt)}</div>
@@ -308,6 +317,30 @@ export default function TaskDetailPage() {
                     >
                       您的浏览器不支持视频播放
                     </video>
+                  </div>
+                ) : result.type === 'audio' ? (
+                  <div className="space-y-2">
+                    <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
+                          <svg className="h-5 w-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                          </svg>
+                        </div>
+                        <div className="flex-1">
+                          <div className="text-sm font-medium text-purple-900">音频文件 #{index + 1}</div>
+                          <div className="text-xs text-purple-600">点击播放按钮试听</div>
+                        </div>
+                      </div>
+                      <audio
+                        src={result.url}
+                        controls
+                        className="w-full"
+                        preload="metadata"
+                      >
+                        您的浏览器不支持音频播放
+                      </audio>
+                    </div>
                   </div>
                 ) : (
                   <div className="p-4 bg-neutral-50 rounded border">

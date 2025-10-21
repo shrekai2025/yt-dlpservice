@@ -258,6 +258,15 @@ export const studioRouter = createTRPCRouter({
               frames: {
                 orderBy: [{ type: 'asc' }, { version: 'desc' }],
               },
+              generationTasks: {
+                select: {
+                  id: true,
+                  costUSD: true,
+                  status: true,
+                  createdAt: true,
+                },
+                orderBy: { createdAt: 'desc' },
+              },
             },
             orderBy: { shotNumber: 'asc' },
           },
@@ -530,6 +539,7 @@ export const studioRouter = createTRPCRouter({
         where: { projectId: input.projectId },
         include: {
           sourceActor: true,
+          sourceEpisode: true,
         },
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
       })
@@ -1326,6 +1336,7 @@ export const studioRouter = createTRPCRouter({
                 name: char.name,
                 appearancePrompt: char.appearance,
                 description: char.environment,
+                sourceEpisodeId: input.episodeId,
               },
             })
             createdCount++
@@ -1336,6 +1347,7 @@ export const studioRouter = createTRPCRouter({
               data: {
                 appearancePrompt: char.appearance,
                 description: char.environment,
+                sourceEpisodeId: input.episodeId,
               },
             })
             updatedCount++
@@ -1687,6 +1699,54 @@ export const studioRouter = createTRPCRouter({
         where: { id: input.shotId },
         data: {
           actionPrompt: input.videoUrl,
+        },
+      })
+
+      return updatedShot
+    }),
+
+  /**
+   * 设置镜头音频
+   */
+  setShotAudio: userProcedure
+    .input(
+      z.object({
+        shotId: z.string(),
+        audioUrl: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const shot = await ctx.db.studioShot.findUnique({
+        where: { id: input.shotId },
+        include: {
+          episode: {
+            include: {
+              project: true,
+            },
+          },
+        },
+      })
+
+      if (!shot) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '镜头不存在',
+        })
+      }
+
+      // 验证用户权限
+      if (shot.episode.project.userId !== ctx.userId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '无权限操作此镜头',
+        })
+      }
+
+      // 更新镜头音频
+      const updatedShot = await ctx.db.studioShot.update({
+        where: { id: input.shotId },
+        data: {
+          cameraPrompt: input.audioUrl,
         },
       })
 

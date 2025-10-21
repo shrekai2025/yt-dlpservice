@@ -573,6 +573,48 @@ async function main() {
     },
   })
 
+  // Kie Veo 3.1 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-veo3-1' },
+    update: {},
+    create: {
+      name: 'Veo 3.1',
+      slug: 'kie-veo3-1',
+      description: 'Google Veo 3.1 最新视频生成（通过Kie.ai）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieVeo31Adapter',
+      inputCapabilities: JSON.stringify(['text-input', 'image-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['latest', '1080p', 'translation', 'multi-mode']),
+      functionTags: JSON.stringify(['text-to-video', 'image-to-video', 'first-last-frame', 'reference']),
+      pricingInfo: 'Quality: 250 Credits ($1.25) | Fast: 60 Credits ($0.30) | 1080P: +5 Credits ($0.025)',
+      isActive: true, // 默认启用
+      sortOrder: 14,
+    },
+  })
+
+  // Kie Veo 3.1 Extend 模型
+  await prisma.aIModel.upsert({
+    where: { slug: 'kie-veo3-1-extend' },
+    update: {},
+    create: {
+      name: 'Veo 3.1 Extend',
+      slug: 'kie-veo3-1-extend',
+      description: 'Google Veo 3.1 视频扩展（基于已生成视频）',
+      providerId: kieProvider.id,
+      outputType: 'VIDEO',
+      adapterName: 'KieVeo31ExtendAdapter',
+      inputCapabilities: JSON.stringify(['text-input', 'video-input']),
+      outputCapabilities: JSON.stringify(['video-output']),
+      featureTags: JSON.stringify(['extend', 'video-continuation', 'latest']),
+      functionTags: JSON.stringify(['video-extend', 'video-continuation']),
+      pricingInfo: '60 Credits ($0.30) 每次扩展',
+      isActive: true, // 默认启用
+      sortOrder: 15,
+    },
+  })
+
   // Kie Sora Watermark Remover 模型
   await prisma.aIModel.upsert({
     where: { slug: 'kie-sora-watermark-remover' },

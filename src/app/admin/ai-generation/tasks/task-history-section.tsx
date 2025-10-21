@@ -32,7 +32,7 @@ export function TaskHistorySection({
 }: TaskHistorySectionProps) {
   const [selectedStatus, setSelectedStatus] = useState<TaskStatus | undefined>(undefined)
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType | undefined>(undefined)
-  const [previewMedia, setPreviewMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(
+  const [previewMedia, setPreviewMedia] = useState<{ type: 'image' | 'video' | 'audio'; url: string } | null>(
     null
   )
   const [currentPage, setCurrentPage] = useState(1)
@@ -202,11 +202,11 @@ export function TaskHistorySection({
           tasksData?.tasks.map((task) => {
             const mediaResults =
               Array.isArray(task.results) && task.results.length > 0
-                ? task.results.filter((result): result is { type: 'image' | 'video'; url: string } => {
+                ? task.results.filter((result): result is { type: 'image' | 'video' | 'audio'; url: string } => {
                     if (typeof result !== 'object' || result === null) return false
                     const maybeResult = result as { type?: unknown; url?: unknown }
                     if (typeof maybeResult.url !== 'string') return false
-                    if (maybeResult.type === 'image' || maybeResult.type === 'video') {
+                    if (maybeResult.type === 'image' || maybeResult.type === 'video' || maybeResult.type === 'audio') {
                       return true
                     }
                     return false
@@ -299,7 +299,7 @@ export function TaskHistorySection({
                         type="button"
                         className="group relative h-24 w-24 overflow-hidden rounded-md border border-gray-200 bg-gray-50"
                         onClick={() => setPreviewMedia({ type: result.type, url: result.url })}
-                        aria-label={result.type === 'video' ? '查看生成视频' : '查看生成图片'}
+                        aria-label={result.type === 'video' ? '查看生成视频' : result.type === 'audio' ? '播放音频' : '查看生成图片'}
                       >
                         {result.type === 'image' ? (
                           <img
@@ -307,7 +307,7 @@ export function TaskHistorySection({
                             alt={`生成结果缩略图 ${index + 1}`}
                             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                           />
-                        ) : (
+                        ) : result.type === 'video' ? (
                           <video
                             src={result.url}
                             className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 pointer-events-none"
@@ -315,10 +315,21 @@ export function TaskHistorySection({
                             loop
                             playsInline
                           />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50">
+                            <svg className="h-12 w-12 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                          </div>
                         )}
                         {result.type === 'video' && (
                           <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1.5 py-0.5 text-xs text-white">
                             视频
+                          </span>
+                        )}
+                        {result.type === 'audio' && (
+                          <span className="absolute bottom-1 right-1 rounded bg-purple-600/90 px-1.5 py-0.5 text-xs text-white">
+                            音频
                           </span>
                         )}
                       </button>
@@ -371,7 +382,7 @@ export function TaskHistorySection({
           if (!open) setPreviewMedia(null)
         }}
       >
-        <DialogContent className="max-w-4xl bg-neutral-950 p-0">
+        <DialogContent className={previewMedia?.type === 'audio' ? 'max-w-xl' : 'max-w-4xl bg-neutral-950 p-0'}>
           {previewMedia &&
             (previewMedia.type === 'image' ? (
               <img
@@ -379,13 +390,61 @@ export function TaskHistorySection({
                 alt="生成结果预览"
                 className="max-h-[80vh] w-full rounded-lg object-contain"
               />
-            ) : (
+            ) : previewMedia.type === 'video' ? (
               <video
                 src={previewMedia.url}
                 controls
                 playsInline
                 className="max-h-[80vh] w-full rounded-lg object-contain"
               />
+            ) : (
+              <div className="space-y-4 p-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
+                    <svg className="h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">音频播放</h3>
+                    <p className="text-sm text-neutral-600">生成的语音文件</p>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gradient-to-r from-purple-50 to-blue-50 p-4">
+                  <audio
+                    src={previewMedia.url}
+                    controls
+                    autoPlay
+                    className="w-full"
+                    preload="metadata"
+                  >
+                    您的浏览器不支持音频播放
+                  </audio>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => window.open(previewMedia.url, '_blank')}
+                  >
+                    在新标签页打开
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => {
+                      const link = document.createElement('a')
+                      link.href = previewMedia.url
+                      link.download = `audio-${Date.now()}.mp3`
+                      link.click()
+                    }}
+                  >
+                    下载音频
+                  </Button>
+                </div>
+              </div>
             ))}
         </DialogContent>
       </Dialog>

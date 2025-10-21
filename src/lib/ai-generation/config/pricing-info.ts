@@ -149,6 +149,36 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
 
   'kie-veo3-fast': '100 Credits ≈ $0.50 (Fast)',
 
+  'kie-veo3-1': (params) => {
+    // Veo 3.1 定价：
+    // - Quality (16:9 或 9:16): 250 Credits
+    // - Fast (16:9 或 9:16): 60 Credits
+    // - 获取1080P视频: +5 Credits (一次性,仅16:9)
+    //
+    // 注：Quality使用model=veo3, Fast使用model=veo3_fast
+    const model = params.model as string || 'veo3_fast'
+    const aspectRatio = params.aspectRatio as string || '16:9'
+
+    let credits = 250
+    let modelName = 'Quality'
+
+    if (model === 'veo3_fast') {
+      credits = 60
+      modelName = 'Fast'
+    }
+
+    const cost = (credits * 0.005).toFixed(2)
+
+    // 如果是16:9，提示可以获取1080P
+    if (aspectRatio === '16:9') {
+      return `${credits} Credits ≈ $${cost} (${modelName}, 1080P需额外5 Credits)`
+    }
+
+    return `${credits} Credits ≈ $${cost} (${modelName}, ${aspectRatio})`
+  },
+
+  'kie-veo3-1-extend': '60 Credits ≈ $0.30 (视频扩展)',
+
   'kie-sora-watermark-remover': '10 Credits ≈ $0.05',
 
   'kie-kling-v2-1-master-image-to-video': (params) => {
@@ -317,6 +347,52 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
     const pricing = pricingMap[quality] || pricingMap['720p']
     return `${pricing.credits} Credits/5秒 ≈ $${pricing.cost} (${quality})`
   },
+
+  // ==================== 其他供应商 ====================
+
+  // Tuzi.ai (图子AI) - 暂无官方定价信息
+  'tuzi-kling': '暂无定价信息',
+  'tuzi-midjourney': '暂无定价信息',
+
+  // Replicate - 根据官方定价
+  'replicate-flux-pro': '$0.055/张',
+  'replicate-minimax': (params) => {
+    // Minimax 视频生成，按秒计费
+    const promptOptimization = params.prompt_optimizer as boolean || false
+    const basePrice = promptOptimization ? 0.014 : 0.012
+    return `$${basePrice}/秒`
+  },
+
+  // OpenAI DALL-E 3
+  'openai-dalle-3': (params) => {
+    const size = params.size as string || '1024x1024'
+    const quality = params.quality as string || 'standard'
+
+    if (quality === 'hd') {
+      if (size === '1024x1024') return '$0.080/张 (HD)'
+      if (size === '1024x1792' || size === '1792x1024') return '$0.120/张 (HD)'
+    }
+
+    // Standard quality
+    if (size === '1024x1024') return '$0.040/张'
+    if (size === '1024x1792' || size === '1792x1024') return '$0.080/张'
+
+    return '$0.040/张'
+  },
+
+  // Pollo.ai - 暂无官方定价信息
+  'pollo-kling': '暂无定价信息',
+  'pollo-veo3': '暂无定价信息',
+
+  // ElevenLabs TTS
+  'elevenlabs-tts-v3': (params) => {
+    // ElevenLabs 按字符计费，这里给出估算
+    // Turbo v3: $0.10 per 1000 characters
+    const text = params.text as string || ''
+    const charCount = text.length || 100 // 默认100字符
+    const cost = (charCount / 1000 * 0.10).toFixed(4)
+    return `约 $${cost} (${charCount}字符, $0.10/1k字符)`
+  },
 }
 
 /**
@@ -347,4 +423,105 @@ export function getModelPricingInfo(
  */
 export function hasModelPricingInfo(modelSlug: string): boolean {
   return modelSlug in MODEL_PRICING_INFO
+}
+
+/**
+ * 计算任务的实际成本（美元）
+ * @param modelSlug 模型slug
+ * @param params 任务参数
+ * @returns 成本（美元），如果无法计算则返回 null
+ */
+export function calculateTaskCost(
+  modelSlug: string,
+  params: Record<string, unknown> = {}
+): number | null {
+  const pricingConfig = MODEL_PRICING_INFO[modelSlug]
+
+  if (!pricingConfig) {
+    return null
+  }
+
+  try {
+    let pricingText: string
+    if (typeof pricingConfig === 'function') {
+      pricingText = pricingConfig(params)
+    } else {
+      pricingText = pricingConfig
+    }
+
+    // 解析定价文本，提取美元金额
+    // 支持的格式:
+    // - "30 Credits/10秒 ≈ $0.15"
+    // - "$0.055/张"
+    // - "约 $0.0010 (100字符, $0.10/1k字符)"
+    // - "暂无定价信息"
+
+    if (pricingText.includes('暂无定价信息')) {
+      return null
+    }
+
+    // 提取 $ 后面的数字
+    const dollarMatch = pricingText.match(/\$([0-9]+\.?[0-9]*)/g)
+    if (!dollarMatch || dollarMatch.length === 0) {
+      return null
+    }
+
+    // 获取第一个美元金额（通常是总价）
+    const firstDollar = dollarMatch[0].replace('$', '')
+    const cost = parseFloat(firstDollar)
+
+    if (isNaN(cost)) {
+      return null
+    }
+
+    // 特殊处理：如果是按秒或按字符计费的模型，需要乘以实际数量
+    if (pricingText.includes('/秒') || pricingText.includes('Credits/秒')) {
+      // 对于视频模型，需要获取实际时长
+      const duration = extractDurationFromParams(modelSlug, params)
+      if (duration > 0) {
+        return cost * duration
+      }
+    }
+
+    return cost
+  } catch (error) {
+    console.error('Error calculating task cost:', error)
+    return null
+  }
+}
+
+/**
+ * 从参数中提取视频时长（秒）
+ */
+function extractDurationFromParams(modelSlug: string, params: Record<string, unknown>): number {
+  // 不同模型的时长参数名称可能不同
+  const duration = params.duration as string | number | undefined
+  const nFrames = params.n_frames as string | undefined
+
+  if (duration) {
+    if (typeof duration === 'number') {
+      return duration
+    }
+    const parsed = parseFloat(duration)
+    if (!isNaN(parsed)) {
+      return parsed
+    }
+  }
+
+  if (nFrames) {
+    const parsed = parseFloat(nFrames)
+    if (!isNaN(parsed)) {
+      return parsed
+    }
+  }
+
+  // 默认时长
+  if (modelSlug.includes('sora2')) {
+    return 10
+  }
+  if (modelSlug.includes('kling') || modelSlug.includes('runway')) {
+    return 5
+  }
+
+  return 5 // 默认5秒
 }
