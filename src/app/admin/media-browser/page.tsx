@@ -1149,11 +1149,9 @@ export default function MediaBrowserPage() {
           autoPlayAll={autoPlayAll}
           hoveredVideoId={hoveredVideoId}
           onFileClick={(file) => {
-            if (!maximized) {
-              setSelectedFileForDetails(file)
-              setTempFileRemark(file.remark || file.name)
-              setEditingFileRemark(false)
-            }
+            setSelectedFileForDetails(file)
+            setTempFileRemark(file.remark || file.name)
+            setEditingFileRemark(false)
           }}
           onToggleSelection={toggleBulkSelection}
           onDragStart={handleDragStart}
@@ -1176,7 +1174,7 @@ export default function MediaBrowserPage() {
           getThumbnailUrl={getThumbnailUrl}
           getVideoUrl={getVideoUrl}
           getGifUrl={getGifUrl}
-          isGif={isGif}
+          isGif={(file) => isGif(file) ?? false}
           getImageHeight={getImageHeight}
         />
       )
@@ -1194,11 +1192,9 @@ export default function MediaBrowserPage() {
           autoPlayAll={autoPlayAll}
           hoveredVideoId={hoveredVideoId}
           onFileClick={(file) => {
-            if (!maximized) {
-              setSelectedFileForDetails(file)
-              setTempFileRemark(file.remark || file.name)
-              setEditingFileRemark(false)
-            }
+            setSelectedFileForDetails(file)
+            setTempFileRemark(file.remark || file.name)
+            setEditingFileRemark(false)
           }}
           onToggleSelection={toggleBulkSelection}
           onDragStart={handleDragStart}
@@ -1221,7 +1217,7 @@ export default function MediaBrowserPage() {
           getThumbnailUrl={getThumbnailUrl}
           getVideoUrl={getVideoUrl}
           getGifUrl={getGifUrl}
-          isGif={isGif}
+          isGif={(file) => isGif(file) ?? false}
         />
       )
     }
@@ -1233,10 +1229,10 @@ export default function MediaBrowserPage() {
       {/* 拖拽文件上传提示覆盖层 */}
       <DragDropOverlay show={isDraggingFiles} />
 
-      <div className={`flex h-full overflow-hidden ${maximized ? 'fixed inset-0 z-50 bg-black' : ''}`}>
+      <div className={`flex h-full ${maximized ? 'fixed inset-0 z-50 bg-black overflow-hidden' : ''}`}>
       {/* Left Sidebar - Fixed */}
       {!maximized && (
-      <div className={`shrink-0 flex flex-col border-r border-neutral-200 bg-neutral-50 transition-all duration-300 ${
+      <div className={`shrink-0 flex flex-col border-r border-neutral-200 bg-neutral-50 overflow-y-auto transition-all duration-300 ${
         leftSidebarCollapsed ? 'w-12' : 'w-64'
       }`}>
         {/* Collapse/Expand Button */}
@@ -1623,7 +1619,7 @@ export default function MediaBrowserPage() {
       )}
 
       {/* Main Content Area */}
-      <div className={`flex-1 min-w-0 flex flex-col ${maximized ? 'bg-black' : ''}`}>
+      <div className={`flex-1 min-w-0 flex flex-col overflow-hidden ${maximized ? 'bg-black' : ''}`}>
         {/* Fixed Header - File count badge and column width slider */}
         {!maximized && (
         <div className="shrink-0 border-b border-neutral-200 bg-white px-6 py-2.5 flex items-center gap-4">
@@ -1861,10 +1857,12 @@ export default function MediaBrowserPage() {
                     autoPlayAll={autoPlayAll}
                     hoveredVideoId={hoveredVideoId}
                     onFileClick={(file) => {
-                      // 最大化模式下不打开详情面板
+                      setSelectedFileForDetails(file)
+                      setTempFileRemark(file.remark || file.name)
+                      setEditingFileRemark(false)
                     }}
                     onToggleSelection={toggleBulkSelection}
-                    onDragStart={handleDragStart}
+                    onDragStart={(fileId) => handleDragStart({} as React.DragEvent, fileId)}
                     onDragEnd={handleDragEnd}
                     onVideoHover={handleVideoHover}
                     onRegenerateThumbnail={(fileId) => regenerateThumbnailMutation.mutate({ fileId })}
@@ -1875,10 +1873,10 @@ export default function MediaBrowserPage() {
                         starred: starred,
                       })
                     }}
-                    getThumbnailUrl={getThumbnailUrl}
-                    getVideoUrl={getVideoUrl}
-                    getGifUrl={getGifUrl}
-                    isGif={isGif}
+                    getThumbnailUrl={(file) => getThumbnailUrl(file) ?? ''}
+                    getVideoUrl={(file) => getVideoUrl(file) ?? ''}
+                    getGifUrl={(file) => getGifUrl(file) ?? ''}
+                    isGif={(file) => isGif(file) ?? false}
                   />
                 )
               }}
@@ -1910,8 +1908,8 @@ export default function MediaBrowserPage() {
               onFileClick={(file) => {
                 setSelectedFileForDetails(file)
                 setTempFileRemark(file.remark || file.name)
-                        setEditingFileRemark(false)
-                      }}
+                setEditingFileRemark(false)
+              }}
               onToggleSelection={toggleBulkSelection}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
@@ -1935,7 +1933,7 @@ export default function MediaBrowserPage() {
               getThumbnailUrl={getThumbnailUrl}
               getVideoUrl={getVideoUrl}
               getGifUrl={getGifUrl}
-              isGif={isGif}
+              isGif={(file) => isGif(file) ?? false}
               getImageHeight={getImageHeight}
             />
         ) : viewMode === 'justified' ? (
@@ -1951,10 +1949,10 @@ export default function MediaBrowserPage() {
               autoPlayAll={autoPlayAll}
               hoveredVideoId={hoveredVideoId}
               onFileClick={(file) => {
-                                setSelectedFileForDetails(file)
-                                setTempFileRemark(file.remark || file.name)
-                                setEditingFileRemark(false)
-                              }}
+                setSelectedFileForDetails(file)
+                setTempFileRemark(file.remark || file.name)
+                setEditingFileRemark(false)
+              }}
               onToggleSelection={toggleBulkSelection}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
@@ -1976,7 +1974,7 @@ export default function MediaBrowserPage() {
               getThumbnailUrl={getThumbnailUrl}
               getVideoUrl={getVideoUrl}
               getGifUrl={getGifUrl}
-              isGif={isGif}
+              isGif={(file) => isGif(file) ?? false}
             />
           ) : null}
                                 </div>
@@ -2104,11 +2102,10 @@ export default function MediaBrowserPage() {
         )}
       </div>
 
-      {/* Right Sidebar - Actor Profile (only show when actor is selected) */}
+      {/* Right Sidebar - Actor Profile (only show when actor is selected) - Fixed positioning overlay */}
       {!maximized && viewTab === 'actors' && selectedActor && selectedActorData && (
-        <div className={`shrink-0 flex flex-col border-l border-neutral-200 bg-white transition-all duration-300 ${
-          actorPanelCollapsed ? 'w-12' : 'w-80'
-        }`}>
+        <div className="fixed right-0 top-0 bottom-0 z-40 shadow-2xl" style={{ width: actorPanelCollapsed ? '48px' : '320px' }}>
+          <div className="h-full flex flex-col border-l border-neutral-200 bg-white overflow-y-auto transition-all duration-300">
           {/* Collapse/Expand Button */}
           <div className="border-b border-neutral-200">
             <button
@@ -2126,7 +2123,7 @@ export default function MediaBrowserPage() {
 
           {/* Actor Info - Hidden when collapsed */}
           {!actorPanelCollapsed && (
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="p-6">
             {/* Actor Avatar - Compact */}
             <div className="mb-4">
               <div
@@ -2250,6 +2247,7 @@ export default function MediaBrowserPage() {
             </div>
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -2361,9 +2359,10 @@ export default function MediaBrowserPage() {
         </div>
       )}
 
-      {/* Right Sidebar - File Details (show when file is selected, not in maximized mode) */}
+      {/* Right Sidebar - File Details (show when file is selected, not in maximized mode) - Fixed positioning overlay */}
       {!maximized && selectedFileForDetails && (
-        <div className="shrink-0 w-80 flex flex-col border-l border-neutral-200 bg-white">
+        <div className="fixed right-0 top-0 bottom-0 w-80 z-40 shadow-2xl">
+          <div className="h-full flex flex-col border-l border-neutral-200 bg-white overflow-y-auto">
           {/* Header */}
           <div className="border-b border-neutral-200 px-6 py-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold">文件详情</h2>
@@ -2376,7 +2375,7 @@ export default function MediaBrowserPage() {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="p-6 space-y-6">
             {/* Thumbnail */}
             <div className="w-full aspect-square rounded-lg bg-neutral-100 flex items-center justify-center overflow-hidden">
               {getThumbnailUrl(selectedFileForDetails) ? (
@@ -2783,6 +2782,7 @@ export default function MediaBrowserPage() {
                 </>
               )}
             </div>
+          </div>
           </div>
         </div>
       )}

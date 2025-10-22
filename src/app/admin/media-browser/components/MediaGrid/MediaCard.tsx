@@ -89,7 +89,8 @@ export function MediaCard({
           onVideoHover(null)
         }
       }}
-      className={`group relative overflow-hidden ${
+      onClick={() => onFileClick(file)}
+      className={`group relative overflow-hidden cursor-pointer ${
         maximized
           ? 'bg-black w-full'
           : 'rounded-lg border border-neutral-200 bg-white'
@@ -97,8 +98,7 @@ export function MediaCard({
     >
       {/* Thumbnail */}
       <div
-        className="w-full bg-neutral-100 flex items-center justify-center cursor-pointer overflow-hidden relative"
-        onClick={() => onFileClick(file)}
+        className="w-full bg-neutral-100 flex items-center justify-center overflow-hidden relative"
         style={{ height: `${imageHeight}px` }}
       >
         {/* 缩略图层 */}

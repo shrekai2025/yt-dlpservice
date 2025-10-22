@@ -106,20 +106,21 @@ export function JustifiedGrid({
                       onVideoHover(null)
                     }
                   }}
-                  className={`group relative overflow-hidden transition-shadow ${
-                    maximized 
-                      ? 'bg-black' 
+                  onClick={() => onFileClick(file)}
+                  className={`group relative overflow-hidden transition-shadow cursor-pointer ${
+                    maximized
+                      ? 'bg-black'
                       : 'rounded-lg border border-neutral-200 bg-white hover:shadow-md'
                   } ${draggedFileId === file.id ? 'opacity-50' : ''}`}
                   style={{
                     width: `${itemWidth}px`,
-                    height: `${rowHeight}px`,
+                    height: compactMode || maximized ? `${rowHeight}px` : 'auto',
                     flexShrink: 0,
                   }}
                 >
                   <div
-                    className="w-full h-full bg-neutral-100 flex items-center justify-center cursor-pointer overflow-hidden relative"
-                    onClick={() => onFileClick(file)}
+                    className="w-full bg-neutral-100 flex items-center justify-center overflow-hidden relative"
+                    style={{ height: `${rowHeight}px` }}
                   >
                     {/* 缩略图层 */}
                     {getThumbnailUrl(file) ? (
