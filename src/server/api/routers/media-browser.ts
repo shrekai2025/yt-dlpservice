@@ -143,13 +143,14 @@ export const mediaBrowserRouter = createTRPCRouter({
         type: z.enum(['IMAGE', 'VIDEO', 'AUDIO']).optional(),
         source: z.enum(['LOCAL', 'URL']).optional(),
         search: z.string().optional(),
+        starred: z.boolean().optional(),
         cursor: z.number().optional(), // For infinite query
       })
     )
     .query(async ({ ctx, input }) => {
       // Use cursor if provided (infinite query), otherwise use page
       const page = input.cursor ?? input.page ?? 1
-      const { pageSize, folderId, actorId, tagId, type, source, search } = input
+      const { pageSize, folderId, actorId, tagId, type, source, search, starred } = input
       const userId = ctx.userId!
 
       const where: any = { userId }
@@ -162,6 +163,7 @@ export const mediaBrowserRouter = createTRPCRouter({
       if (type) where.type = type
       if (source) where.source = source
       if (search) where.name = { contains: search }
+      if (starred !== undefined) where.starred = starred
       if (tagId) {
         where.tags = {
           some: { id: tagId },
@@ -526,6 +528,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         name: z.string().optional(),
         remark: z.string().nullable().optional(),
         folderId: z.string().nullable().optional(),
+        starred: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -537,13 +540,16 @@ export const mediaBrowserRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: '文件不存在' })
       }
 
+      // 只包含提供的字段
+      const updateData: any = {}
+      if (input.name !== undefined) updateData.name = input.name
+      if (input.remark !== undefined) updateData.remark = input.remark
+      if (input.folderId !== undefined) updateData.folderId = input.folderId
+      if (input.starred !== undefined) updateData.starred = input.starred
+
       const updated = await ctx.db.mediaFile.update({
         where: { id: input.id },
-        data: {
-          name: input.name,
-          remark: input.remark,
-          folderId: input.folderId,
-        },
+        data: updateData,
         include: {
           folder: true,
           actor: true,

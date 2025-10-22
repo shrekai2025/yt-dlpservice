@@ -5,7 +5,7 @@
  * 项目详情页 - 集列表和管理
  */
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Plus, Archive, RotateCcw, Trash2, Film, Calendar, ArrowLeft } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
@@ -37,6 +37,9 @@ export default function ProjectDetailPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [newEpisodeTitle, setNewEpisodeTitle] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<EpisodeStatus | undefined>()
+  const [editingEpisodeId, setEditingEpisodeId] = useState<string | null>(null)
+  const [editingTitle, setEditingTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
 
   // 查询项目信息
   const { data: projects } = api.studio.listProjects.useQuery()
@@ -75,6 +78,10 @@ export default function ProjectDetailPage() {
     onSuccess: () => void refetch(),
   })
 
+  const updateEpisodeMutation = api.studio.updateEpisode.useMutation({
+    onSuccess: () => void refetch(),
+  })
+
   const handleCreateEpisode = () => {
     if (!project?.id) return
     createMutation.mutate({
@@ -99,6 +106,34 @@ export default function ProjectDetailPage() {
   const handleOpenEpisode = (episodeId: string) => {
     router.push(`/admin/ai-generation/studio/${slug}/${episodeId}`)
   }
+
+  const handleStartEdit = (episodeId: string, currentTitle: string, episodeNumber: number) => {
+    setEditingEpisodeId(episodeId)
+    setEditingTitle(currentTitle || `第 ${episodeNumber} 集`)
+  }
+
+  const handleSaveTitle = (episodeId: string) => {
+    if (editingTitle.trim()) {
+      updateEpisodeMutation.mutate({
+        episodeId,
+        title: editingTitle.trim(),
+      })
+    }
+    setEditingEpisodeId(null)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingEpisodeId(null)
+    setEditingTitle('')
+  }
+
+  // 自动聚焦输入框
+  useEffect(() => {
+    if (editingEpisodeId && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editingEpisodeId])
 
   if (!project) {
     return (
@@ -173,21 +208,52 @@ export default function ProjectDetailPage() {
               </span>
             </div>
 
-            <div onClick={() => handleOpenEpisode(episode.id)} className="space-y-4 pr-20">
+            <div className="space-y-4 pr-20">
               {/* Episode Number */}
               <div className="flex items-center gap-2">
-                <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center">
+                <div 
+                  className="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center cursor-pointer"
+                  onClick={() => handleOpenEpisode(episode.id)}
+                >
                   <span className="text-white font-bold">#{episode.episodeNumber}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-lg truncate">
-                    {episode.title || `第 ${episode.episodeNumber} 集`}
-                  </h3>
+                  {editingEpisodeId === episode.id ? (
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={editingTitle}
+                      onChange={(e) => setEditingTitle(e.target.value)}
+                      onBlur={() => handleSaveTitle(episode.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveTitle(episode.id)
+                        } else if (e.key === 'Escape') {
+                          handleCancelEdit()
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-semibold text-lg w-full px-2 py-1 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  ) : (
+                    <h3 
+                      className="font-semibold text-lg truncate cursor-pointer hover:text-blue-600 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleStartEdit(episode.id, episode.title || '', episode.episodeNumber)
+                      }}
+                    >
+                      {episode.title || `第 ${episode.episodeNumber} 集`}
+                    </h3>
+                  )}
                 </div>
               </div>
 
               {/* Stats */}
-              <div className="flex items-center gap-4 text-sm text-gray-500">
+              <div 
+                className="flex items-center gap-4 text-sm text-gray-500 cursor-pointer"
+                onClick={() => handleOpenEpisode(episode.id)}
+              >
                 <div className="flex items-center gap-1">
                   <Film className="h-4 w-4" />
                   <span>{episode._count.shots} 镜头</span>

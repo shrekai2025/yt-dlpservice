@@ -119,3 +119,6 @@ yt-dlpworker/
 
 # Documentation
 /doc/
+
+# Generated AI assets
+/public/ai-generated/
