@@ -6,8 +6,8 @@ import { GripVertical } from 'lucide-react'
 type MaximizedSplitViewProps = {
   splitRatio: number
   onSplitRatioChange: (ratio: number) => void
-  leftContent: React.ReactNode
-  rightContent: React.ReactNode
+  leftContent: (width: number) => React.ReactNode
+  rightContent: (width: number) => React.ReactNode
 }
 
 export function MaximizedSplitView({
@@ -17,7 +17,11 @@ export function MaximizedSplitView({
   rightContent,
 }: MaximizedSplitViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const leftPanelRef = useRef<HTMLDivElement>(null)
+  const rightPanelRef = useRef<HTMLDivElement>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [leftWidth, setLeftWidth] = useState(0)
+  const [rightWidth, setRightWidth] = useState(0)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -43,6 +47,32 @@ export function MaximizedSplitView({
     setIsDragging(false)
   }, [])
 
+  // 测量面板宽度
+  useEffect(() => {
+    const updateWidths = () => {
+      if (leftPanelRef.current) {
+        setLeftWidth(leftPanelRef.current.clientWidth)
+      }
+      if (rightPanelRef.current) {
+        setRightWidth(rightPanelRef.current.clientWidth)
+      }
+    }
+
+    updateWidths()
+
+    const resizeObserver = new ResizeObserver(updateWidths)
+    if (leftPanelRef.current) {
+      resizeObserver.observe(leftPanelRef.current)
+    }
+    if (rightPanelRef.current) {
+      resizeObserver.observe(rightPanelRef.current)
+    }
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [splitRatio])
+
   // 添加全局事件监听
   useEffect(() => {
     if (isDragging) {
@@ -58,27 +88,27 @@ export function MaximizedSplitView({
   return (
     <div ref={containerRef} className="flex h-full bg-black">
       {/* 左侧：全部内容 */}
-      <div style={{ width: `${splitRatio}%` }} className="overflow-y-auto p-0.5">
-        {leftContent}
+      <div ref={leftPanelRef} style={{ width: `${splitRatio}%` }} className="overflow-y-auto p-0.5">
+        {leftWidth > 0 && leftContent(leftWidth)}
       </div>
 
       {/* 分割线 */}
       <div
         onMouseDown={handleMouseDown}
-        className={`w-px bg-neutral-700 cursor-col-resize relative group flex-shrink-0 ${
+        className={`w-px bg-neutral-700 cursor-col-resize relative group flex-shrink-0 z-50 ${
           isDragging ? 'bg-neutral-500' : ''
         }`}
         style={{ userSelect: 'none' }}
       >
         {/* 拖动手柄 */}
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-neutral-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg">
+        <div className="absolute bottom-[100px] left-1/2 -translate-x-1/2 w-8 h-8 bg-neutral-600 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-50">
           <GripVertical className="h-4 w-4 text-white" />
         </div>
       </div>
 
       {/* 右侧：标星文件 */}
-      <div style={{ width: `${100 - splitRatio}%` }} className="overflow-y-auto p-0.5">
-        {rightContent}
+      <div ref={rightPanelRef} style={{ width: `${100 - splitRatio}%` }} className="overflow-y-auto p-0.5">
+        {rightWidth > 0 && rightContent(rightWidth)}
       </div>
     </div>
   )

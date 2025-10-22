@@ -55,13 +55,16 @@ export function MasonryGrid({
   isGif,
   getImageHeight,
 }: MasonryGridProps) {
+  // 在最大化模式下，使用flex-1让每列平分空间
+  const columnStyle = maximized ? {} : { width: `${columnWidth}px` }
+
   return (
     <div className={`flex w-full items-start ${maximized ? 'gap-0.5' : 'gap-4'}`}>
       {columns.map((columnFiles, columnIndex) => (
         <div
           key={columnIndex}
-          className={`flex flex-col ${maximized ? 'gap-0.5' : 'gap-4'}`}
-          style={{ width: `${columnWidth}px` }}
+          className={`flex flex-col ${maximized ? 'gap-0.5 flex-1' : 'gap-4'}`}
+          style={columnStyle}
         >
           {columnFiles.map((file) => (
             <MediaCard

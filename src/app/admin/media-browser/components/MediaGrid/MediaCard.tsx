@@ -91,7 +91,7 @@ export function MediaCard({
       }}
       className={`group relative overflow-hidden ${
         maximized
-          ? 'bg-black'
+          ? 'bg-black w-full'
           : 'rounded-lg border border-neutral-200 bg-white'
       } ${isDragged ? 'opacity-50' : ''}`}
     >

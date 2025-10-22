@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from 'react'
 import NextImage from 'next/image'
 import { Image, Video, Music, Loader2, RefreshCw, Maximize2, Star } from 'lucide-react'
 import { getShimmerPlaceholder } from '~/lib/utils/image-placeholder'
@@ -23,6 +24,7 @@ type JustifiedGridProps = {
   onVideoHover: (fileId: string | null) => void
   onRegenerateThumbnail: (fileId: string) => void
   onPreview: (file: MediaFile) => void
+  onInlineEdit: (fileId: string, remark: string) => void
   onToggleStarred: (fileId: string, starred: boolean) => void
   getThumbnailUrl: (file: MediaFile) => string | null
   getVideoUrl: (file: MediaFile) => string | null
@@ -48,12 +50,28 @@ export function JustifiedGrid({
   onVideoHover,
   onRegenerateThumbnail,
   onPreview,
+  onInlineEdit,
   onToggleStarred,
   getThumbnailUrl,
   getVideoUrl,
   getGifUrl,
   isGif,
 }: JustifiedGridProps) {
+  const [editingInlineFileId, setEditingInlineFileId] = useState<string | null>(null)
+  const [tempInlineRemark, setTempInlineRemark] = useState('')
+
+  const handleInlineEditStart = (fileId: string, remark: string) => {
+    setEditingInlineFileId(fileId)
+    setTempInlineRemark(remark)
+  }
+
+  const handleInlineEditSave = async (fileId: string) => {
+    if (tempInlineRemark.trim()) {
+      await onInlineEdit(fileId, tempInlineRemark)
+    }
+    setEditingInlineFileId(null)
+  }
+
   return (
     <div className={maximized ? 'space-y-0.5' : 'space-y-2'}>
       {rows.map((rowFiles, rowIndex) => {
@@ -212,9 +230,69 @@ export function JustifiedGrid({
                     )}
                   </div>
 
+                  {/* Info - 非紧凑模式和非最大化模式下显示 */}
+                  {!compactMode && !maximized && (
+                    <div className="p-3 bg-white">
+                      {editingInlineFileId === file.id ? (
+                        <input
+                          type="text"
+                          value={tempInlineRemark}
+                          onChange={(e) => setTempInlineRemark(e.target.value)}
+                          onBlur={() => handleInlineEditSave(file.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              void handleInlineEditSave(file.id)
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingInlineFileId(null)
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                          className="w-full text-sm font-medium px-2 py-1 border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                        />
+                      ) : (
+                        <p
+                          className="text-sm font-medium truncate cursor-text hover:bg-neutral-100 px-2 py-1 rounded -mx-2"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleInlineEditStart(file.id, file.remark || file.name)
+                          }}
+                        >
+                          {file.remark || file.name}
+                        </p>
+                      )}
+                      <div className="flex items-center flex-wrap gap-1.5 mt-1.5">
+                        <span className="text-xs text-neutral-500">
+                          {file.type === 'VIDEO' || file.type === 'AUDIO'
+                            ? file.duration && file.duration > 0
+                              ? file.duration < 60
+                                ? `${Math.round(file.duration)}秒`
+                                : `${Math.round(file.duration / 60)}分钟`
+                              : file.fileSize
+                              ? `${Math.round(file.fileSize / 1024)}KB`
+                              : '-'
+                            : file.fileSize
+                            ? `${Math.round(file.fileSize / 1024)}KB`
+                            : '-'}
+                        </span>
+                        {file.folder && (
+                          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">
+                            {file.folder.name}
+                          </span>
+                        )}
+                        {file.actor && (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">
+                            {file.actor.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 紧凑模式下的 Hover 浮层 */}
                   {compactMode && !maximized && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                       <div className="absolute bottom-0 left-0 right-0 p-2">
                         <p className="text-white text-xs font-medium truncate">
                           {file.remark || file.name}

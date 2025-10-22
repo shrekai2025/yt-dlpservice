@@ -15,7 +15,7 @@ import { useBulkOperations } from './hooks/useBulkOperations'
 import { useDragAndDrop } from './hooks/useDragAndDrop'
 import { AddUrlDialog, AddLocalPathDialog, CreateFolderDialog, CreateActorDialog } from './components/Dialogs'
 import { DragDropOverlay } from './components/FloatingWidgets/DragDropOverlay'
-import { MasonryGrid, JustifiedGrid } from './components/MediaGrid'
+import { MasonryGrid, JustifiedGrid, SingleColumnGrid } from './components/MediaGrid'
 import { MaximizedSplitView } from './components/MaximizedSplitView'
 import type { MediaFile, UploadTask, UIState, FilterState } from './types'
 
@@ -1115,7 +1115,12 @@ export default function MediaBrowserPage() {
   }, [memoizedFiles, justifiedRowHeight, containerWidth])
 
   // 渲染MediaGrid的辅助函数（可重用于分屏）
-  const renderMediaGrid = useCallback((files: MediaFile[], justifiedRowsOverride?: MediaFile[][]) => {
+  const renderMediaGrid = useCallback((
+    files: MediaFile[],
+    justifiedRowsOverride?: MediaFile[][],
+    columnsOverride?: MediaFile[][],
+    containerWidthOverride?: number
+  ) => {
     if (files.length === 0) {
   return (
         <div className="rounded-lg border border-neutral-200 bg-white p-12 text-center">
@@ -1134,7 +1139,7 @@ export default function MediaBrowserPage() {
       return (
         <MasonryGrid
           files={files}
-          columns={masonryColumns}
+          columns={columnsOverride || masonryColumns}
           columnWidth={memoizedColumnWidth}
           maximized={maximized}
           compactMode={compactMode}
@@ -1180,7 +1185,7 @@ export default function MediaBrowserPage() {
         <JustifiedGrid
           rows={justifiedRowsOverride || justifiedRows}
           rowHeight={justifiedRowHeight}
-          containerWidth={containerWidth}
+          containerWidth={containerWidthOverride || containerWidth}
           maximized={maximized}
           compactMode={compactMode}
           bulkSelectionMode={bulkSelectionMode}
@@ -1201,6 +1206,12 @@ export default function MediaBrowserPage() {
           onVideoHover={handleVideoHover}
           onRegenerateThumbnail={(fileId) => regenerateThumbnailMutation.mutate({ fileId })}
           onPreview={setPreviewFile}
+          onInlineEdit={async (fileId, remark) => {
+            await updateFileMutation.mutateAsync({
+              id: fileId,
+              remark: remark,
+            })
+          }}
           onToggleStarred={async (fileId, starred) => {
             await updateFileMutation.mutateAsync({
               id: fileId,
@@ -1793,8 +1804,84 @@ export default function MediaBrowserPage() {
             <MaximizedSplitView
               splitRatio={maximizedSplitRatio}
               onSplitRatioChange={setMaximizedSplitRatio}
-              leftContent={renderMediaGrid(memoizedFiles, justifiedRows)}
-              rightContent={renderMediaGrid(starredFiles, starredJustifiedRows)}
+              leftContent={(width) => {
+                // 根据左侧容器宽度重新计算布局
+                const cols = viewMode === 'grid'
+                  ? Math.max(1, Math.floor((width - 4) / (memoizedColumnWidth + 16)))
+                  : 0
+
+                const leftColumns = viewMode === 'grid'
+                  ? Array.from({ length: cols }, () => [] as MediaFile[])
+                  : []
+
+                if (viewMode === 'grid') {
+                  memoizedFiles.forEach((file, index) => {
+                    leftColumns[index % cols]?.push(file)
+                  })
+                }
+
+                // 计算左侧的 justified rows
+                const leftJustifiedRows: MediaFile[][] = []
+                if (viewMode === 'justified') {
+                  let currentRow: MediaFile[] = []
+                  let currentRowWidth = 0
+
+                  memoizedFiles.forEach((file) => {
+                    const aspectRatio = file.width && file.height ? file.width / file.height : 1
+                    const scaledWidth = justifiedRowHeight * aspectRatio
+
+                    if (currentRowWidth + scaledWidth > width - 4 && currentRow.length > 0) {
+                      leftJustifiedRows.push(currentRow)
+                      currentRow = [file]
+                      currentRowWidth = scaledWidth
+                    } else {
+                      currentRow.push(file)
+                      currentRowWidth += scaledWidth
+                    }
+                  })
+
+                  if (currentRow.length > 0) {
+                    leftJustifiedRows.push(currentRow)
+                  }
+                }
+
+                return renderMediaGrid(memoizedFiles, leftJustifiedRows, leftColumns, width)
+              }}
+              rightContent={(width) => {
+                // 右侧始终使用单列全宽布局
+                return (
+                  <SingleColumnGrid
+                    files={starredFiles}
+                    containerWidth={width}
+                    maximized={maximized}
+                    compactMode={compactMode}
+                    bulkSelectionMode={bulkSelectionMode}
+                    selectedFileIds={selectedFileIds}
+                    draggedFileId={draggedFile}
+                    autoPlayAll={autoPlayAll}
+                    hoveredVideoId={hoveredVideoId}
+                    onFileClick={(file) => {
+                      // 最大化模式下不打开详情面板
+                    }}
+                    onToggleSelection={toggleBulkSelection}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    onVideoHover={handleVideoHover}
+                    onRegenerateThumbnail={(fileId) => regenerateThumbnailMutation.mutate({ fileId })}
+                    onPreview={setPreviewFile}
+                    onToggleStarred={async (fileId, starred) => {
+                      await updateFileMutation.mutateAsync({
+                        id: fileId,
+                        starred: starred,
+                      })
+                    }}
+                    getThumbnailUrl={getThumbnailUrl}
+                    getVideoUrl={getVideoUrl}
+                    getGifUrl={getGifUrl}
+                    isGif={isGif}
+                  />
+                )
+              }}
             />
           ) : (
           <div>
@@ -1874,13 +1961,17 @@ export default function MediaBrowserPage() {
               onVideoHover={handleVideoHover}
               onRegenerateThumbnail={(fileId) => regenerateThumbnailMutation.mutate({ fileId })}
               onPreview={setPreviewFile}
+              onInlineEdit={async (fileId, remark) => {
+                await updateFileMutation.mutateAsync({
+                  id: fileId,
+                  remark: remark,
+                })
+              }}
               onToggleStarred={async (fileId, starred) => {
-                console.log('[onToggleStarred] fileId:', fileId, 'starred:', starred)
                 await updateFileMutation.mutateAsync({
                   id: fileId,
                   starred: starred,
                 })
-                console.log('[onToggleStarred] mutation completed')
               }}
               getThumbnailUrl={getThumbnailUrl}
               getVideoUrl={getVideoUrl}
@@ -1936,7 +2027,9 @@ export default function MediaBrowserPage() {
         
         {/* Maximized Mode Bottom Toolbar */}
         {maximized && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-black/66 backdrop-blur-sm border border-white/10 rounded-lg px-4 py-2 flex items-center gap-4 shadow-2xl">
+          <div className="absolute bottom-0 left-0 right-0 h-24 z-[60] group">
+            {/* Toolbar */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/66 backdrop-blur-sm border border-white/10 rounded-lg px-4 py-2 flex items-center gap-4 shadow-2xl transition-transform duration-300 translate-y-28 group-hover:translate-y-0">
             <button
               onClick={() => setViewMode(viewMode === 'grid' ? 'justified' : 'grid')}
               className="p-1.5 rounded hover:bg-white/10 transition-colors text-white/70 hover:text-white"
@@ -2006,6 +2099,7 @@ export default function MediaBrowserPage() {
             >
               <X className="h-4 w-4" />
             </button>
+            </div>
           </div>
         )}
       </div>
