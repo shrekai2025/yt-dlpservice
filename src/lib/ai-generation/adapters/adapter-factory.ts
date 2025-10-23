@@ -54,6 +54,10 @@ import { PolloKlingAdapter } from './pollo/pollo-kling-adapter'
 
 import { ElevenLabsTTSAdapter } from './elevenlabs/elevenlabs-tts-adapter'
 
+import { JimengTextToImageAdapter } from './jimeng/jimeng-text-to-image-adapter'
+import { Jimeng40Adapter } from './jimeng/jimeng-40-adapter'
+import { JimengVideo30Adapter } from './jimeng/jimeng-video-30-adapter'
+
 /**
  * 适配器注册表
  * key: adapterName
@@ -111,6 +115,11 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
 
   // ElevenLabs
   ElevenLabsTTSAdapter,
+
+  // Jimeng AI (火山引擎即梦AI)
+  JimengTextToImageAdapter,
+  Jimeng40Adapter,
+  JimengVideo30Adapter,
 }
 
 /**

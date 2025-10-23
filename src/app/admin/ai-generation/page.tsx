@@ -13,7 +13,8 @@ import { X, Settings } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
 import { Card } from '~/components/ui/card'
 import { Button } from '~/components/ui/button'
-import { Dialog, DialogContent } from '~/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle } from '~/components/ui/dialog'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { getModelParameters, type ParameterField } from '~/lib/ai-generation/config/model-parameters'
 import { getModelPricingInfo } from '~/lib/ai-generation/config/pricing-info'
 import { TaskHistorySection, type TaskHistoryTask } from './tasks/task-history-section'
@@ -796,6 +797,9 @@ export default function AIGenerationPage() {
         }}
       >
         <DialogContent className="max-w-4xl bg-neutral-950 p-0">
+          <VisuallyHidden>
+            <DialogTitle>图片预览</DialogTitle>
+          </VisuallyHidden>
           {previewImage && (
             <img
               src={previewImage}

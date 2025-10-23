@@ -111,8 +111,10 @@ export default function MediaBrowserPage() {
   // 演员资料编辑状态
   const [editingActorName, setEditingActorName] = useState(false)
   const [editingActorBio, setEditingActorBio] = useState(false)
+  const [editingActorVoiceId, setEditingActorVoiceId] = useState(false)
   const [tempActorName, setTempActorName] = useState('')
   const [tempActorBio, setTempActorBio] = useState('')
+  const [tempActorVoiceId, setTempActorVoiceId] = useState('')
   const [tempActorAvatarUrl, setTempActorAvatarUrl] = useState('')
   const [showAvatarUrlDialog, setShowAvatarUrlDialog] = useState(false)
   const [tempActorReferenceImageUrl, setTempActorReferenceImageUrl] = useState('')
@@ -2015,7 +2017,7 @@ export default function MediaBrowserPage() {
           )}
 
           {/* End of List Indicator */}
-          {!hasNextPage && filesData && filesData.files.length > 0 && (
+          {!maximized && !hasNextPage && filesData && filesData.files.length > 0 && (
             <div className="text-center py-8 text-sm text-neutral-400">
               已加载全部 {filesData.total} 个文件
             </div>

@@ -30,6 +30,8 @@ function toModelConfig(model: {
     name: string
     apiEndpoint: string | null
     apiKey: string | null
+    apiKeyId: string | null
+    apiKeySecret: string | null
     uploadToS3: boolean
     s3PathPrefix: string | null
   }
@@ -43,6 +45,8 @@ function toModelConfig(model: {
       slug: model.provider.slug,
       name: model.provider.name,
       apiKey: model.provider.apiKey || undefined,
+      apiKeyId: model.provider.apiKeyId || undefined,
+      apiKeySecret: model.provider.apiKeySecret || undefined,
       apiEndpoint: model.provider.apiEndpoint || undefined,
     },
     outputType: model.outputType as 'IMAGE' | 'VIDEO' | 'AUDIO',
@@ -118,6 +122,26 @@ export const aiGenerationRouter = createTRPCRouter({
       const provider = await modelService.updateProviderApiKey(
         input.providerId,
         input.apiKey
+      )
+      return provider
+    }),
+
+  /**
+   * 更新供应商双密钥配置（用于火山引擎等需要两个独立密钥的供应商）
+   */
+  updateProviderDualKeys: publicProcedure
+    .input(
+      z.object({
+        providerId: z.string(),
+        apiKeyId: z.string(),
+        apiKeySecret: z.string(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const provider = await modelService.updateProviderDualKeys(
+        input.providerId,
+        input.apiKeyId,
+        input.apiKeySecret
       )
       return provider
     }),

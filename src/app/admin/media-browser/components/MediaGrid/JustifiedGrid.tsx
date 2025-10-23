@@ -73,7 +73,7 @@ export function JustifiedGrid({
   }
 
   return (
-    <div className={maximized ? 'space-y-0.5' : 'space-y-2'}>
+    <div className={`${maximized ? 'space-y-0.5' : 'space-y-2'} w-full`}>
       {rows.map((rowFiles, rowIndex) => {
         const totalAspectRatio = rowFiles.reduce((sum, file) => {
           const aspectRatio = file.width && file.height ? file.width / file.height : 1

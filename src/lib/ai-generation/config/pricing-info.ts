@@ -393,6 +393,85 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
     const cost = (charCount / 1000 * 0.10).toFixed(4)
     return `约 $${cost} (${charCount}字符, $0.10/1k字符)`
   },
+
+  // ==================== Jimeng AI (火山引擎即梦AI) ====================
+
+  'jimeng-text-to-image-v21': (params) => {
+    // 即梦AI定价参考火山引擎官方定价
+    // 文生图2.1基础版：约 ¥0.02-0.05/张
+    const use_sr = params.use_sr as boolean ?? true
+    const width = params.width as number ?? 512
+    const height = params.height as number ?? 512
+
+    // 基础费用
+    let baseCost = 0.008 // 约$0.008/张基础费用
+
+    // 如果开启超分，费用增加
+    if (use_sr) {
+      baseCost = baseCost * 1.5 // 超分增加50%费用
+    }
+
+    // 尺寸影响（大尺寸费用更高）
+    const pixelCount = width * height
+    if (pixelCount > 512 * 512) {
+      const ratio = pixelCount / (512 * 512)
+      baseCost = baseCost * ratio
+    }
+
+    const finalCost = baseCost.toFixed(4)
+    const dimensions = use_sr ? `${width * 2}x${height * 2}` : `${width}x${height}`
+    return `约 $${finalCost}/张 (${dimensions}${use_sr ? ', 含超分' : ''})`
+  },
+
+  'jimeng-40': (params) => {
+    // 即梦4.0定价：根据输出图片数量计费
+    // 基础费用参考文生图2.1，但可能输出多张图片
+    const size = params.size as number ?? 4194304 // 默认2K
+    const force_single = params.force_single as boolean ?? false
+
+    // 计算单张图片基础费用（基于分辨率）
+    let baseCostPerImage = 0.01 // 默认1K基础费用
+
+    if (size <= 1048576) {
+      // 1K
+      baseCostPerImage = 0.01
+    } else if (size <= 4194304) {
+      // 2K
+      baseCostPerImage = 0.015
+    } else if (size <= 9437184) {
+      // 3K
+      baseCostPerImage = 0.025
+    } else {
+      // 4K
+      baseCostPerImage = 0.04
+    }
+
+    if (force_single) {
+      return `约 $${baseCostPerImage.toFixed(3)}/张 (单图输出)`
+    } else {
+      // 可能输出多张,给出范围
+      const minCost = baseCostPerImage
+      const maxCost = baseCostPerImage * 15 // 最多15张
+      return `约 $${minCost.toFixed(3)}-$${maxCost.toFixed(2)} (1-15张, 按实际数量计费)`
+    }
+  },
+
+  'jimeng-video-30': (params) => {
+    // 即梦视频生成3.0定价：基于时长计费
+    // 参考火山引擎官方定价，根据帧数计算
+    const frames = params.frames as number ?? 121 // 默认5秒
+
+    // 基础费用估算（参考行业标准）
+    let baseCost = 0.15 // 5秒基础费用
+
+    if (frames === 241) {
+      // 10秒视频费用约为5秒的2倍
+      baseCost = 0.30
+    }
+
+    const duration = frames === 121 ? '5秒' : '10秒'
+    return `约 $${baseCost.toFixed(2)}/${duration} (1080P高清)`
+  },
 }
 
 /**

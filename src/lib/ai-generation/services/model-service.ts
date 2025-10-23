@@ -236,6 +236,23 @@ export class ModelService {
   }
 
   /**
+   * 更新供应商双密钥配置（如火山引擎的AccessKeyID + SecretAccessKey）
+   */
+  async updateProviderDualKeys(providerId: string, apiKeyId: string, apiKeySecret: string) {
+    const provider = await db.aIProvider.update({
+      where: {
+        id: providerId,
+      },
+      data: {
+        apiKeyId,
+        apiKeySecret,
+      },
+    })
+
+    return provider
+  }
+
+  /**
    * 更新模型状态
    */
   async updateModelStatus(modelId: string, isActive: boolean) {

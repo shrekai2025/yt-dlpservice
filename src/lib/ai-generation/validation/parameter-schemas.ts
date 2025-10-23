@@ -156,6 +156,42 @@ export const PolloKlingParametersSchema = z.object({
   camera_motion: z.enum(['zoom_in', 'zoom_out', 'pan_left', 'pan_right', 'tilt_up', 'tilt_down', 'none']).optional(),
 })
 
+// ==================== Jimeng AI (火山引擎即梦AI) ====================
+
+export const JimengTextToImageParametersSchema = z.object({
+  width: z.number().int().min(256).max(768).default(512),
+  height: z.number().int().min(256).max(768).default(512),
+  use_sr: z.boolean().default(true),
+  use_pre_llm: z.boolean().default(true),
+  seed: z.number().int().min(-1).max(2147483647).default(-1),
+  add_logo: z.boolean().default(false),
+  logo_position: z.number().int().min(0).max(3).default(0),
+  logo_language: z.number().int().min(0).max(1).default(0),
+  logo_opacity: z.number().min(0).max(1).default(1),
+  logo_text_content: z.string().default(''),
+  // AIGC元数据（可选）
+  content_producer: z.string().optional(),
+  producer_id: z.string().optional(),
+  content_propagator: z.string().optional(),
+  propagate_id: z.string().optional(),
+})
+
+export const Jimeng40ParametersSchema = z.object({
+  size: z.number().int().min(1048576).max(16777216).default(4194304),
+  width: z.number().int().min(0).max(6198).default(0),
+  height: z.number().int().min(0).max(4096).default(0),
+  scale: z.number().min(0).max(1).default(0.5),
+  force_single: z.boolean().default(false),
+  min_ratio: z.number().min(0.0625).max(16).default(0.33),
+  max_ratio: z.number().min(0.0625).max(16).default(3),
+})
+
+export const JimengVideo30ParametersSchema = z.object({
+  frames: z.union([z.literal(121), z.literal(241)]).default(121),
+  seed: z.number().int().min(-1).max(2147483647).default(-1),
+  aspect_ratio: z.enum(['16:9', '4:3', '1:1', '3:4', '9:16', '21:9']).default('16:9').optional(),
+})
+
 // ==================== Schema Map ====================
 
 /**
@@ -189,6 +225,11 @@ export const MODEL_PARAMETER_SCHEMAS: Record<string, z.ZodType> = {
   // Pollo
   'pollo-veo3': PolloVeo3ParametersSchema,
   'pollo-kling': PolloKlingParametersSchema,
+
+  // Jimeng AI (火山引擎即梦AI)
+  'jimeng-text-to-image-v21': JimengTextToImageParametersSchema,
+  'jimeng-40': Jimeng40ParametersSchema,
+  'jimeng-video-30': JimengVideo30ParametersSchema,
 }
 
 /**
@@ -268,3 +309,5 @@ export type ReplicateFluxProParameters = z.infer<typeof ReplicateFluxProParamete
 export type ReplicateMinimaxVideoParameters = z.infer<typeof ReplicateMinimaxVideoParametersSchema>
 export type PolloVeo3Parameters = z.infer<typeof PolloVeo3ParametersSchema>
 export type PolloKlingParameters = z.infer<typeof PolloKlingParametersSchema>
+export type JimengTextToImageParameters = z.infer<typeof JimengTextToImageParametersSchema>
+export type Jimeng40Parameters = z.infer<typeof Jimeng40ParametersSchema>

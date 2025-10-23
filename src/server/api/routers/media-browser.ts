@@ -923,6 +923,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         avatarUrl: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         bio: z.string().optional(),
+        voiceId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -933,6 +934,7 @@ export const mediaBrowserRouter = createTRPCRouter({
           avatarUrl: input.avatarUrl,
           referenceImageUrl: input.referenceImageUrl,
           bio: input.bio,
+          voiceId: input.voiceId,
         },
       })
 
@@ -950,6 +952,7 @@ export const mediaBrowserRouter = createTRPCRouter({
         avatarUrl: z.string().optional(),
         referenceImageUrl: z.string().optional(),
         bio: z.string().optional(),
+        voiceId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -968,6 +971,7 @@ export const mediaBrowserRouter = createTRPCRouter({
           avatarUrl: input.avatarUrl,
           referenceImageUrl: input.referenceImageUrl,
           bio: input.bio,
+          voiceId: input.voiceId,
         },
       })
 

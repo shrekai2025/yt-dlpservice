@@ -103,7 +103,9 @@ model AIProvider {
   description  String?
   platformId   String?
   apiEndpoint  String?
-  apiKey       String?
+  apiKey       String?     // 单一密钥（兼容大部分供应商）
+  apiKeyId     String?     // 多密钥方案的ID部分（如火山引擎AccessKeyID）
+  apiKeySecret String?     // 多密钥方案的Secret部分（如火山引擎SecretAccessKey）
   uploadToS3   Boolean     @default(false)
   s3PathPrefix String?
   isActive     Boolean     @default(true)
@@ -285,6 +287,7 @@ model MediaActor {
   bio                String?
   appearancePrompt   String?            // AI 生成用的外观描述
   tags               String?            // JSON: 标签数组
+  voiceId            String?            // ElevenLabs TTS Voice ID
   sortOrder          Int                @default(0)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt

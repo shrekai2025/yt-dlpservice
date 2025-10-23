@@ -18,6 +18,8 @@ export default function AIProvidersPage() {
   const [category, setCategory] = useState<ProviderCategory>('image')
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null)
   const [newApiKey, setNewApiKey] = useState('')
+  const [newApiKeyId, setNewApiKeyId] = useState('')
+  const [newApiKeySecret, setNewApiKeySecret] = useState('')
 
   // 查询图像能力供应商列表
   const { data: providersData, refetch } = api.aiGeneration.listProviders.useQuery({})
@@ -34,6 +36,20 @@ export default function AIProvidersPage() {
       setNewApiKey('')
       void refetch()
       alert('API Key 更新成功')
+    },
+    onError: (error) => {
+      alert(`更新失败: ${error.message}`)
+    },
+  })
+
+  // 更新图像能力供应商双密钥配置
+  const updateDualKeysMutation = api.aiGeneration.updateProviderDualKeys.useMutation({
+    onSuccess: () => {
+      setEditingProviderId(null)
+      setNewApiKeyId('')
+      setNewApiKeySecret('')
+      void refetch()
+      alert('密钥更新成功')
     },
     onError: (error) => {
       alert(`更新失败: ${error.message}`)
@@ -67,22 +83,43 @@ export default function AIProvidersPage() {
     },
   })
 
-  const handleSaveApiKey = (providerId: string, isLLM = false) => {
-    if (!newApiKey.trim()) {
-      alert('请输入 API Key')
-      return
-    }
+  // 判断是否需要双密钥配置（即梦AI等火山引擎供应商）
+  const requiresDualKeys = (providerSlug: string) => {
+    return providerSlug === 'jimeng' // 可以扩展为更多供应商
+  }
 
-    if (isLLM) {
-      updateLLMApiKeyMutation.mutate({
+  const handleSaveApiKey = (providerId: string, providerSlug: string, isLLM = false) => {
+    // 判断是否是双密钥供应商
+    if (!isLLM && requiresDualKeys(providerSlug)) {
+      // 双密钥模式
+      if (!newApiKeyId.trim() || !newApiKeySecret.trim()) {
+        alert('请输入 Access Key ID 和 Secret Access Key')
+        return
+      }
+
+      updateDualKeysMutation.mutate({
         providerId,
-        apiKey: newApiKey.trim(),
+        apiKeyId: newApiKeyId.trim(),
+        apiKeySecret: newApiKeySecret.trim(),
       })
     } else {
-      updateApiKeyMutation.mutate({
-        providerId,
-        apiKey: newApiKey.trim(),
-      })
+      // 单密钥模式
+      if (!newApiKey.trim()) {
+        alert('请输入 API Key')
+        return
+      }
+
+      if (isLLM) {
+        updateLLMApiKeyMutation.mutate({
+          providerId,
+          apiKey: newApiKey.trim(),
+        })
+      } else {
+        updateApiKeyMutation.mutate({
+          providerId,
+          apiKey: newApiKey.trim(),
+        })
+      }
     }
   }
 
@@ -140,8 +177,10 @@ export default function AIProvidersPage() {
               {/* API Key 配置 */}
               <div className="border-t pt-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <h3 className="font-medium">API Key</h3>
-                  {provider.apiKey ? (
+                  <h3 className="font-medium">
+                    {requiresDualKeys(provider.slug) ? '密钥配置' : 'API Key'}
+                  </h3>
+                  {(requiresDualKeys(provider.slug) ? (provider.apiKeyId && provider.apiKeySecret) : provider.apiKey) ? (
                     <Badge variant="outline" className="bg-green-50 text-green-700">
                       已配置
                     </Badge>
@@ -153,43 +192,87 @@ export default function AIProvidersPage() {
                 </div>
 
                 {editingProviderId === provider.id ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="password"
-                      value={newApiKey}
-                      onChange={(e) => setNewApiKey(e.target.value)}
-                      placeholder="输入新的 API Key"
-                      className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-                    />
-                    <Button
-                      size="sm"
-                      onClick={() => handleSaveApiKey(provider.id)}
-                      disabled={updateApiKeyMutation.isPending}
-                    >
-                      保存
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEditingProviderId(null)
-                        setNewApiKey('')
-                      }}
-                    >
-                      取消
-                    </Button>
-                  </div>
+                  requiresDualKeys(provider.slug) ? (
+                    // 双密钥输入模式（火山引擎即梦AI等）
+                    <div className="space-y-2">
+                      <input
+                        type="password"
+                        value={newApiKeyId}
+                        onChange={(e) => setNewApiKeyId(e.target.value)}
+                        placeholder="Access Key ID"
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <input
+                        type="password"
+                        value={newApiKeySecret}
+                        onChange={(e) => setNewApiKeySecret(e.target.value)}
+                        placeholder="Secret Access Key"
+                        className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveApiKey(provider.id, provider.slug)}
+                          disabled={updateDualKeysMutation.isPending}
+                        >
+                          保存
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setEditingProviderId(null)
+                            setNewApiKeyId('')
+                            setNewApiKeySecret('')
+                          }}
+                        >
+                          取消
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    // 单密钥输入模式
+                    <div className="flex gap-2">
+                      <input
+                        type="password"
+                        value={newApiKey}
+                        onChange={(e) => setNewApiKey(e.target.value)}
+                        placeholder="输入新的 API Key"
+                        className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveApiKey(provider.id, provider.slug)}
+                        disabled={updateApiKeyMutation.isPending}
+                      >
+                        保存
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setEditingProviderId(null)
+                          setNewApiKey('')
+                        }}
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  )
                 ) : (
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setEditingProviderId(provider.id)}
                   >
-                    {provider.apiKey ? '修改 API Key' : '设置 API Key'}
+                    {(requiresDualKeys(provider.slug) ? (provider.apiKeyId && provider.apiKeySecret) : provider.apiKey) ? '修改密钥' : '设置密钥'}
                   </Button>
                 )}
                 <p className="text-xs text-gray-500 mt-1">
-                  提示: 也可以通过环境变量 AI_PROVIDER_{provider.slug.toUpperCase().replace(/-/g, '_')}_API_KEY 配置
+                  {requiresDualKeys(provider.slug)
+                    ? `提示: 也可以通过环境变量 AI_PROVIDER_${provider.slug.toUpperCase().replace(/-/g, '_')}_ACCESS_KEY_ID 和 AI_PROVIDER_${provider.slug.toUpperCase().replace(/-/g, '_')}_SECRET_ACCESS_KEY 配置`
+                    : `提示: 也可以通过环境变量 AI_PROVIDER_${provider.slug.toUpperCase().replace(/-/g, '_')}_API_KEY 配置`
+                  }
                 </p>
               </div>
 

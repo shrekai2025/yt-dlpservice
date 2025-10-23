@@ -16,7 +16,9 @@ export interface ModelConfig {
     id: string
     slug: string
     name: string
-    apiKey?: string      // 从数据库或环境变量获取
+    apiKey?: string         // 单一密钥（适用于大多数供应商）
+    apiKeyId?: string       // 多密钥方案的ID部分（如火山引擎AccessKeyID）
+    apiKeySecret?: string   // 多密钥方案的Secret部分（如火山引擎SecretAccessKey）
     apiEndpoint?: string
   }
   outputType: 'IMAGE' | 'VIDEO' | 'AUDIO'

@@ -74,6 +74,8 @@ export class HealthCheckService {
           slug: provider.slug,
           name: provider.name,
           apiKey: provider.apiKey || undefined,
+          apiKeyId: provider.apiKeyId || undefined,
+          apiKeySecret: provider.apiKeySecret || undefined,
           apiEndpoint: provider.apiEndpoint || undefined,
         },
         outputType: testModel.outputType as 'IMAGE' | 'VIDEO' | 'AUDIO',
@@ -84,7 +86,8 @@ export class HealthCheckService {
       const adapter = createAdapter(modelConfig)
 
       // 检查适配器是否可用（不实际调用API，只检查配置）
-      const hasApiKey = !!provider.apiKey || this.hasEnvApiKey(provider.slug)
+      // 支持单密钥或双密钥
+      const hasApiKey = !!provider.apiKey || (!!provider.apiKeyId && !!provider.apiKeySecret) || this.hasEnvApiKey(provider.slug)
       
       if (!hasApiKey) {
         return {
