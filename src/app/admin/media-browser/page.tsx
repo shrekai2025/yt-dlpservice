@@ -446,6 +446,22 @@ export default function MediaBrowserPage() {
     }
   }
 
+  // 处理演员Voice ID编辑
+  const handleActorVoiceIdEdit = async () => {
+    if (!selectedActor) return
+
+    try {
+      await updateActorMutation.mutateAsync({
+        id: selectedActor,
+        voiceId: tempActorVoiceId.trim() || undefined,
+      })
+      setEditingActorVoiceId(false)
+    } catch (error) {
+      console.error('Update actor voice ID failed:', error)
+      alert('更新演员Voice ID失败')
+    }
+  }
+
   // 处理演员头像更新
   const handleActorAvatarUpdate = async () => {
     if (!selectedActor) return
