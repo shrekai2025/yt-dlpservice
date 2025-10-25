@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 import { useState } from "react"
 import { api } from "~/components/providers/trpc-provider"
 import { Button } from "~/components/ui/button"

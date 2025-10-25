@@ -11,6 +11,8 @@ import {
   CardTitle,
 } from '~/components/ui/card'
 
+export const dynamic = 'force-dynamic'
+
 export default function InfoFetchPage(): React.ReactElement {
   const [previewUrl, setPreviewUrl] = React.useState('')
   const [videoInfo, setVideoInfo] = React.useState<any>(null)

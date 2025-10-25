@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 /**
  * Studio Project Detail Page
  * 项目详情页 - 集列表和管理

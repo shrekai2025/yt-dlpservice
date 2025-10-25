@@ -1,5 +1,7 @@
 "use client"
 
+export const dynamic = 'force-dynamic'
+
 /**
  * Studio Episode Workflow Page
  * 工作流编辑页面 - 带Tab结构
