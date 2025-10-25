@@ -4,6 +4,7 @@ import { existsSync, statSync, createReadStream, createWriteStream } from "fs"
 import path from "path"
 import { pipeline } from "stream/promises"
 import { tmpdir } from "os"
+import { db } from "~/server/db"
 
 /**
  * 数据库备份 Router
@@ -168,38 +169,79 @@ export const databaseBackupRouter = createTRPCRouter({
       const dbPath = getDatabasePath()
       const backupPath = getBackupPath()
 
+      console.log('[恢复备份] 开始恢复数据库备份')
+      console.log('[恢复备份] 数据库路径:', dbPath)
+      console.log('[恢复备份] 备份文件路径:', backupPath)
+
       // 检查备份文件是否存在
       if (!existsSync(backupPath)) {
+        console.error('[恢复备份] 备份文件不存在:', backupPath)
         return {
           success: false,
           message: `备份文件不存在: ${backupPath}`,
         }
       }
 
+      // 获取备份文件信息
+      const backupStats = statSync(backupPath)
+      console.log('[恢复备份] 备份文件大小:', backupStats.size, 'bytes')
+      console.log('[恢复备份] 备份文件修改时间:', backupStats.mtime)
+
       // 先创建当前数据库的临时备份（以防恢复失败）
       const tempBackupPath = `${dbPath}.temp`
       if (existsSync(dbPath)) {
+        const currentDbStats = statSync(dbPath)
+        console.log('[恢复备份] 当前数据库大小:', currentDbStats.size, 'bytes')
+        console.log('[恢复备份] 创建临时备份:', tempBackupPath)
         await fs.copyFile(dbPath, tempBackupPath)
       }
 
       try {
         // 复制备份文件到数据库位置
+        console.log('[恢复备份] 正在复制备份文件到数据库位置...')
         await fs.copyFile(backupPath, dbPath)
+
+        // 验证复制结果
+        const restoredDbStats = statSync(dbPath)
+        console.log('[恢复备份] 恢复后数据库大小:', restoredDbStats.size, 'bytes')
+        console.log('[恢复备份] 复制成功，文件大小匹配:', restoredDbStats.size === backupStats.size)
 
         // 删除临时备份
         if (existsSync(tempBackupPath)) {
+          console.log('[恢复备份] 删除临时备份')
           await fs.unlink(tempBackupPath)
         }
 
+        // 🔥 关键：强制断开 Prisma 连接，清除缓存
+        console.log('[恢复备份] 正在断开 Prisma 数据库连接...')
+        try {
+          await db.$disconnect()
+          console.log('[恢复备份] Prisma 连接已断开')
+
+          // 等待一小段时间，确保连接完全关闭
+          await new Promise(resolve => setTimeout(resolve, 100))
+
+          // 重新连接
+          await db.$connect()
+          console.log('[恢复备份] Prisma 已重新连接到新数据库')
+        } catch (error) {
+          console.error('[恢复备份] ⚠️ Prisma 重连警告:', error)
+          // 即使重连失败也不影响恢复成功，下次查询时会自动重连
+        }
+
+        console.log('[恢复备份] ✅ 数据库恢复成功')
         return {
           success: true,
-          message: "数据库恢复成功，请刷新页面",
+          message: "数据库恢复成功，Prisma 连接已更新，请刷新页面",
         }
       } catch (error) {
+        console.error('[恢复备份] ❌ 恢复失败:', error)
         // 如果恢复失败，尝试还原临时备份
         if (existsSync(tempBackupPath)) {
+          console.log('[恢复备份] 正在回滚到临时备份...')
           await fs.copyFile(tempBackupPath, dbPath)
           await fs.unlink(tempBackupPath)
+          console.log('[恢复备份] 回滚成功')
         }
         throw error
       }

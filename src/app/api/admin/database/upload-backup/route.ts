@@ -59,6 +59,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    console.log('[上传备份] 开始处理上传的备份文件')
+    console.log('[上传备份] 文件名:', file.name)
+    console.log('[上传备份] 文件大小:', file.size, 'bytes')
+
     // 读取文件内容
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
@@ -66,7 +70,10 @@ export async function POST(request: NextRequest) {
     // 验证文件是否为有效的 SQLite 数据库
     // SQLite 文件头应该以 "SQLite format 3" 开始
     const header = buffer.toString("utf-8", 0, 15)
+    console.log('[上传备份] 文件头验证:', header.substring(0, 15))
+
     if (!header.startsWith("SQLite format 3")) {
+      console.error('[上传备份] ❌ 文件不是有效的 SQLite 数据库')
       return NextResponse.json(
         {
           success: false,
@@ -78,19 +85,25 @@ export async function POST(request: NextRequest) {
 
     // 保存到备份位置
     const backupPath = getBackupPath()
+    console.log('[上传备份] 目标备份路径:', backupPath)
 
     // 如果备份文件已存在，先备份旧的备份文件
     if (existsSync(backupPath)) {
+      console.log('[上传备份] 备份文件已存在，创建旧备份')
       const oldBackupPath = `${backupPath}.old`
       await fs.copyFile(backupPath, oldBackupPath)
 
       try {
         // 写入新备份
+        console.log('[上传备份] 正在写入新备份文件...')
         await fs.writeFile(backupPath, buffer)
+        console.log('[上传备份] 新备份文件写入成功')
 
         // 删除旧备份
         await fs.unlink(oldBackupPath)
+        console.log('[上传备份] 旧备份文件已删除')
       } catch (error) {
+        console.error('[上传备份] ❌ 写入失败，正在恢复旧备份:', error)
         // 如果写入失败，恢复旧备份
         if (existsSync(oldBackupPath)) {
           await fs.copyFile(oldBackupPath, backupPath)
@@ -100,10 +113,13 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // 直接写入新备份
+      console.log('[上传备份] 首次创建备份文件')
       await fs.writeFile(backupPath, buffer)
+      console.log('[上传备份] 备份文件创建成功')
     }
 
     const stats = await fs.stat(backupPath)
+    console.log('[上传备份] ✅ 上传成功，最终文件大小:', stats.size, 'bytes')
 
     return NextResponse.json({
       success: true,

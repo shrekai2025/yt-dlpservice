@@ -3,6 +3,7 @@ import fs from "fs/promises"
 import { existsSync, createReadStream } from "fs"
 import path from "path"
 import * as tar from "tar"
+import { db } from "~/server/db"
 
 /**
  * 恢复完整备份 API
@@ -182,6 +183,23 @@ export async function POST(request: NextRequest) {
         await extractTarGz(fullBackupPath, dataDir)
         console.log("完整备份解压成功")
 
+        // 🔥 关键：强制断开 Prisma 连接，清除缓存
+        console.log("[完整恢复] 正在断开 Prisma 数据库连接...")
+        try {
+          await db.$disconnect()
+          console.log("[完整恢复] Prisma 连接已断开")
+
+          // 等待一小段时间，确保连接完全关闭
+          await new Promise((resolve) => setTimeout(resolve, 100))
+
+          // 重新连接
+          await db.$connect()
+          console.log("[完整恢复] Prisma 已重新连接到新数据库")
+        } catch (error) {
+          console.error("[完整恢复] ⚠️ Prisma 重连警告:", error)
+          // 即使重连失败也不影响恢复成功，下次查询时会自动重连
+        }
+
         // 删除临时备份
         if (tempBackupPath && existsSync(tempBackupPath)) {
           await fs.unlink(tempBackupPath)
@@ -190,7 +208,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({
           success: true,
-          message: "完整备份恢复成功，请刷新页面",
+          message: "完整备份恢复成功，Prisma 连接已更新，请刷新页面",
           data: {
             backupType: "full",
             restoredFrom: fullBackupPath,
