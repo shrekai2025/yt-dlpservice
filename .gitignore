@@ -51,6 +51,14 @@ next-env.d.ts
 !/prisma/data/
 !/prisma/data/app.db
 
+# 数据库备份文件（新增）
+/data/*.db.backup
+/data/*.db.temp
+/data/app.db.backup
+/data/app.db.temp
+*.db.backup
+*.db.old
+
 # 浏览器数据（隐私相关）
 /data/browser_data/
 
@@ -81,6 +89,13 @@ google-credentials*.json
 *.backup
 *.backup.txt
 cookies*.backup*
+
+# 完整备份文件（新增）
+/data/full-backup.tar.gz
+/data/full-backup.tar.gz.old
+/data/temp-backup-*.tar.gz
+/data/mavaeai-cc140-255bcb477e8d.json
+*.tar.gz.backup
 
 # 参考代码
 /genapihub-main
@@ -122,3 +137,8 @@ yt-dlpworker/
 
 # Generated AI assets
 /public/ai-generated/
+
+
+
+
+/mavaeai-cc140-255bcb477e8d.json

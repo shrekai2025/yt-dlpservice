@@ -66,9 +66,11 @@
     "@trpc/next": "^11.4.3",
     "@trpc/react-query": "^11.4.3",
     "@trpc/server": "^11.4.3",
+    "@types/archiver": "^6.0.4",
     "@types/fluent-ffmpeg": "^2.1.27",
     "@volcengine/openapi": "^1.30.2",
     "@volcengine/tos-sdk": "^2.7.5",
+    "archiver": "^7.0.1",
     "autoprefixer": "^10.4.21",
     "axios": "^1.12.2",
     "class-variance-authority": "^0.7.1",
@@ -90,6 +92,7 @@
     "superjson": "^2.2.2",
     "tailwind-merge": "^2.3.0",
     "tailwindcss": "^4.1.11",
+    "tar": "^7.5.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {

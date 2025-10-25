@@ -7,7 +7,10 @@ import { tmpdir } from "os"
 
 /**
  * 数据库备份 Router
- * 提供简单的数据库备份和恢复功能
+ * 提供数据库备份和恢复功能
+ * 支持两种备份模式：
+ * 1. 数据库备份（仅备份 app.db）
+ * 2. 完整备份（备份数据库 + 所有媒体文件）
  */
 
 // 数据库路径配置
@@ -24,9 +27,46 @@ const getDatabasePath = () => {
   return filePath
 }
 
+const getDataDirectory = () => {
+  const dbPath = getDatabasePath()
+  return path.dirname(dbPath)
+}
+
 const getBackupPath = () => {
   const dbPath = getDatabasePath()
   return `${dbPath}.backup`
+}
+
+const getFullBackupPath = () => {
+  const dataDir = getDataDirectory()
+  return path.join(dataDir, "full-backup.tar.gz")
+}
+
+/**
+ * 获取目录大小
+ */
+async function getDirectorySize(dirPath: string): Promise<number> {
+  if (!existsSync(dirPath)) {
+    return 0
+  }
+
+  let totalSize = 0
+
+  async function calculateSize(currentPath: string) {
+    const stats = await fs.stat(currentPath)
+
+    if (stats.isFile()) {
+      totalSize += stats.size
+    } else if (stats.isDirectory()) {
+      const files = await fs.readdir(currentPath)
+      for (const file of files) {
+        await calculateSize(path.join(currentPath, file))
+      }
+    }
+  }
+
+  await calculateSize(dirPath)
+  return totalSize
 }
 
 export const databaseBackupRouter = createTRPCRouter({
@@ -199,6 +239,145 @@ export const databaseBackupRouter = createTRPCRouter({
       return {
         success: false,
         message: error instanceof Error ? error.message : "删除备份失败",
+      }
+    }
+  }),
+
+  /**
+   * 获取完整备份信息
+   * 包括数据库和媒体文件的大小统计
+   */
+  getFullBackupInfo: publicProcedure.query(async () => {
+    try {
+      const dbPath = getDatabasePath()
+      const dataDir = getDataDirectory()
+      const dbBackupPath = getBackupPath()
+      const fullBackupPath = getFullBackupPath()
+
+      const dbExists = existsSync(dbPath)
+      const dbBackupExists = existsSync(dbBackupPath)
+      const fullBackupExists = existsSync(fullBackupPath)
+
+      let dbSize = 0
+      let dbBackupSize = 0
+      let dbBackupCreatedAt = null
+      let fullBackupSize = 0
+      let fullBackupCreatedAt = null
+
+      if (dbExists) {
+        const dbStats = statSync(dbPath)
+        dbSize = dbStats.size
+      }
+
+      if (dbBackupExists) {
+        const backupStats = statSync(dbBackupPath)
+        dbBackupSize = backupStats.size
+        dbBackupCreatedAt = backupStats.mtime
+      }
+
+      if (fullBackupExists) {
+        const fullBackupStats = statSync(fullBackupPath)
+        fullBackupSize = fullBackupStats.size
+        fullBackupCreatedAt = fullBackupStats.mtime
+      }
+
+      // 计算媒体目录大小
+      const mediaUploadsSize = await getDirectorySize(path.join(dataDir, "media-uploads"))
+      const mediaThumbnailsSize = await getDirectorySize(path.join(dataDir, "media-thumbnails"))
+      const exportsSize = await getDirectorySize(path.join(dataDir, "exports"))
+      const cookiesSize = await getDirectorySize(path.join(dataDir, "cookies"))
+      const tempSize = await getDirectorySize(path.join(dataDir, "temp"))
+
+      const totalMediaSize = mediaUploadsSize + mediaThumbnailsSize + exportsSize + cookiesSize + tempSize
+      const totalDataSize = dbSize + totalMediaSize
+
+      return {
+        success: true,
+        data: {
+          database: {
+            path: dbPath,
+            exists: dbExists,
+            size: dbSize,
+            formattedSize: formatFileSize(dbSize),
+          },
+          dbBackup: {
+            path: dbBackupPath,
+            exists: dbBackupExists,
+            size: dbBackupSize,
+            formattedSize: formatFileSize(dbBackupSize),
+            createdAt: dbBackupCreatedAt,
+          },
+          fullBackup: {
+            path: fullBackupPath,
+            exists: fullBackupExists,
+            size: fullBackupSize,
+            formattedSize: formatFileSize(fullBackupSize),
+            createdAt: fullBackupCreatedAt,
+          },
+          mediaDirectories: {
+            uploads: {
+              size: mediaUploadsSize,
+              formattedSize: formatFileSize(mediaUploadsSize),
+            },
+            thumbnails: {
+              size: mediaThumbnailsSize,
+              formattedSize: formatFileSize(mediaThumbnailsSize),
+            },
+            exports: {
+              size: exportsSize,
+              formattedSize: formatFileSize(exportsSize),
+            },
+            cookies: {
+              size: cookiesSize,
+              formattedSize: formatFileSize(cookiesSize),
+            },
+            temp: {
+              size: tempSize,
+              formattedSize: formatFileSize(tempSize),
+            },
+          },
+          totalSizes: {
+            mediaOnly: totalMediaSize,
+            formattedMediaOnly: formatFileSize(totalMediaSize),
+            allData: totalDataSize,
+            formattedAllData: formatFileSize(totalDataSize),
+          },
+        },
+      }
+    } catch (error) {
+      console.error("获取完整备份信息失败:", error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "获取完整备份信息失败",
+      }
+    }
+  }),
+
+  /**
+   * 删除完整备份
+   */
+  deleteFullBackup: publicProcedure.mutation(async () => {
+    try {
+      const fullBackupPath = getFullBackupPath()
+
+      if (!existsSync(fullBackupPath)) {
+        return {
+          success: false,
+          message: "完整备份文件不存在",
+        }
+      }
+
+      await fs.unlink(fullBackupPath)
+
+      return {
+        success: true,
+        message: "完整备份文件已删除",
+      }
+    } catch (error) {
+      console.error("删除完整备份失败:", error)
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : "删除完整备份失败",
       }
     }
   }),

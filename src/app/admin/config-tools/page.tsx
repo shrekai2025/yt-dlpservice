@@ -1447,10 +1447,16 @@ type DatabaseBackupSectionProps = {
 
 function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React.ReactElement {
   const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false)
+  const [restoreType, setRestoreType] = useState<'database-only' | 'full'>('database-only')
   const [isUploading, setIsUploading] = useState(false)
+  const [includeMedia, setIncludeMedia] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
-  // 获取备份信息
+  // 获取完整备份信息（包含媒体文件统计）
+  const { data: fullBackupInfo, refetch: refetchFullBackupInfo } = api.databaseBackup.getFullBackupInfo.useQuery()
+
+  // 获取基础备份信息（向后兼容）
   const { data: backupInfo, refetch: refetchBackupInfo } = api.databaseBackup.getBackupInfo.useQuery()
 
   // 备份操作
@@ -1489,6 +1495,7 @@ function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React
       if (data.success) {
         showToast(data.message, 'success')
         void refetchBackupInfo()
+        void refetchFullBackupInfo()
       } else {
         showToast(data.message || '删除失败', 'error')
       }
@@ -1498,21 +1505,99 @@ function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React
     },
   })
 
-  const handleCreateBackup = () => {
-    createBackupMutation.mutate()
+  // 删除完整备份操作
+  const deleteFullBackupMutation = api.databaseBackup.deleteFullBackup.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        showToast(data.message, 'success')
+        void refetchFullBackupInfo()
+      } else {
+        showToast(data.message || '删除失败', 'error')
+      }
+    },
+    onError: (error) => {
+      showToast(error.message || '删除失败', 'error')
+    },
+  })
+
+  const handleCreateBackup = async () => {
+    if (!includeMedia) {
+      // 仅备份数据库
+      createBackupMutation.mutate()
+    } else {
+      // 创建完整备份（包含媒体）
+      setIsCreating(true)
+      try {
+        const response = await fetch('/api/admin/database/create-full-backup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ includeMedia: true }),
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+          showToast(data.message, 'success')
+          void refetchFullBackupInfo()
+        } else {
+          showToast(data.message || '创建完整备份失败', 'error')
+        }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '创建完整备份失败', 'error')
+      } finally {
+        setIsCreating(false)
+      }
+    }
   }
 
-  const handleRestoreBackup = () => {
+  const handleRestoreBackup = (type: 'database-only' | 'full') => {
+    setRestoreType(type)
     setIsRestoreConfirmOpen(true)
   }
 
-  const confirmRestoreBackup = () => {
+  const confirmRestoreBackup = async () => {
     setIsRestoreConfirmOpen(false)
-    restoreBackupMutation.mutate()
+
+    if (restoreType === 'database-only') {
+      restoreBackupMutation.mutate()
+    } else {
+      // 恢复完整备份
+      try {
+        const response = await fetch('/api/admin/database/restore-full-backup', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ backupType: 'full' }),
+        })
+
+        const data = await response.json()
+
+        if (data.success) {
+          showToast(data.message, 'success')
+          void refetchFullBackupInfo()
+        } else {
+          showToast(data.message || '恢复完整备份失败', 'error')
+        }
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '恢复完整备份失败', 'error')
+      }
+    }
   }
 
   const handleDeleteBackup = () => {
     deleteBackupMutation.mutate()
+  }
+
+  const handleDeleteFullBackup = () => {
+    deleteFullBackupMutation.mutate()
+  }
+
+  const handleDownloadBackup = (type: 'database' | 'full') => {
+    const url = `/api/admin/database/download-backup?type=${type}`
+    window.location.href = url
   }
 
   const handleUploadClick = () => {
@@ -1569,103 +1654,209 @@ function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🗄️ 数据库备份管理</CardTitle>
+        <CardTitle>🗄️ 数据库备份管理（增强版）</CardTitle>
         <CardDescription>
-          手动备份和恢复 SQLite 数据库，防止数据意外丢失。同一时间只保存一个备份文件。
+          手动备份和恢复 SQLite 数据库及媒体文件，防止数据意外丢失。支持仅数据库备份或包含媒体的完整备份。
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* 备份状态显示 */}
-        {backupInfo?.success && backupInfo.data && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* 数据统计显示 */}
+        {fullBackupInfo?.success && fullBackupInfo.data && (
+          <div className="space-y-4">
+            {/* 当前数据统计 */}
             <Card className="border-blue-200 bg-blue-50">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-blue-900">当前数据库</CardTitle>
+                <CardTitle className="text-sm text-blue-900">当前数据统计</CardTitle>
               </CardHeader>
               <CardContent className="pt-0">
-                <div className="space-y-2 text-sm">
-                  <p className="text-blue-700">
-                    <span className="font-medium">路径:</span> {backupInfo.data.databasePath}
-                  </p>
-                  <p className="text-blue-700">
-                    <span className="font-medium">状态:</span> {backupInfo.data.databaseExists ? '✅ 存在' : '❌ 不存在'}
-                  </p>
-                  <p className="text-blue-700">
-                    <span className="font-medium">大小:</span> {backupInfo.data.formattedDatabaseSize}
-                  </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <p className="text-blue-600 font-medium">数据库</p>
+                    <p className="text-blue-900 text-lg">{fullBackupInfo.data.database.formattedSize}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-600 font-medium">媒体上传</p>
+                    <p className="text-blue-900 text-lg">{fullBackupInfo.data.mediaDirectories.uploads.formattedSize}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-600 font-medium">缩略图</p>
+                    <p className="text-blue-900 text-lg">{fullBackupInfo.data.mediaDirectories.thumbnails.formattedSize}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-600 font-medium">导出文件</p>
+                    <p className="text-blue-900 text-lg">{fullBackupInfo.data.mediaDirectories.exports.formattedSize}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-600 font-medium">总计</p>
+                    <p className="text-blue-900 text-lg font-bold">{fullBackupInfo.data.totalSizes.formattedAllData}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className={backupInfo.data.backupExists ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50"}>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-green-900">备份文件</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-2 text-sm">
-                  {backupInfo.data.backupExists ? (
-                    <>
-                      <p className="text-green-700">
-                        <span className="font-medium">路径:</span> {backupInfo.data.backupPath}
-                      </p>
-                      <p className="text-green-700">
-                        <span className="font-medium">状态:</span> ✅ 存在
-                      </p>
-                      <p className="text-green-700">
-                        <span className="font-medium">大小:</span> {backupInfo.data.formattedBackupSize}
-                      </p>
-                      <p className="text-green-700">
-                        <span className="font-medium">创建时间:</span> {backupInfo.data.backupCreatedAt ? new Date(backupInfo.data.backupCreatedAt).toLocaleString() : '未知'}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-gray-500">暂无备份文件</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            {/* 备份文件显示 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 数据库备份 */}
+              <Card className={fullBackupInfo.data.dbBackup.exists ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50"}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-green-900">数据库备份</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2 text-sm">
+                    {fullBackupInfo.data.dbBackup.exists ? (
+                      <>
+                        <p className="text-green-700">
+                          <span className="font-medium">大小:</span> {fullBackupInfo.data.dbBackup.formattedSize}
+                        </p>
+                        <p className="text-green-700">
+                          <span className="font-medium">创建时间:</span>{' '}
+                          {fullBackupInfo.data.dbBackup.createdAt ? new Date(fullBackupInfo.data.dbBackup.createdAt).toLocaleString() : '未知'}
+                        </p>
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDownloadBackup('database')}
+                            className="text-xs"
+                          >
+                            下载
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRestoreBackup('database-only')}
+                            className="text-xs"
+                          >
+                            恢复
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleDeleteBackup}
+                            className="text-xs text-red-600"
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-gray-500">暂无数据库备份</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 完整备份 */}
+              <Card className={fullBackupInfo.data.fullBackup.exists ? "border-purple-200 bg-purple-50" : "border-gray-200 bg-gray-50"}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm text-purple-900">完整备份（含媒体）</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="space-y-2 text-sm">
+                    {fullBackupInfo.data.fullBackup.exists ? (
+                      <>
+                        <p className="text-purple-700">
+                          <span className="font-medium">大小:</span> {fullBackupInfo.data.fullBackup.formattedSize}
+                        </p>
+                        <p className="text-purple-700">
+                          <span className="font-medium">创建时间:</span>{' '}
+                          {fullBackupInfo.data.fullBackup.createdAt ? new Date(fullBackupInfo.data.fullBackup.createdAt).toLocaleString() : '未知'}
+                        </p>
+                        <div className="flex gap-2 pt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDownloadBackup('full')}
+                            className="text-xs"
+                          >
+                            下载
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRestoreBackup('full')}
+                            className="text-xs"
+                          >
+                            恢复
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleDeleteFullBackup}
+                            className="text-xs text-red-600"
+                          >
+                            删除
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <p className="text-gray-500">暂无完整备份</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 
-        {/* 操作按钮 */}
-        <div className="flex flex-wrap gap-3">
-          <Button
-            onClick={handleCreateBackup}
-            disabled={createBackupMutation.isPending}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {createBackupMutation.isPending ? '备份中...' : '📦 立即备份'}
-          </Button>
+        {/* 创建备份区域 */}
+        <Card className="border-indigo-200 bg-indigo-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-indigo-900">创建新备份</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* 包含媒体开关 */}
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeMedia}
+                  onChange={(e) => setIncludeMedia(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-indigo-900 font-medium">
+                  包含媒体文件（media-uploads, media-thumbnails, exports等）
+                </span>
+              </label>
+            </div>
 
+            {includeMedia && (
+              <div className="text-xs text-indigo-700 bg-indigo-100 p-2 rounded">
+                将创建完整备份（tar.gz格式），包含数据库和所有媒体文件。
+                预计大小: {fullBackupInfo?.data?.totalSizes.formattedAllData || '计算中...'}
+              </div>
+            )}
+
+            <Button
+              onClick={handleCreateBackup}
+              disabled={isCreating || createBackupMutation.isPending}
+              className="bg-indigo-600 hover:bg-indigo-700 w-full"
+            >
+              {isCreating || createBackupMutation.isPending ? (
+                includeMedia ? '正在创建完整备份...' : '备份中...'
+              ) : (
+                includeMedia ? '📦 创建完整备份' : '📦 仅备份数据库'
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* 其他操作按钮 */}
+        <div className="flex flex-wrap gap-3">
           <Button
             onClick={handleUploadClick}
             disabled={isUploading}
             variant="outline"
             className="border-purple-300 text-purple-700 hover:bg-purple-50"
           >
-            {isUploading ? '上传中...' : '📤 上传备份'}
+            {isUploading ? '上传中...' : '📤 上传备份文件'}
           </Button>
 
           <Button
-            onClick={handleRestoreBackup}
-            disabled={!backupInfo?.data?.backupExists || restoreBackupMutation.isPending}
-            variant="outline"
-            className="border-orange-300 text-orange-700 hover:bg-orange-50"
-          >
-            {restoreBackupMutation.isPending ? '恢复中...' : '♻️ 恢复备份'}
-          </Button>
-
-          <Button
-            onClick={handleDeleteBackup}
-            disabled={!backupInfo?.data?.backupExists || deleteBackupMutation.isPending}
-            variant="outline"
-            className="border-red-300 text-red-700 hover:bg-red-50"
-          >
-            {deleteBackupMutation.isPending ? '删除中...' : '🗑️ 删除备份'}
-          </Button>
-
-          <Button
-            onClick={() => refetchBackupInfo()}
+            onClick={() => {
+              void refetchBackupInfo()
+              void refetchFullBackupInfo()
+            }}
             variant="ghost"
             size="sm"
           >
@@ -1689,20 +1880,32 @@ function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React
               <CardHeader>
                 <CardTitle className="text-red-600">⚠️ 恢复备份确认</CardTitle>
                 <CardDescription>
-                  确认要恢复数据库备份吗？
+                  {restoreType === 'full' ? '确认要恢复完整备份吗？' : '确认要恢复数据库备份吗？'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
                   <p className="font-medium mb-2">恢复操作将会：</p>
                   <ul className="list-disc list-inside space-y-1">
-                    <li>将当前数据库完全替换为备份状态</li>
-                    <li>备份后产生的所有数据将丢失</li>
-                    <li>操作完成后需要刷新页面</li>
+                    {restoreType === 'full' ? (
+                      <>
+                        <li>将当前数据库和所有媒体文件完全替换为备份状态</li>
+                        <li>包括 media-uploads、media-thumbnails、exports 等所有目录</li>
+                        <li>备份后产生的所有数据和文件将丢失</li>
+                        <li>操作完成后需要刷新页面</li>
+                      </>
+                    ) : (
+                      <>
+                        <li>将当前数据库完全替换为备份状态</li>
+                        <li>不影响媒体文件</li>
+                        <li>备份后产生的数据库记录将丢失</li>
+                        <li>操作完成后需要刷新页面</li>
+                      </>
+                    )}
                   </ul>
                 </div>
                 <p className="text-sm text-gray-600">
-                  <strong>建议：</strong> 恢复前先创建当前状态的备份
+                  <strong>强烈建议：</strong> 恢复前先创建当前状态的备份！
                 </p>
                 <div className="flex gap-2 justify-end">
                   <Button
@@ -1738,43 +1941,40 @@ function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React
             <div className="space-y-2">
               <p className="font-medium">使用说明</p>
               <ul className="list-disc list-inside space-y-1 text-blue-700">
-                <li><strong>立即备份：</strong>将当前数据库完整复制为备份文件</li>
-                <li><strong>上传备份：</strong>选择本地的数据库备份文件上传到服务器</li>
-                <li><strong>恢复备份：</strong>用备份文件替换当前数据库（需要确认）</li>
-                <li><strong>删除备份：</strong>删除备份文件释放存储空间</li>
-                <li><strong>单备份策略：</strong>新备份会覆盖旧备份文件</li>
+                <li><strong>数据库备份：</strong>仅备份 SQLite 数据库文件（约10MB）</li>
+                <li><strong>完整备份：</strong>备份数据库 + 所有媒体文件（包括上传、缩略图、导出等）</li>
+                <li><strong>下载备份：</strong>将备份文件下载到本地保存</li>
+                <li><strong>恢复备份：</strong>用备份文件替换当前数据（需要确认）</li>
+                <li><strong>删除备份：</strong>删除服务器上的备份文件释放存储空间</li>
               </ul>
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="font-medium text-blue-900 mb-1">两种备份模式对比：</p>
+                <div className="grid grid-cols-2 gap-2 text-xs text-blue-700">
+                  <div>
+                    <p className="font-semibold">数据库备份</p>
+                    <ul className="list-disc list-inside">
+                      <li>速度快（秒级）</li>
+                      <li>文件小（~10MB）</li>
+                      <li>仅包含数据记录</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-semibold">完整备份</p>
+                    <ul className="list-disc list-inside">
+                      <li>耗时较长（分钟级）</li>
+                      <li>文件大（GB级别）</li>
+                      <li>包含所有数据和文件</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
               <div className="mt-3 pt-3 border-t border-blue-200">
                 <p className="font-medium text-blue-900 mb-1">最佳实践：</p>
                 <ol className="list-decimal list-inside space-y-1 text-blue-700">
-                  <li>在重大更新前先创建备份</li>
-                  <li>定期手动备份重要数据</li>
-                  <li>测试重要功能后创建备份节点</li>
-                  <li>重要备份文件建议下载到本地保存</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 上传功能说明 */}
-        <div className="rounded-md border border-purple-200 bg-purple-50 p-4 text-sm text-purple-800">
-          <div className="flex items-start gap-2">
-            <div className="text-purple-500 mt-0.5">📤</div>
-            <div className="space-y-2">
-              <p className="font-medium">上传备份说明</p>
-              <ul className="list-disc list-inside space-y-1 text-purple-700">
-                <li><strong>支持的文件类型：</strong>.db、.backup、.sqlite</li>
-                <li><strong>文件大小限制：</strong>最大 100MB</li>
-                <li><strong>上传位置：</strong>文件将覆盖服务器上的备份文件</li>
-                <li><strong>数据验证：</strong>系统会验证文件是否为有效的 SQLite 数据库</li>
-              </ul>
-              <div className="mt-3 pt-3 border-t border-purple-200">
-                <p className="font-medium text-purple-900 mb-1">使用场景：</p>
-                <ol className="list-decimal list-inside space-y-1 text-purple-700">
-                  <li>从其他环境迁移数据库</li>
-                  <li>恢复本地保存的备份文件</li>
-                  <li>在不同服务器间同步数据</li>
+                  <li>日常备份：使用数据库备份（快速、频繁）</li>
+                  <li>迁移服务器：使用完整备份（包含所有文件）</li>
+                  <li>重大更新前：创建完整备份并下载到本地</li>
+                  <li>定期下载：重要备份文件应下载到本地多处保存</li>
                 </ol>
               </div>
             </div>
@@ -1788,10 +1988,29 @@ function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React
             <div className="space-y-1">
               <p className="font-medium">安全提醒</p>
               <ul className="list-disc list-inside space-y-1 text-yellow-700">
-                <li>备份文件存储在服务器本地，建议定期备份到其他位置</li>
-                <li>恢复操作不可逆，请谨慎操作</li>
-                <li>如果系统不稳定，建议先手动备份数据库文件</li>
-                <li>恢复后建议刷新页面重新连接数据库</li>
+                <li>备份文件存储在服务器本地，务必定期下载到本地多处保存</li>
+                <li>恢复操作不可逆，执行前请三思并先创建当前状态的备份</li>
+                <li>完整备份包含敏感数据（cookies等），请妥善保管备份文件</li>
+                <li>恢复完整备份会清空并替换所有媒体目录，确保备份是最新的</li>
+                <li>恢复后必须刷新页面重新连接数据库</li>
+                <li>如果媒体文件很大（GB级），完整备份和恢复将耗时较长</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* 技术说明 */}
+        <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+          <div className="flex items-start gap-2">
+            <div className="text-gray-500 mt-0.5">ℹ️</div>
+            <div className="space-y-1">
+              <p className="font-medium">技术说明</p>
+              <ul className="list-disc list-inside space-y-1 text-gray-600">
+                <li><strong>数据库备份格式：</strong> SQLite 数据库文件（.db.backup）</li>
+                <li><strong>完整备份格式：</strong> tar.gz 压缩包（full-backup.tar.gz）</li>
+                <li><strong>包含目录：</strong> media-uploads, media-thumbnails, exports, cookies, temp</li>
+                <li><strong>备份存储位置：</strong> data/ 目录下</li>
+                <li><strong>恢复机制：</strong> 自动创建临时备份，失败时自动回滚</li>
               </ul>
             </div>
           </div>
