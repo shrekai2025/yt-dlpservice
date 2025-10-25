@@ -30,9 +30,13 @@ interface GeminiPart {
   };
 }
 
+interface GeminiContent {
+  parts: GeminiPart[];
+}
+
 interface GeminiGenerateRequest {
   model: string;
-  contents: GeminiPart[] | string;
+  contents: GeminiContent[];
   config?: {
     responseModalities?: string[];
     imageConfig?: {
@@ -159,7 +163,7 @@ export class GeminiFlashImageAdapter extends BaseAdapter {
       // Build request payload
       const payload: GeminiGenerateRequest = {
         model: 'gemini-2.5-flash-image',
-        contents: parts,
+        contents: [{ parts }], // Wrap parts in a content object
         config: {
           ...(responseModalities && { responseModalities }),
           imageConfig: {
