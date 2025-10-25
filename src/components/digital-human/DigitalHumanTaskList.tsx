@@ -9,7 +9,9 @@ import { Button } from '@/components/ui'
 import { Card, CardContent } from '@/components/ui'
 import { Alert, AlertDescription } from '@/components/ui'
 import { Badge } from '@/components/ui'
-import { Loader2, AlertCircle, Eye, Trash2, Copy } from 'lucide-react'
+import { Progress } from '@/components/ui'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui'
+import { Loader2, AlertCircle, Eye, Trash2, Copy, RefreshCw, PlayCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
 import type { TaskFormData } from '~/app/digital-human/page'
@@ -18,8 +20,22 @@ interface DigitalHumanTaskListProps {
   onApplyTask?: (data: TaskFormData) => void
 }
 
+// 任务阶段进度映射
+const STAGE_PROGRESS: Record<string, number> = {
+  FACE_RECOGNITION_SUBMITTED: 10,
+  FACE_RECOGNITION_PROCESSING: 20,
+  FACE_RECOGNITION_COMPLETED: 30,
+  SUBJECT_DETECTION_COMPLETED: 40,
+  AWAITING_SUBJECT_SELECTION: 50,
+  VIDEO_GENERATION_SUBMITTED: 60,
+  VIDEO_GENERATION_PROCESSING: 80,
+  VIDEO_GENERATION_COMPLETED: 100,
+  FAILED: 0,
+}
+
 export function DigitalHumanTaskList({ onApplyTask }: DigitalHumanTaskListProps) {
   const [page, setPage] = useState(1)
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(null)
 
   const {
     data,
@@ -91,6 +107,21 @@ export function DigitalHumanTaskList({ onApplyTask }: DigitalHumanTaskListProps)
 
   return (
     <div className="space-y-4">
+      {/* 标题栏和刷新按钮 */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">任务列表</h2>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isLoading}
+          className="h-8"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
+          刷新
+        </Button>
+      </div>
+
       {/* 任务列表 */}
       <div className="space-y-3">
         {tasks.length === 0 && (
@@ -106,82 +137,141 @@ export function DigitalHumanTaskList({ onApplyTask }: DigitalHumanTaskListProps)
           </Card>
         )}
 
-        {tasks.map((task) => (
-          <Card key={task.id}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                    <h3 className="font-semibold truncate">{task.name}</h3>
-                    <Badge
-                      variant={
-                        task.stage === 'VIDEO_GENERATION_COMPLETED'
-                          ? 'success'
-                          : task.stage === 'FAILED'
-                          ? 'danger'
-                          : task.stage === 'AWAITING_SUBJECT_SELECTION'
-                          ? 'warning'
-                          : 'outline'
-                      }
-                      className="text-xs"
-                    >
-                      {getStageLabel(task.stage)}
-                    </Badge>
-                    {task.enableMultiSubject && (
-                      <Badge variant="outline" className="text-xs">
-                        多主体
-                      </Badge>
-                    )}
+        {tasks.map((task) => {
+          const progress = STAGE_PROGRESS[task.stage] || 0
+          const isProcessing = [
+            'FACE_RECOGNITION_PROCESSING',
+            'VIDEO_GENERATION_PROCESSING',
+          ].includes(task.stage)
+
+          return (
+            <Card key={task.id}>
+              <CardContent className="p-4">
+                <div className="space-y-3">
+                  {/* 顶部：标题、状态和操作按钮 */}
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <h3 className="font-semibold truncate">{task.name}</h3>
+                        <Badge
+                          variant={
+                            task.stage === 'VIDEO_GENERATION_COMPLETED'
+                              ? 'success'
+                              : task.stage === 'FAILED'
+                              ? 'danger'
+                              : task.stage === 'AWAITING_SUBJECT_SELECTION'
+                              ? 'warning'
+                              : isProcessing
+                              ? 'default'
+                              : 'outline'
+                          }
+                          className="text-xs"
+                        >
+                          {getStageLabel(task.stage)}
+                        </Badge>
+                        {task.enableMultiSubject && (
+                          <Badge variant="outline" className="text-xs">
+                            多主体
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="text-xs text-gray-500">
+                        {new Date(task.createdAt).toLocaleString()}
+                        {task.errorMessage && (
+                          <span className="text-red-500 ml-2">• {task.errorMessage}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleApply(task)}
+                        className="h-8"
+                        title="应用此任务的参数"
+                      >
+                        <Copy className="h-3.5 w-3.5 mr-1" />
+                        应用
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                        className="h-8"
+                      >
+                        <Link href={`/digital-human/tasks/${task.id}`}>
+                          <Eye className="h-3.5 w-3.5 mr-1" />
+                          查看
+                        </Link>
+                      </Button>
+
+                      {task.stage !== 'VIDEO_GENERATION_PROCESSING' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDelete(task.id)}
+                          disabled={deleteTaskMutation.isPending}
+                          className="h-8 w-8 p-0"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="text-xs text-gray-500">
-                    {new Date(task.createdAt).toLocaleString()}
-                    {task.errorMessage && (
-                      <span className="text-red-500 ml-2">• {task.errorMessage}</span>
-                    )}
+                  {/* 进度条 */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-xs font-medium text-gray-700">
+                        {getStageLabel(task.stage)}
+                      </span>
+                      <span className="text-xs text-gray-500">{progress}%</span>
+                    </div>
+                    <Progress
+                      value={progress}
+                      className="h-1.5"
+                    />
                   </div>
-                </div>
 
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleApply(task)}
-                    className="h-8"
-                    title="应用此任务的参数"
-                  >
-                    <Copy className="h-3.5 w-3.5 mr-1" />
-                    应用
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                    className="h-8"
-                  >
-                    <Link href={`/digital-human/tasks/${task.id}`}>
-                      <Eye className="h-3.5 w-3.5 mr-1" />
-                      查看
-                    </Link>
-                  </Button>
-
-                  {task.stage !== 'VIDEO_GENERATION_PROCESSING' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(task.id)}
-                      disabled={deleteTaskMutation.isPending}
-                      className="h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  {/* 视频预览（仅已完成的任务） */}
+                  {task.stage === 'VIDEO_GENERATION_COMPLETED' && task.resultVideoUrl && (
+                    <div className="flex items-center gap-3 pt-2 border-t">
+                      <div
+                        className="relative w-32 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0 group cursor-pointer"
+                        onClick={() => setPreviewVideoUrl(task.resultVideoUrl || null)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            setPreviewVideoUrl(task.resultVideoUrl || null)
+                          }
+                        }}
+                      >
+                        <video
+                          src={task.resultVideoUrl}
+                          className="w-full h-full object-cover"
+                          muted
+                          preload="metadata"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-colors">
+                          <PlayCircle className="h-8 w-8 text-white" />
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700 mb-1">生成完成</p>
+                        <p className="text-xs text-gray-500 truncate">点击预览窗口查看视频</p>
+                      </div>
+                    </div>
                   )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          )
+        })}
       </div>
 
       {/* 分页 */}
@@ -212,6 +302,49 @@ export function DigitalHumanTaskList({ onApplyTask }: DigitalHumanTaskListProps)
           </CardContent>
         </Card>
       )}
+
+      {/* 视频预览对话框 */}
+      <Dialog
+        open={!!previewVideoUrl}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewVideoUrl(null)
+          }
+        }}
+      >
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>视频预览</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {previewVideoUrl && (
+              <>
+                <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden">
+                  <video
+                    src={previewVideoUrl}
+                    controls
+                    autoPlay
+                    className="w-full h-full"
+                    controlsList="nodownload"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button asChild className="flex-1">
+                    <a href={previewVideoUrl} download>
+                      下载视频
+                    </a>
+                  </Button>
+                  <Button variant="outline" asChild className="flex-1">
+                    <a href={previewVideoUrl} target="_blank" rel="noopener noreferrer">
+                      在新窗口打开
+                    </a>
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Save, FileText, Target, Settings, Film, Eye } from 'lucide-react'
+import { ArrowLeft, Save, FileText, Target, Settings, Film, Eye, User } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
@@ -18,14 +18,16 @@ import { ObjectiveTab } from '~/components/studio/ObjectiveTab'
 import { SettingTab } from '~/components/studio/SettingTab'
 import { ShotsTab } from '~/components/studio/ShotsTab'
 import { PreviewTab } from '~/components/studio/PreviewTab'
+import { DigitalHumanTab } from '~/components/studio/DigitalHumanTab'
 
-type WorkflowTab = 'input' | 'objective' | 'setting' | 'shots' | 'preview'
+type WorkflowTab = 'input' | 'objective' | 'setting' | 'shots' | 'digitalhuman' | 'preview'
 
 const TABS: Array<{ id: WorkflowTab; label: string; icon: any }> = [
   { id: 'input', label: '概念', icon: FileText },
   { id: 'objective', label: '设定+脚本', icon: Target },
   { id: 'setting', label: '角色', icon: Settings },
   { id: 'shots', label: '镜头制作', icon: Film },
+  { id: 'digitalhuman', label: '数字人合成', icon: User },
   { id: 'preview', label: '预览导出', icon: Eye },
 ]
 
@@ -217,6 +219,14 @@ export default function EpisodeWorkflowPage() {
                 objective={episode.objective}
                 onRefresh={() => void refetch()}
               />
+            </div>
+          )}
+
+          {activeTab === 'digitalhuman' && (
+            <div className="h-full overflow-y-auto px-4 py-6">
+              <div className="max-w-6xl mx-auto">
+                <DigitalHumanTab episodeId={episodeId} />
+              </div>
             </div>
           )}
 

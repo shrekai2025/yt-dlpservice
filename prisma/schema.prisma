@@ -264,6 +264,8 @@ model MediaFile {
 
 // 数字人任务类型枚举
 enum DigitalHumanStage {
+  UPLOADING_ASSETS              // 上传素材到S3中
+  UPLOAD_FAILED                 // 素材上传失败
   FACE_RECOGNITION_SUBMITTED    // 主体识别已提交
   FACE_RECOGNITION_PROCESSING   // 主体识别处理中
   FACE_RECOGNITION_COMPLETED    // 主体识别完成
@@ -279,6 +281,7 @@ enum DigitalHumanStage {
 model DigitalHumanTask {
   id                        String               @id @default(cuid())
   userId                    String
+  shotId                    String?              // 关联的镜头ID（可选）
   name                      String               // 任务名称
   imageUrl                  String               // 输入图片URL
   audioUrl                  String               // 输入音频URL
@@ -300,8 +303,10 @@ model DigitalHumanTask {
   updatedAt                 DateTime             @updatedAt
 
   user                      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shot                      StudioShot?          @relation(fields: [shotId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([shotId])
   @@index([stage])
   @@index([createdAt])
   @@map("digital_human_tasks")
@@ -588,24 +593,26 @@ model StudioCharacter {
 
 // 镜头
 model StudioShot {
-  id              String                @id @default(cuid())
-  episodeId       String
-  shotNumber      Int                   // 镜头序号
-  name            String?               // 镜头名称
-  description     String?               // 镜头描述
-  scenePrompt     String?               // 场景描述
-  actionPrompt    String?               // 动作描述
-  cameraPrompt    String?               // 镜头运动 / 原始音频URL
-  dialogue        String?               // 对话内容(全局)
-  duration        Float?                // 预期时长(秒)
-  extendedAudioUrl String?              // 扩展后的音频URL (前后各增加2秒)
-  notes           String?               // 备注
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  episode         StudioEpisode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-  characters      StudioShotCharacter[]
-  frames          StudioFrame[]
-  generationTasks AIGenerationTask[]    // 关联的AI生成任务
+  id               String                @id @default(cuid())
+  episodeId        String
+  shotNumber       Int                   // 镜头序号
+  name             String?               // 镜头名称
+  description      String?               // 镜头描述
+  scenePrompt      String?               // 场景描述
+  actionPrompt     String?               // 动作描述
+  cameraPrompt     String?               // 镜头运动 / 原始音频URL
+  dialogue         String?               // 对话内容(全局)
+  duration         Float?                // 预期时长(秒)
+  extendedAudioUrl String?               // 扩展后的音频URL (前后各增加2秒)
+  promptText       String?               // 镜头提示词 (从角色动作和台词拼接而成，可编辑)
+  notes            String?               // 备注
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  episode          StudioEpisode         @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  characters       StudioShotCharacter[]
+  frames           StudioFrame[]
+  generationTasks  AIGenerationTask[]    // 关联的AI生成任务
+  digitalHumanTasks DigitalHumanTask[]   // 关联的数字人任务
 
   @@unique([episodeId, shotNumber])
   @@index([episodeId])

@@ -6,12 +6,16 @@
 import { db } from '~/server/db'
 import { DigitalHumanStage } from '@prisma/client'
 import { JimengDigitalHumanClient, type CredentialsSource } from './jimeng-client'
+import { s3Uploader } from '~/lib/services/s3-uploader'
+import * as fs from 'fs/promises'
+import * as path from 'path'
 
 /**
  * 创建数字人任务的参数
  */
 export interface CreateDigitalHumanTaskParams {
   userId: string
+  shotId?: string  // 关联的镜头ID（可选）
   name: string
   imageUrl: string
   audioUrl: string
@@ -62,6 +66,7 @@ export class DigitalHumanService {
     const task = await db.digitalHumanTask.create({
       data: {
         userId: params.userId,
+        shotId: params.shotId,
         name: params.name,
         imageUrl: params.imageUrl,
         audioUrl: params.audioUrl,
@@ -69,7 +74,7 @@ export class DigitalHumanService {
         seed: params.seed,
         peFastMode: params.peFastMode ?? false,
         enableMultiSubject: params.enableMultiSubject ?? false,
-        stage: DigitalHumanStage.FACE_RECOGNITION_SUBMITTED,
+        stage: DigitalHumanStage.UPLOADING_ASSETS, // 初始状态改为上传素材
       },
     })
 
@@ -94,9 +99,13 @@ export class DigitalHumanService {
     }
 
     try {
+      // 步骤0: 检查并上传素材到S3
+      console.log(`[DigitalHuman ${taskId}] Checking and uploading assets...`)
+      const { imageUrl, audioUrl } = await this.uploadAssetsIfNeeded(taskId, task.imageUrl, task.audioUrl)
+
       // 步骤1: 提交主体识别
       console.log(`[DigitalHuman ${taskId}] Submitting face recognition...`)
-      const faceTaskId = await this.getClient().submitFaceRecognition(task.imageUrl)
+      const faceTaskId = await this.getClient().submitFaceRecognition(imageUrl)
 
       await db.digitalHumanTask.update({
         where: { id: taskId },
@@ -395,6 +404,88 @@ export class DigitalHumanService {
         maskUrls,
       }
     })
+  }
+
+  /**
+   * 检查URL是否需要上传到S3
+   */
+  private isPublicUrl(url: string): boolean {
+    return url.startsWith('http://') || url.startsWith('https://')
+  }
+
+  /**
+   * 检查并上传素材到S3
+   */
+  private async uploadAssetsIfNeeded(
+    taskId: string,
+    imageUrl: string,
+    audioUrl: string
+  ): Promise<{ imageUrl: string; audioUrl: string }> {
+    try {
+      // 获取任务信息以获得shotId
+      const task = await db.digitalHumanTask.findUnique({
+        where: { id: taskId },
+        select: { shotId: true },
+      })
+
+      let finalImageUrl = imageUrl
+      let finalAudioUrl = audioUrl
+      let audioWasUploaded = false
+
+      // 检查并上传图片
+      if (!this.isPublicUrl(imageUrl)) {
+        console.log(`[DigitalHuman ${taskId}] Image URL is not public, uploading to S3...`)
+        const imagePath = path.join(process.cwd(), 'public', imageUrl)
+        finalImageUrl = await s3Uploader.uploadFile(imagePath, `digital-human/${taskId}`)
+        console.log(`[DigitalHuman ${taskId}] Image uploaded: ${finalImageUrl}`)
+      }
+
+      // 检查并上传音频
+      if (!this.isPublicUrl(audioUrl)) {
+        console.log(`[DigitalHuman ${taskId}] Audio URL is not public, uploading to S3...`)
+        const audioPath = path.join(process.cwd(), 'public', audioUrl)
+        finalAudioUrl = await s3Uploader.uploadFile(audioPath, `digital-human/${taskId}`)
+        console.log(`[DigitalHuman ${taskId}] Audio uploaded: ${finalAudioUrl}`)
+        audioWasUploaded = true
+      }
+
+      // 更新数据库中的URL
+      await db.digitalHumanTask.update({
+        where: { id: taskId },
+        data: {
+          imageUrl: finalImageUrl,
+          audioUrl: finalAudioUrl,
+          stage: DigitalHumanStage.FACE_RECOGNITION_SUBMITTED,
+        },
+      })
+
+      // 如果音频被上传了，并且任务关联了镜头，则更新镜头的音频URL
+      if (audioWasUploaded && task?.shotId) {
+        console.log(`[DigitalHuman ${taskId}] Updating shot audio URL to S3 URL...`)
+        await db.studioShot.update({
+          where: { id: task.shotId },
+          data: {
+            cameraPrompt: finalAudioUrl, // 更新镜头的音频URL为S3 URL
+          },
+        })
+        console.log(`[DigitalHuman ${taskId}] Shot audio URL updated successfully`)
+      }
+
+      return { imageUrl: finalImageUrl, audioUrl: finalAudioUrl }
+    } catch (error) {
+      console.error(`[DigitalHuman ${taskId}] Upload failed:`, error)
+
+      // 标记为上传失败
+      await db.digitalHumanTask.update({
+        where: { id: taskId },
+        data: {
+          stage: DigitalHumanStage.UPLOAD_FAILED,
+          errorMessage: error instanceof Error ? error.message : '上传素材失败',
+        },
+      })
+
+      throw error
+    }
   }
 
   /**

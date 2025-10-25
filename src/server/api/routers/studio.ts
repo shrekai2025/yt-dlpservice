@@ -13,10 +13,48 @@ import { pollAsyncTask } from '~/lib/ai-generation/services/task-poller'
 import { taskManager } from '~/lib/ai-generation/services/task-manager'
 import { resultStorageService } from '~/lib/ai-generation/services/result-storage-service'
 import type { ModelConfig } from '~/lib/ai-generation/adapters/types'
+import { DigitalHumanService } from '~/lib/services/digital-human/digital-human-service'
+import type { CredentialsSource } from '~/lib/services/digital-human/jimeng-client'
+import { db } from '~/server/db'
 
 // ============================================
 // 辅助函数
 // ============================================
+
+/**
+ * 获取即梦 provider 的凭证配置
+ */
+async function getJimengCredentials(): Promise<CredentialsSource | undefined> {
+  // 从数据库获取即梦 provider 配置
+  const jimengProvider = await db.aIProvider.findFirst({
+    where: {
+      slug: 'jimeng',
+    },
+    select: {
+      apiKey: true,
+      apiKeyId: true,
+      apiKeySecret: true,
+    },
+  })
+
+  if (!jimengProvider) {
+    return undefined
+  }
+
+  return {
+    apiKey: jimengProvider.apiKey,
+    apiKeyId: jimengProvider.apiKeyId,
+    apiKeySecret: jimengProvider.apiKeySecret,
+  }
+}
+
+/**
+ * 创建数字人任务服务实例（懒加载）
+ */
+async function getDigitalHumanService() {
+  const credentials = await getJimengCredentials()
+  return new DigitalHumanService(credentials)
+}
 
 /**
  * 将数据库模型转换为适配器配置
@@ -895,6 +933,7 @@ export const studioRouter = createTRPCRouter({
         cameraPrompt: z.string().optional(),
         dialogue: z.string().optional(),
         duration: z.number().optional(),
+        promptText: z.string().optional(), // 镜头提示词
         notes: z.string().optional(),
       })
     )
@@ -1562,6 +1601,18 @@ export const studioRouter = createTRPCRouter({
         let createdCount = 0
         let updatedCount = 0
 
+        // 辅助函数：构建镜头的 promptText
+        const buildPromptText = (shotCharacters: Array<{ action: string | null; dialogue: string | null }>): string => {
+          const parts: string[] = []
+          shotCharacters.forEach((sc) => {
+            const characterParts: string[] = []
+            if (sc.action) characterParts.push(sc.action)
+            if (sc.dialogue) characterParts.push(`说"${sc.dialogue}"`)
+            if (characterParts.length > 0) parts.push(characterParts.join(''))
+          })
+          return parts.join(' ')
+        }
+
         // 同步每个镜头
         for (const shotData of data.shots) {
           // 查找现有镜头
@@ -1618,6 +1669,18 @@ export const studioRouter = createTRPCRouter({
                 })
               }
             }
+
+            // 角色信息更新完成后，重新构建并保存 promptText
+            const shotCharacters = await ctx.db.studioShotCharacter.findMany({
+              where: { shotId: existingShot.id },
+              select: { action: true, dialogue: true },
+              orderBy: { sortOrder: 'asc' },
+            })
+            const promptText = buildPromptText(shotCharacters)
+            await ctx.db.studioShot.update({
+              where: { id: existingShot.id },
+              data: { promptText },
+            })
           } else {
             // 创建新镜头（新结构中镜头本身不再存储场景和动作信息）
             const newShot = await ctx.db.studioShot.create({
@@ -1643,6 +1706,18 @@ export const studioRouter = createTRPCRouter({
                   action: shotData.action || undefined, // 角色在此镜头的具体动作和表情
                   sortOrder: 0,
                 },
+              })
+
+              // 新镜头创建角色后，构建并保存 promptText
+              const shotCharacters = await ctx.db.studioShotCharacter.findMany({
+                where: { shotId: newShot.id },
+                select: { action: true, dialogue: true },
+                orderBy: { sortOrder: 'asc' },
+              })
+              const promptText = buildPromptText(shotCharacters)
+              await ctx.db.studioShot.update({
+                where: { id: newShot.id },
+                data: { promptText },
               })
             }
           }
@@ -2274,5 +2349,201 @@ export const studioRouter = createTRPCRouter({
         deletedCount,
         message: `已清理 ${deletedCount} 个扩展音频文件。`,
       }
+    }),
+
+  // ============================================
+  // 数字人合成相关
+  // ============================================
+
+  /**
+   * 获取集的所有镜头数字人任务信息
+   */
+  getEpisodeDigitalHumanTasks: userProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 获取集的所有镜头
+      const episode = await ctx.db.studioEpisode.findUnique({
+        where: { id: input.episodeId },
+        include: {
+          project: true,
+          shots: {
+            orderBy: { shotNumber: 'asc' },
+            include: {
+              characters: {
+                include: {
+                  character: true,
+                },
+              },
+              digitalHumanTasks: {
+                orderBy: { createdAt: 'desc' },
+                take: 1, // 只取最新的一个任务
+              },
+            },
+          },
+        },
+      })
+
+      if (!episode) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '集不存在',
+        })
+      }
+
+      if (episode.project.userId !== userId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '无权访问此集',
+        })
+      }
+
+      // 构建每个镜头的提示词（和镜头制作页面的逻辑一致）
+      const shotsWithPrompts = episode.shots.map((shot) => {
+        // 优先使用数据库中存储的 promptText
+        let prompt = shot.promptText || ''
+
+        // 如果没有存储的 promptText，则实时构建
+        if (!prompt) {
+          const parts: string[] = []
+
+          shot.characters?.forEach((sc) => {
+            const characterParts: string[] = []
+
+            // 当前镜头动作
+            if (sc.action) {
+              characterParts.push(sc.action)
+            }
+
+            // 台词（如果有）
+            if (sc.dialogue) {
+              characterParts.push(`说"${sc.dialogue}"`)
+            }
+
+            if (characterParts.length > 0) {
+              parts.push(characterParts.join(''))
+            }
+          })
+
+          prompt = parts.join(' ')
+        }
+
+        return {
+          id: shot.id,
+          shotNumber: shot.shotNumber,
+          name: shot.name || `镜头 ${shot.shotNumber}`,
+          hasFirstFrame: !!shot.scenePrompt,
+          hasAudio: !!shot.cameraPrompt,
+          prompt,
+          latestTask: shot.digitalHumanTasks[0] || null,
+        }
+      })
+
+      return {
+        projectName: episode.project.name,
+        episodeName: episode.name,
+        shots: shotsWithPrompts,
+      }
+    }),
+
+  /**
+   * 为镜头创建数字人生成任务
+   */
+  createShotDigitalHumanTask: userProcedure
+    .input(
+      z.object({
+        shotId: z.string(),
+        peFastMode: z.boolean().optional().default(true), // 快速模式，默认启用
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 获取镜头信息
+      const shot = await ctx.db.studioShot.findUnique({
+        where: { id: input.shotId },
+        include: {
+          episode: {
+            include: {
+              project: true,
+            },
+          },
+          characters: {
+            include: {
+              character: true,
+            },
+          },
+        },
+      })
+
+      if (!shot) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '镜头不存在',
+        })
+      }
+
+      if (shot.episode.project.userId !== userId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '无权限操作此镜头',
+        })
+      }
+
+      // 检查是否有首帧和音频
+      if (!shot.scenePrompt) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '请先生成首帧图片',
+        })
+      }
+
+      if (!shot.cameraPrompt) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '请先选择音频',
+        })
+      }
+
+      // 构建提示词：优先使用数据库中存储的 promptText
+      let prompt = shot.promptText || ''
+
+      // 如果没有存储的 promptText，则实时构建
+      if (!prompt) {
+        const parts: string[] = []
+        shot.characters?.forEach((sc) => {
+          const characterParts: string[] = []
+          if (sc.action) {
+            characterParts.push(sc.action)
+          }
+          if (sc.dialogue) {
+            characterParts.push(`说"${sc.dialogue}"`)
+          }
+          if (characterParts.length > 0) {
+            parts.push(characterParts.join(''))
+          }
+        })
+        prompt = parts.join(' ')
+      }
+
+      // 生成任务名称：项目名-集名-镜头名-时间戳
+      const taskName = `${shot.episode.project.name}-${shot.episode.name}-${shot.name || `镜头${shot.shotNumber}`}-${Date.now()}`
+
+      // 创建数字人任务
+      const service = await getDigitalHumanService()
+      const task = await service.createTask({
+        userId,
+        shotId: shot.id,
+        name: taskName,
+        imageUrl: shot.scenePrompt, // 首帧图片URL
+        audioUrl: shot.cameraPrompt, // 音频URL
+        prompt: prompt || undefined,
+        seed: Math.floor(Math.random() * 999999999), // 随机种子
+        peFastMode: input.peFastMode, // 使用前端传入的快速模式设置
+        enableMultiSubject: false, // 默认不启用多主体
+      })
+
+      return task
     }),
 })

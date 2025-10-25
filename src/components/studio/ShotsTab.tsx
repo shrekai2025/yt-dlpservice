@@ -56,6 +56,7 @@ export function ShotsTab({
     useState(false);
   const [isActorsExpanded, setIsActorsExpanded] = useState(false);
   const [showTTSLanguageMenu, setShowTTSLanguageMenu] = useState(false);
+  const [showAudioExtendMenu, setShowAudioExtendMenu] = useState(false);
 
   // Mutations
   const createShotMutation = api.studio.createShot.useMutation({
@@ -125,11 +126,13 @@ export function ShotsTab({
     onSuccess: (data) => {
       console.log("[ShotsTab] Audio extension success:", data);
       toast.success(data.message);
+      setShowAudioExtendMenu(false);
       onRefresh?.();
     },
     onError: (error) => {
       console.error("[ShotsTab] Audio extension error:", error);
       toast.error(`音频扩展失败: ${error.message}`);
+      setShowAudioExtendMenu(false);
     },
   });
 
@@ -174,9 +177,13 @@ export function ShotsTab({
     batchGenerateTTSMutation.mutate({ episodeId, language });
   };
 
-  const handleBatchExtendAudio = () => {
-    if (!confirm(`确定要扩展所有镜头的音频吗？这会为每个有音频的镜头前后各增加2秒静音。已经扩展过的音频会被跳过。`)) return;
-    batchExtendAudioMutation.mutate({ episodeId });
+  const handleBatchExtendAudio = (duration: number = 2) => {
+    if (!confirm(`确定要扩展所有镜头的音频吗？这会为每个有音频的镜头前后各增加${duration}秒静音。已经扩展过的音频会被跳过。`)) return;
+    batchExtendAudioMutation.mutate({
+      episodeId,
+      prefixDuration: duration,
+      suffixDuration: duration
+    });
   };
 
   const handleCleanExtendedAudio = () => {
@@ -357,15 +364,50 @@ export function ShotsTab({
             )}
           </div>
 
-          <Button
-            onClick={handleBatchExtendAudio}
-            variant="outline"
-            className="gap-2"
-            disabled={batchExtendAudioMutation.isPending || shots.length === 0}
-          >
-            <MusicIcon className="h-4 w-4" />
-            {batchExtendAudioMutation.isPending ? "扩展中..." : "音频扩长度"}
-          </Button>
+          {/* 音频扩展按钮组 */}
+          <div className="relative">
+            <div className="flex">
+              <Button
+                onClick={() => handleBatchExtendAudio(2)}
+                variant="outline"
+                className="gap-2 rounded-r-none"
+                disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+              >
+                <MusicIcon className="h-4 w-4" />
+                {batchExtendAudioMutation.isPending ? "扩展中..." : "音频扩长度"}
+              </Button>
+              <Button
+                onClick={() => setShowAudioExtendMenu(!showAudioExtendMenu)}
+                variant="outline"
+                className="px-2 rounded-l-none border-l border-gray-300"
+                disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* 扩展时长选择下拉菜单 */}
+            {showAudioExtendMenu && (
+              <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
+                {[
+                  { duration: 0.5, label: '0.5秒' },
+                  { duration: 1, label: '1秒' },
+                  { duration: 1.5, label: '1.5秒' },
+                  { duration: 2, label: '2秒' },
+                  { duration: 2.5, label: '2.5秒' },
+                  { duration: 3, label: '3秒' },
+                ].map((option) => (
+                  <button
+                    key={option.duration}
+                    onClick={() => handleBatchExtendAudio(option.duration)}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <Button
             onClick={handleCleanExtendedAudio}
@@ -990,26 +1032,11 @@ function ShotCard({
           </div>
 
           {/* 完整 Prompt 预览 */}
-          <div className="border-t pt-4">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-medium text-sm">完整场景 Prompt</h4>
-              <Button
-                size="sm"
-                onClick={() => {
-                  navigator.clipboard.writeText(fullPrompt);
-                  toast.success("已复制 Prompt");
-                }}
-                variant="outline"
-                className="gap-1"
-              >
-                <Copy className="h-3 w-3" />
-                复制
-              </Button>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 leading-relaxed max-h-32 overflow-y-auto">
-              {fullPrompt || <span className="text-gray-400">暂无内容</span>}
-            </div>
-          </div>
+          <PromptEditor
+            shot={shot}
+            fullPrompt={fullPrompt}
+            onUpdate={onUpdate}
+          />
         </div>
       )}
 
@@ -1197,6 +1224,97 @@ function ShotCard({
               </div>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 可编辑的 Prompt 组件
+function PromptEditor({
+  shot,
+  fullPrompt,
+  onUpdate,
+}: {
+  shot: any;
+  fullPrompt: string;
+  onUpdate: (data: any) => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+
+  // 优先使用数据库中的 promptText，如果为空则使用实时构建的 fullPrompt
+  const displayPrompt = shot.promptText || fullPrompt;
+
+  const handleStartEdit = () => {
+    setEditValue(displayPrompt);
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    onUpdate({ promptText: editValue });
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditValue("");
+  };
+
+  return (
+    <div className="border-t pt-4">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="font-medium text-sm">完整场景 Prompt</h4>
+        <div className="flex gap-2">
+          {isEditing ? (
+            <>
+              <Button
+                size="sm"
+                onClick={handleCancel}
+                variant="outline"
+                className="gap-1"
+              >
+                取消
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSave}
+                className="gap-1"
+              >
+                保存
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => {
+                navigator.clipboard.writeText(displayPrompt);
+                toast.success("已复制 Prompt");
+              }}
+              variant="outline"
+              className="gap-1"
+            >
+              <Copy className="h-3 w-3" />
+              复制
+            </Button>
+          )}
+        </div>
+      </div>
+      {isEditing ? (
+        <textarea
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="w-full rounded-lg border border-blue-500 p-3 text-sm text-gray-700 leading-relaxed min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          autoFocus
+          onBlur={handleSave}
+        />
+      ) : (
+        <div
+          onClick={handleStartEdit}
+          className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 leading-relaxed max-h-32 overflow-y-auto cursor-text hover:bg-gray-100 transition-colors"
+          title="点击编辑"
+        >
+          {displayPrompt || <span className="text-gray-400">暂无内容（点击编辑）</span>}
         </div>
       )}
     </div>
