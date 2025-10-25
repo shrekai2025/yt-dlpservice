@@ -18,7 +18,7 @@ import { cn } from '~/lib/utils/cn'
 import platformsConfig from '~/config/platforms.json'
 
 export default function ConfigToolsPage(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState<'chromium' | 'youtube' | 'yt-dlp' | 'file-cleanup' | 'stt-status' | 'platforms' | 'config'>('chromium')
+  const [activeTab, setActiveTab] = useState<'chromium' | 'youtube' | 'yt-dlp' | 'file-cleanup' | 'stt-status' | 'platforms' | 'config' | 'proxy' | 'database-backup'>('chromium')
   const { data: downloaderStatus, refetch: refetchDownloaderStatus } = api.task.checkDownloader.useQuery()
   const [toast, setToast] = useState<{ message: string; tone?: 'default' | 'success' | 'error' } | null>(null)
   const showToast = (message: string, tone: 'default' | 'success' | 'error' = 'default') => {
@@ -100,6 +100,18 @@ export default function ConfigToolsPage(): React.ReactElement {
           >
             系统配置
           </TabsTrigger>
+          <TabsTrigger
+            value="proxy"
+            className="justify-start rounded-md px-3 py-2 text-sm font-medium text-neutral-600 transition data-[state=active]:bg-neutral-900 data-[state=active]:text-white"
+          >
+            代理配置
+          </TabsTrigger>
+          <TabsTrigger
+            value="database-backup"
+            className="justify-start rounded-md px-3 py-2 text-sm font-medium text-neutral-600 transition data-[state=active]:bg-neutral-900 data-[state=active]:text-white"
+          >
+            数据库备份
+          </TabsTrigger>
         </TabsList>
 
         <div className="space-y-6">
@@ -123,6 +135,12 @@ export default function ConfigToolsPage(): React.ReactElement {
           </TabsContent>
           <TabsContent value="config" className="mt-0">
             <ConfigManagementSection showToast={showToast} />
+          </TabsContent>
+          <TabsContent value="proxy" className="mt-0">
+            <ProxyConfigSection showToast={showToast} />
+          </TabsContent>
+          <TabsContent value="database-backup" className="mt-0">
+            <DatabaseBackupSection showToast={showToast} />
           </TabsContent>
         </div>
       </Tabs>
@@ -1420,3 +1438,664 @@ function PlatformsSection(): React.ReactElement {
     </div>
   )
 }
+
+type DatabaseBackupSectionProps = {
+  showToast: (message: string, tone?: 'default' | 'success' | 'error') => void
+}
+
+function DatabaseBackupSection({ showToast }: DatabaseBackupSectionProps): React.ReactElement {
+  const [isRestoreConfirmOpen, setIsRestoreConfirmOpen] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  // 获取备份信息
+  const { data: backupInfo, refetch: refetchBackupInfo } = api.databaseBackup.getBackupInfo.useQuery()
+
+  // 备份操作
+  const createBackupMutation = api.databaseBackup.createBackup.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        showToast(data.message, 'success')
+        void refetchBackupInfo()
+      } else {
+        showToast(data.message || '备份失败', 'error')
+      }
+    },
+    onError: (error) => {
+      showToast(error.message || '备份失败', 'error')
+    },
+  })
+
+  // 恢复操作
+  const restoreBackupMutation = api.databaseBackup.restoreBackup.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        showToast(data.message, 'success')
+        void refetchBackupInfo()
+      } else {
+        showToast(data.message || '恢复失败', 'error')
+      }
+    },
+    onError: (error) => {
+      showToast(error.message || '恢复失败', 'error')
+    },
+  })
+
+  // 删除备份操作
+  const deleteBackupMutation = api.databaseBackup.deleteBackup.useMutation({
+    onSuccess: (data) => {
+      if (data.success) {
+        showToast(data.message, 'success')
+        void refetchBackupInfo()
+      } else {
+        showToast(data.message || '删除失败', 'error')
+      }
+    },
+    onError: (error) => {
+      showToast(error.message || '删除失败', 'error')
+    },
+  })
+
+  const handleCreateBackup = () => {
+    createBackupMutation.mutate()
+  }
+
+  const handleRestoreBackup = () => {
+    setIsRestoreConfirmOpen(true)
+  }
+
+  const confirmRestoreBackup = () => {
+    setIsRestoreConfirmOpen(false)
+    restoreBackupMutation.mutate()
+  }
+
+  const handleDeleteBackup = () => {
+    deleteBackupMutation.mutate()
+  }
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // 验证文件类型
+    const fileName = file.name.toLowerCase()
+    if (!fileName.endsWith('.db') && !fileName.endsWith('.backup') && !fileName.endsWith('.sqlite')) {
+      showToast('文件类型不正确，请上传 .db、.backup 或 .sqlite 文件', 'error')
+      event.target.value = ''
+      return
+    }
+
+    // 验证文件大小（100MB）
+    const maxSize = 100 * 1024 * 1024
+    if (file.size > maxSize) {
+      showToast(`文件过大，最大支持 100MB（当前: ${(file.size / 1024 / 1024).toFixed(2)} MB）`, 'error')
+      event.target.value = ''
+      return
+    }
+
+    setIsUploading(true)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/admin/database/upload-backup', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        showToast(data.message, 'success')
+        void refetchBackupInfo()
+      } else {
+        showToast(data.message || '上传失败', 'error')
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '上传失败', 'error')
+    } finally {
+      setIsUploading(false)
+      event.target.value = ''
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>🗄️ 数据库备份管理</CardTitle>
+        <CardDescription>
+          手动备份和恢复 SQLite 数据库，防止数据意外丢失。同一时间只保存一个备份文件。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* 备份状态显示 */}
+        {backupInfo?.success && backupInfo.data && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="border-blue-200 bg-blue-50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-blue-900">当前数据库</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2 text-sm">
+                  <p className="text-blue-700">
+                    <span className="font-medium">路径:</span> {backupInfo.data.databasePath}
+                  </p>
+                  <p className="text-blue-700">
+                    <span className="font-medium">状态:</span> {backupInfo.data.databaseExists ? '✅ 存在' : '❌ 不存在'}
+                  </p>
+                  <p className="text-blue-700">
+                    <span className="font-medium">大小:</span> {backupInfo.data.formattedDatabaseSize}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className={backupInfo.data.backupExists ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50"}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-green-900">备份文件</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-2 text-sm">
+                  {backupInfo.data.backupExists ? (
+                    <>
+                      <p className="text-green-700">
+                        <span className="font-medium">路径:</span> {backupInfo.data.backupPath}
+                      </p>
+                      <p className="text-green-700">
+                        <span className="font-medium">状态:</span> ✅ 存在
+                      </p>
+                      <p className="text-green-700">
+                        <span className="font-medium">大小:</span> {backupInfo.data.formattedBackupSize}
+                      </p>
+                      <p className="text-green-700">
+                        <span className="font-medium">创建时间:</span> {backupInfo.data.backupCreatedAt ? new Date(backupInfo.data.backupCreatedAt).toLocaleString() : '未知'}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-gray-500">暂无备份文件</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* 操作按钮 */}
+        <div className="flex flex-wrap gap-3">
+          <Button
+            onClick={handleCreateBackup}
+            disabled={createBackupMutation.isPending}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            {createBackupMutation.isPending ? '备份中...' : '📦 立即备份'}
+          </Button>
+
+          <Button
+            onClick={handleUploadClick}
+            disabled={isUploading}
+            variant="outline"
+            className="border-purple-300 text-purple-700 hover:bg-purple-50"
+          >
+            {isUploading ? '上传中...' : '📤 上传备份'}
+          </Button>
+
+          <Button
+            onClick={handleRestoreBackup}
+            disabled={!backupInfo?.data?.backupExists || restoreBackupMutation.isPending}
+            variant="outline"
+            className="border-orange-300 text-orange-700 hover:bg-orange-50"
+          >
+            {restoreBackupMutation.isPending ? '恢复中...' : '♻️ 恢复备份'}
+          </Button>
+
+          <Button
+            onClick={handleDeleteBackup}
+            disabled={!backupInfo?.data?.backupExists || deleteBackupMutation.isPending}
+            variant="outline"
+            className="border-red-300 text-red-700 hover:bg-red-50"
+          >
+            {deleteBackupMutation.isPending ? '删除中...' : '🗑️ 删除备份'}
+          </Button>
+
+          <Button
+            onClick={() => refetchBackupInfo()}
+            variant="ghost"
+            size="sm"
+          >
+            🔄 刷新状态
+          </Button>
+        </div>
+
+        {/* 隐藏的文件输入 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".db,.backup,.sqlite"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
+        {/* 恢复确认对话框 */}
+        {isRestoreConfirmOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="text-red-600">⚠️ 恢复备份确认</CardTitle>
+                <CardDescription>
+                  确认要恢复数据库备份吗？
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                  <p className="font-medium mb-2">恢复操作将会：</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>将当前数据库完全替换为备份状态</li>
+                    <li>备份后产生的所有数据将丢失</li>
+                    <li>操作完成后需要刷新页面</li>
+                  </ul>
+                </div>
+                <p className="text-sm text-gray-600">
+                  <strong>建议：</strong> 恢复前先创建当前状态的备份
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    onClick={() => setIsRestoreConfirmOpen(false)}
+                    variant="outline"
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    onClick={confirmRestoreBackup}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    确认恢复
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* 操作结果提示 */}
+        {backupInfo?.success === false && (
+          <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <p className="font-medium">获取备份信息失败</p>
+            <p>{backupInfo.message}</p>
+          </div>
+        )}
+
+        {/* 使用说明 */}
+        <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+          <div className="flex items-start gap-2">
+            <div className="text-blue-500 mt-0.5">💡</div>
+            <div className="space-y-2">
+              <p className="font-medium">使用说明</p>
+              <ul className="list-disc list-inside space-y-1 text-blue-700">
+                <li><strong>立即备份：</strong>将当前数据库完整复制为备份文件</li>
+                <li><strong>上传备份：</strong>选择本地的数据库备份文件上传到服务器</li>
+                <li><strong>恢复备份：</strong>用备份文件替换当前数据库（需要确认）</li>
+                <li><strong>删除备份：</strong>删除备份文件释放存储空间</li>
+                <li><strong>单备份策略：</strong>新备份会覆盖旧备份文件</li>
+              </ul>
+              <div className="mt-3 pt-3 border-t border-blue-200">
+                <p className="font-medium text-blue-900 mb-1">最佳实践：</p>
+                <ol className="list-decimal list-inside space-y-1 text-blue-700">
+                  <li>在重大更新前先创建备份</li>
+                  <li>定期手动备份重要数据</li>
+                  <li>测试重要功能后创建备份节点</li>
+                  <li>重要备份文件建议下载到本地保存</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 上传功能说明 */}
+        <div className="rounded-md border border-purple-200 bg-purple-50 p-4 text-sm text-purple-800">
+          <div className="flex items-start gap-2">
+            <div className="text-purple-500 mt-0.5">📤</div>
+            <div className="space-y-2">
+              <p className="font-medium">上传备份说明</p>
+              <ul className="list-disc list-inside space-y-1 text-purple-700">
+                <li><strong>支持的文件类型：</strong>.db、.backup、.sqlite</li>
+                <li><strong>文件大小限制：</strong>最大 100MB</li>
+                <li><strong>上传位置：</strong>文件将覆盖服务器上的备份文件</li>
+                <li><strong>数据验证：</strong>系统会验证文件是否为有效的 SQLite 数据库</li>
+              </ul>
+              <div className="mt-3 pt-3 border-t border-purple-200">
+                <p className="font-medium text-purple-900 mb-1">使用场景：</p>
+                <ol className="list-decimal list-inside space-y-1 text-purple-700">
+                  <li>从其他环境迁移数据库</li>
+                  <li>恢复本地保存的备份文件</li>
+                  <li>在不同服务器间同步数据</li>
+                </ol>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 安全警告 */}
+        <div className="rounded-md border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+          <div className="flex items-start gap-2">
+            <div className="text-yellow-600 mt-0.5">⚠️</div>
+            <div className="space-y-1">
+              <p className="font-medium">安全提醒</p>
+              <ul className="list-disc list-inside space-y-1 text-yellow-700">
+                <li>备份文件存储在服务器本地，建议定期备份到其他位置</li>
+                <li>恢复操作不可逆，请谨慎操作</li>
+                <li>如果系统不稳定，建议先手动备份数据库文件</li>
+                <li>恢复后建议刷新页面重新连接数据库</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * 代理配置部分
+ */
+function ProxyConfigSection({ showToast }: { showToast: (message: string, tone?: "default" | "success" | "error") => void }): React.ReactElement {
+  const { data: proxyConfigs, refetch } = api.proxy.getAllConfigs.useQuery()
+  const setProxyConfig = api.proxy.setConfig.useMutation()
+  const testConnection = api.proxy.testConnection.useMutation()
+
+  const [aiGenerationEnabled, setAiGenerationEnabled] = useState(false)
+  const [aiGenerationHost, setAiGenerationHost] = useState("127.0.0.1")
+  const [aiGenerationPort, setAiGenerationPort] = useState(7890)
+
+  const [googleApiEnabled, setGoogleApiEnabled] = useState(false)
+  const [googleApiHost, setGoogleApiHost] = useState("127.0.0.1")
+  const [googleApiPort, setGoogleApiPort] = useState(7890)
+
+  // 同步服务器数据到本地状态
+  useEffect(() => {
+    if (proxyConfigs) {
+      setAiGenerationEnabled(proxyConfigs.aiGeneration.enabled)
+      setAiGenerationHost(proxyConfigs.aiGeneration.host || "127.0.0.1")
+      setAiGenerationPort(proxyConfigs.aiGeneration.port || 7890)
+
+      setGoogleApiEnabled(proxyConfigs.googleApi.enabled)
+      setGoogleApiHost(proxyConfigs.googleApi.host || "127.0.0.1")
+      setGoogleApiPort(proxyConfigs.googleApi.port || 7890)
+    }
+  }, [proxyConfigs])
+
+  const handleSaveAiGeneration = async () => {
+    try {
+      await setProxyConfig.mutateAsync({
+        type: "AI_GENERATION",
+        enabled: aiGenerationEnabled,
+        host: aiGenerationHost,
+        port: aiGenerationPort,
+      })
+      await refetch()
+      showToast("AI生成代理配置已保存", "success")
+    } catch (error) {
+      showToast("保存失败: " + (error instanceof Error ? error.message : "未知错误"), "error")
+    }
+  }
+
+  const handleSaveGoogleApi = async () => {
+    try {
+      await setProxyConfig.mutateAsync({
+        type: "GOOGLE_API",
+        enabled: googleApiEnabled,
+        host: googleApiHost,
+        port: googleApiPort,
+      })
+      await refetch()
+      showToast("Google API代理配置已保存", "success")
+    } catch (error) {
+      showToast("保存失败: " + (error instanceof Error ? error.message : "未知错误"), "error")
+    }
+  }
+
+  const handleTestConnection = async (host: string, port: number) => {
+    try {
+      const result = await testConnection.mutateAsync({ host, port })
+      if (result.success) {
+        showToast(result.message, "success")
+      } else {
+        showToast(result.message, "error")
+      }
+    } catch (error) {
+      showToast("测试失败: " + (error instanceof Error ? error.message : "未知错误"), "error")
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>AI生成服务代理配置</CardTitle>
+          <CardDescription>
+            配置AI生成服务（图像、视频、音频等）的HTTP代理，用于访问国际API
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="ai-generation-proxy-enabled"
+              checked={aiGenerationEnabled}
+              onChange={(e) => setAiGenerationEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300"
+            />
+            <label htmlFor="ai-generation-proxy-enabled" className="text-sm font-medium">
+              启用代理
+            </label>
+          </div>
+
+          {aiGenerationEnabled && (
+            <div className="space-y-4 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    代理主机
+                  </label>
+                  <input
+                    type="text"
+                    value={aiGenerationHost}
+                    onChange={(e) => setAiGenerationHost(e.target.value)}
+                    placeholder="127.0.0.1"
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    代理端口
+                  </label>
+                  <input
+                    type="number"
+                    value={aiGenerationPort}
+                    onChange={(e) => setAiGenerationPort(parseInt(e.target.value) || 7890)}
+                    placeholder="7890"
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleTestConnection(aiGenerationHost, aiGenerationPort)}
+                  disabled={testConnection.isPending}
+                >
+                  {testConnection.isPending ? "测试中..." : "测试连接"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveAiGeneration}
+              disabled={setProxyConfig.isPending}
+            >
+              {setProxyConfig.isPending ? "保存中..." : "保存配置"}
+            </Button>
+          </div>
+
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            <div className="flex items-start gap-2">
+              <div className="text-blue-600 mt-0.5">ℹ️</div>
+              <div className="space-y-1">
+                <p className="font-medium">应用范围</p>
+                <p className="text-blue-700">
+                  此代理配置将应用于所有AI生成服务，包括：
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-blue-700 ml-4">
+                  <li>AI生成独立页面 (/admin/ai-generation)</li>
+                  <li>Studio镜头制作页面 (图像/视频生成)</li>
+                  <li>所有第三方AI平台API调用</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Google API代理配置</CardTitle>
+          <CardDescription>
+            配置Google服务（STT、Gemini等）的HTTP代理
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="google-api-proxy-enabled"
+              checked={googleApiEnabled}
+              onChange={(e) => setGoogleApiEnabled(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300"
+            />
+            <label htmlFor="google-api-proxy-enabled" className="text-sm font-medium">
+              启用代理
+            </label>
+          </div>
+
+          {googleApiEnabled && (
+            <div className="space-y-4 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    代理主机
+                  </label>
+                  <input
+                    type="text"
+                    value={googleApiHost}
+                    onChange={(e) => setGoogleApiHost(e.target.value)}
+                    placeholder="127.0.0.1"
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-neutral-700">
+                    代理端口
+                  </label>
+                  <input
+                    type="number"
+                    value={googleApiPort}
+                    onChange={(e) => setGoogleApiPort(parseInt(e.target.value) || 7890)}
+                    placeholder="7890"
+                    className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleTestConnection(googleApiHost, googleApiPort)}
+                  disabled={testConnection.isPending}
+                >
+                  {testConnection.isPending ? "测试中..." : "测试连接"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveGoogleApi}
+              disabled={setProxyConfig.isPending}
+            >
+              {setProxyConfig.isPending ? "保存中..." : "保存配置"}
+            </Button>
+          </div>
+
+          <div className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            <div className="flex items-start gap-2">
+              <div className="text-blue-600 mt-0.5">ℹ️</div>
+              <div className="space-y-1">
+                <p className="font-medium">应用范围</p>
+                <p className="text-blue-700">
+                  此代理配置将应用于Google服务，包括：
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-blue-700 ml-4">
+                  <li>Google Speech-to-Text API</li>
+                  <li>Google Cloud Storage</li>
+                  <li>Google Gemini API (如果使用)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>代理配置说明</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2 text-sm text-neutral-700">
+            <h4 className="font-medium text-neutral-900">常见代理软件端口：</h4>
+            <ul className="list-disc list-inside space-y-1 ml-2">
+              <li>Clash: 7890 (HTTP), 7891 (SOCKS5)</li>
+              <li>V2Ray: 10809 (HTTP), 10808 (SOCKS5)</li>
+              <li>Shadowsocks: 1080 (SOCKS5)</li>
+              <li>代理池: 自定义端口</li>
+            </ul>
+          </div>
+
+          <div className="space-y-2 text-sm text-neutral-700">
+            <h4 className="font-medium text-neutral-900">配置优先级：</h4>
+            <ul className="list-disc list-inside space-y-1 ml-2">
+              <li>数据库配置（此页面设置）优先级最高</li>
+              <li>环境变量配置（.env文件）作为fallback</li>
+              <li>未配置时不使用代理</li>
+            </ul>
+          </div>
+
+          <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+            <div className="flex items-start gap-2">
+              <div className="text-yellow-600 mt-0.5">⚠️</div>
+              <div className="space-y-1">
+                <p className="font-medium">注意事项</p>
+                <ul className="list-disc list-inside space-y-1 text-yellow-700 ml-2">
+                  <li>代理配置立即生效，无需重启服务</li>
+                  <li>请确保代理服务器运行正常</li>
+                  <li>建议先使用"测试连接"功能验证代理可用性</li>
+                  <li>代理失败时会自动回退到直连</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+

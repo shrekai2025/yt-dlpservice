@@ -36,6 +36,11 @@ export const env = createEnv({
     GOOGLE_API_PROXY_ENABLED: z.string().transform(val => val === "true").default("false"),
     GOOGLE_API_PROXY_HOST: z.string().optional(),
     GOOGLE_API_PROXY_PORT: z.string().transform(val => parseInt(val)).optional(),
+
+    // AI生成服务代理配置
+    AI_GENERATION_PROXY_ENABLED: z.string().transform(val => val === "true").default("false"),
+    AI_GENERATION_PROXY_HOST: z.string().optional(),
+    AI_GENERATION_PROXY_PORT: z.string().transform(val => parseInt(val)).optional(),
     
     // 火山引擎TOS对象存储配置
     TOS_ACCESS_KEY_ID: z.string().min(1).optional(),
@@ -120,7 +125,11 @@ export const env = createEnv({
     GOOGLE_API_PROXY_ENABLED: process.env.GOOGLE_API_PROXY_ENABLED,
     GOOGLE_API_PROXY_HOST: process.env.GOOGLE_API_PROXY_HOST,
     GOOGLE_API_PROXY_PORT: process.env.GOOGLE_API_PROXY_PORT,
-    
+
+    AI_GENERATION_PROXY_ENABLED: process.env.AI_GENERATION_PROXY_ENABLED,
+    AI_GENERATION_PROXY_HOST: process.env.AI_GENERATION_PROXY_HOST,
+    AI_GENERATION_PROXY_PORT: process.env.AI_GENERATION_PROXY_PORT,
+
     TOS_ACCESS_KEY_ID: process.env.TOS_ACCESS_KEY_ID,
     TOS_SECRET_ACCESS_KEY: process.env.TOS_SECRET_ACCESS_KEY,
     TOS_REGION: process.env.TOS_REGION,

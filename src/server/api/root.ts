@@ -13,6 +13,9 @@ import { mediaBrowserRouter } from "~/server/api/routers/media-browser"
 import { llmProvidersRouter } from "~/server/api/routers/llm-providers"
 import { chatRouter } from "~/server/api/routers/chat"
 import { studioRouter } from "~/server/api/routers/studio"
+import { digitalHumanRouter } from "~/server/api/routers/digital-human"
+import { databaseBackupRouter } from "~/server/api/routers/database-backup"
+import { proxyRouter } from "~/server/api/routers/proxy"
 
 /**
  * This is the primary router for your server.
@@ -34,6 +37,9 @@ export const appRouter = createTRPCRouter({
   llmProviders: llmProvidersRouter,
   chat: chatRouter,
   studio: studioRouter,
+  digitalHuman: digitalHumanRouter,
+  databaseBackup: databaseBackupRouter,
+  proxy: proxyRouter,
 })
 
 // export type definition of API

@@ -43,6 +43,7 @@ import { KieRunwayExtendAdapter } from './kie/kie-runway-extend-adapter'
 
 import { TuziKlingAdapter } from './tuzi/tuzi-kling-adapter'
 import { TuziMidjourneyAdapter } from './tuzi/tuzi-midjourney-adapter'
+import { TuziNanoBananaEditAdapter } from './tuzi/tuzi-nano-banana-edit-adapter'
 
 import { ReplicateFluxAdapter } from './replicate/replicate-flux-adapter'
 import { ReplicateMinimaxAdapter } from './replicate/replicate-minimax-adapter'
@@ -57,6 +58,8 @@ import { ElevenLabsTTSAdapter } from './elevenlabs/elevenlabs-tts-adapter'
 import { JimengTextToImageAdapter } from './jimeng/jimeng-text-to-image-adapter'
 import { Jimeng40Adapter } from './jimeng/jimeng-40-adapter'
 import { JimengVideo30Adapter } from './jimeng/jimeng-video-30-adapter'
+
+import { GeminiFlashImageAdapter } from './google/gemini-flash-image-adapter'
 
 /**
  * 适配器注册表
@@ -101,6 +104,7 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   // TuZi
   TuziKlingAdapter,
   TuziMidjourneyAdapter,
+  TuziNanoBananaEditAdapter,
 
   // Replicate
   ReplicateFluxAdapter,
@@ -120,6 +124,9 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   JimengTextToImageAdapter,
   Jimeng40Adapter,
   JimengVideo30Adapter,
+
+  // Google Gemini
+  GeminiFlashImageAdapter,
 }
 
 /**

@@ -55,6 +55,7 @@ export function ShotsTab({
   const [isSceneDescriptionExpanded, setIsSceneDescriptionExpanded] =
     useState(false);
   const [isActorsExpanded, setIsActorsExpanded] = useState(false);
+  const [showTTSLanguageMenu, setShowTTSLanguageMenu] = useState(false);
 
   // Mutations
   const createShotMutation = api.studio.createShot.useMutation({
@@ -106,6 +107,44 @@ export function ShotsTab({
     },
   });
 
+  const batchGenerateTTSMutation = api.studio.batchGenerateTTS.useMutation({
+    onSuccess: (data) => {
+      console.log("[ShotsTab] TTS batch generation success:", data);
+      toast.success(data.message);
+      setShowTTSLanguageMenu(false);
+      onRefresh?.();
+    },
+    onError: (error) => {
+      console.error("[ShotsTab] TTS batch generation error:", error);
+      toast.error(`TTS生成失败: ${error.message}`);
+      setShowTTSLanguageMenu(false);
+    },
+  });
+
+  const batchExtendAudioMutation = api.studio.batchExtendAudio.useMutation({
+    onSuccess: (data) => {
+      console.log("[ShotsTab] Audio extension success:", data);
+      toast.success(data.message);
+      onRefresh?.();
+    },
+    onError: (error) => {
+      console.error("[ShotsTab] Audio extension error:", error);
+      toast.error(`音频扩展失败: ${error.message}`);
+    },
+  });
+
+  const cleanExtendedAudioMutation = api.studio.cleanExtendedAudio.useMutation({
+    onSuccess: (data) => {
+      console.log("[ShotsTab] Clean extended audio success:", data);
+      toast.success(data.message);
+      onRefresh?.();
+    },
+    onError: (error) => {
+      console.error("[ShotsTab] Clean extended audio error:", error);
+      toast.error(`清理失败: ${error.message}`);
+    },
+  });
+
   const handleCreateShot = () => {
     createShotMutation.mutate({
       episodeId,
@@ -128,6 +167,34 @@ export function ShotsTab({
   const handleSyncFromObjective = () => {
     if (!confirm("从目标同步镜头会创建或更新镜头数据，确定继续吗？")) return;
     syncShotsMutation.mutate({ episodeId });
+  };
+
+  const handleBatchGenerateTTS = (language: 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr' | 'de') => {
+    if (!confirm(`确定要为所有镜头生成${getLanguageName(language)}语音吗？这会为每个有台词的角色创建TTS任��。`)) return;
+    batchGenerateTTSMutation.mutate({ episodeId, language });
+  };
+
+  const handleBatchExtendAudio = () => {
+    if (!confirm(`确定要扩展所有镜头的音频吗？这会为每个有音频的镜头前后各增加2秒静音。已经扩展过的音频会被跳过。`)) return;
+    batchExtendAudioMutation.mutate({ episodeId });
+  };
+
+  const handleCleanExtendedAudio = () => {
+    if (!confirm(`确定要清理所有扩展的音频文件吗？这会删除所有扩展音频文件和数据库记录。`)) return;
+    cleanExtendedAudioMutation.mutate({ episodeId });
+  };
+
+  const getLanguageName = (lang: string) => {
+    const names: Record<string, string> = {
+      en: '英语',
+      zh: '中文',
+      ja: '日语',
+      ko: '韩语',
+      es: '西班牙语',
+      fr: '法语',
+      de: '德语',
+    };
+    return names[lang] || lang;
   };
 
   // 构建完整 Prompt
@@ -224,32 +291,100 @@ export function ShotsTab({
     <div className="flex flex-col lg:flex-row gap-4 h-full">
       {/* 左侧：镜头列表 */}
       <div className="w-full lg:w-1/2 flex flex-col space-y-4 overflow-y-auto pr-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">镜头制作</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              创建镜头,添加角色和台词,生成 AI 首帧和动画
-            </p>
+        {/* 标题区域 */}
+        <div>
+          <h2 className="text-lg font-semibold">镜头制作</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            创建镜头,添加角色和台词,生成 AI 首帧和动画
+          </p>
+        </div>
+
+        {/* 按钮操作区域 */}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            onClick={handleSyncFromObjective}
+            variant="outline"
+            className="gap-2"
+            disabled={syncShotsMutation.isPending}
+          >
+            <RefreshCw className="h-4 w-4" />
+            {syncShotsMutation.isPending ? "同步中..." : "从目标同步"}
+          </Button>
+
+          {/* 一键TTS按钮组 */}
+          <div className="relative">
+            <div className="flex">
+              <Button
+                onClick={() => handleBatchGenerateTTS('en')}
+                variant="default"
+                className="gap-2 rounded-r-none"
+                disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
+              >
+                <MusicIcon className="h-4 w-4" />
+                {batchGenerateTTSMutation.isPending ? "生成中..." : "一键TTS"}
+              </Button>
+              <Button
+                onClick={() => setShowTTSLanguageMenu(!showTTSLanguageMenu)}
+                variant="default"
+                className="px-2 rounded-l-none border-l border-white/20"
+                disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </div>
+
+            {/* 语言选择下拉菜单 */}
+            {showTTSLanguageMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
+                {[
+                  { code: 'en', name: '英语' },
+                  { code: 'zh', name: '中文' },
+                  { code: 'ja', name: '日语' },
+                  { code: 'ko', name: '韩语' },
+                  { code: 'es', name: '西班牙语' },
+                  { code: 'fr', name: '法语' },
+                  { code: 'de', name: '德语' },
+                ].map((lang) => (
+                  <button
+                    key={lang.code}
+                    onClick={() => handleBatchGenerateTTS(lang.code as any)}
+                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                  >
+                    {lang.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={handleSyncFromObjective}
-              variant="outline"
-              className="gap-2"
-              disabled={syncShotsMutation.isPending}
-            >
-              <RefreshCw className="h-4 w-4" />
-              {syncShotsMutation.isPending ? "同步中..." : "从目标同步"}
-            </Button>
-            <Button
-              onClick={handleCreateShot}
-              className="gap-2"
-              disabled={createShotMutation.isPending}
-            >
-              <Plus className="h-4 w-4" />
-              添加镜头
-            </Button>
-          </div>
+
+          <Button
+            onClick={handleBatchExtendAudio}
+            variant="outline"
+            className="gap-2"
+            disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+          >
+            <MusicIcon className="h-4 w-4" />
+            {batchExtendAudioMutation.isPending ? "扩展中..." : "音频扩长度"}
+          </Button>
+
+          <Button
+            onClick={handleCleanExtendedAudio}
+            variant="outline"
+            className="gap-2"
+            disabled={cleanExtendedAudioMutation.isPending}
+          >
+            <Trash2 className="h-4 w-4" />
+            清理扩音频文件
+          </Button>
+
+          <Button
+            onClick={handleCreateShot}
+            className="gap-2"
+            disabled={createShotMutation.isPending}
+          >
+            <Plus className="h-4 w-4" />
+            添加镜头
+          </Button>
         </div>
 
         {/* 完整场景描述 - 可展开收起 */}
@@ -1007,6 +1142,18 @@ function ShotCard({
                   <Download className="h-4 w-4" />
                   下载
                 </Button>
+
+                {/* 下载扩展音频（仅当是音频且有扩展音频时显示） */}
+                {previewMedia.type === "audio" && shot.extendedAudioUrl && (
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2 bg-green-50 border-green-300 hover:bg-green-100"
+                    onClick={() => handleDownload(shot.extendedAudioUrl!)}
+                  >
+                    <Download className="h-4 w-4" />
+                    下载扩展音频 (+4s)
+                  </Button>
+                )}
 
                 {/* 转存S3 */}
                 <Button

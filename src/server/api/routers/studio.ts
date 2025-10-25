@@ -7,6 +7,55 @@
 import { z } from 'zod'
 import { createTRPCRouter, userProcedure } from '~/server/api/trpc'
 import { TRPCError } from '@trpc/server'
+import { audioExtenderService } from '~/lib/services/audio-extender'
+import { createAdapter } from '~/lib/ai-generation/adapters/adapter-factory'
+import { pollAsyncTask } from '~/lib/ai-generation/services/task-poller'
+import { taskManager } from '~/lib/ai-generation/services/task-manager'
+import { resultStorageService } from '~/lib/ai-generation/services/result-storage-service'
+import type { ModelConfig } from '~/lib/ai-generation/adapters/types'
+
+// ============================================
+// 辅助函数
+// ============================================
+
+/**
+ * 将数据库模型转换为适配器配置
+ */
+function toModelConfig(model: {
+  id: string
+  slug: string
+  name: string
+  adapterName: string
+  outputType: string
+  provider: {
+    id: string
+    slug: string
+    name: string
+    apiEndpoint: string | null
+    apiKey: string | null
+    apiKeyId: string | null
+    apiKeySecret: string | null
+    uploadToS3: boolean
+    s3PathPrefix: string | null
+  }
+}): ModelConfig {
+  return {
+    id: model.id,
+    slug: model.slug,
+    name: model.name,
+    provider: {
+      id: model.provider.id,
+      slug: model.provider.slug,
+      name: model.provider.name,
+      apiKey: model.provider.apiKey || undefined,
+      apiKeyId: model.provider.apiKeyId || undefined,
+      apiKeySecret: model.provider.apiKeySecret || undefined,
+      apiEndpoint: model.provider.apiEndpoint || undefined,
+    },
+    outputType: model.outputType as 'IMAGE' | 'VIDEO' | 'AUDIO',
+    adapterName: model.adapterName,
+  }
+}
 
 // ============================================
 // 项目管理
@@ -657,6 +706,7 @@ export const studioRouter = createTRPCRouter({
           sourceActorId: actor.id,
           appearancePrompt: actor.appearancePrompt || undefined,
           referenceImage: actor.avatarUrl || undefined,
+          voiceId: actor.voiceId || undefined,
         },
         include: {
           sourceActor: true,
@@ -705,6 +755,7 @@ export const studioRouter = createTRPCRouter({
           description: actor.bio || undefined,
           appearancePrompt: actor.appearancePrompt || undefined,
           referenceImage: actor.avatarUrl || undefined,
+          voiceId: actor.voiceId || undefined,
         },
         include: {
           sourceActor: true,
@@ -1393,7 +1444,8 @@ export const studioRouter = createTRPCRouter({
         })
       }
 
-      // 如果提供了actorId，验证演员存在
+      // 如果提供了actorId，验证演员存在并获取voiceId
+      let voiceId: string | undefined = undefined
       if (input.actorId) {
         const actor = await ctx.db.mediaActor.findUnique({
           where: { id: input.actorId },
@@ -1405,6 +1457,9 @@ export const studioRouter = createTRPCRouter({
             message: '演员不存在',
           })
         }
+
+        // 同步voiceId
+        voiceId = actor.voiceId || undefined
       }
 
       // 更新关联
@@ -1412,6 +1467,7 @@ export const studioRouter = createTRPCRouter({
         where: { id: input.characterId },
         data: {
           sourceActorId: input.actorId,
+          voiceId: input.actorId ? voiceId : null, // 如果取消关联，清空voiceId
         },
         include: {
           sourceActor: true,
@@ -1742,14 +1798,481 @@ export const studioRouter = createTRPCRouter({
         })
       }
 
+      // 如果音频URL被清空或更改，删除扩展音频文件
+      if (shot.extendedAudioUrl && (!input.audioUrl || input.audioUrl !== shot.cameraPrompt)) {
+        await audioExtenderService.deleteExtendedAudio(shot.extendedAudioUrl)
+      }
+
       // 更新镜头音频
       const updatedShot = await ctx.db.studioShot.update({
         where: { id: input.shotId },
         data: {
           cameraPrompt: input.audioUrl,
+          // 清空扩展音频URL
+          extendedAudioUrl: (!input.audioUrl || input.audioUrl !== shot.cameraPrompt) ? null : undefined,
         },
       })
 
       return updatedShot
+    }),
+
+  // ============================================
+  // TTS 批量生成
+  // ============================================
+
+  // 一键生成所有镜头的TTS
+  batchGenerateTTS: userProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+        language: z.enum(['en', 'zh', 'ja', 'ko', 'es', 'fr', 'de']).default('en'),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 验证所有权并获取episode及所有镜头
+      const episode = await ctx.db.studioEpisode.findFirst({
+        where: {
+          id: input.episodeId,
+          project: { userId },
+        },
+        include: {
+          project: true,
+          shots: {
+            include: {
+              characters: {
+                include: {
+                  character: true,
+                },
+              },
+            },
+            orderBy: { shotNumber: 'asc' },
+          },
+        },
+      })
+
+      if (!episode) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '集不存在',
+        })
+      }
+
+      // 检查是否有镜头
+      if (episode.shots.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '没有镜头可以生成TTS',
+        })
+      }
+
+      // 收集所有需要生成的任务
+      const tasksToCreate: Array<{
+        shotId: string
+        shotNumber: number
+        characterName: string
+        voiceId: string
+        dialogue: string
+      }> = []
+
+      // 检查每个镜头的每个角色
+      for (const shot of episode.shots) {
+        for (const shotCharacter of shot.characters) {
+          const dialogue = shotCharacter.dialogue?.trim()
+          const voiceId = shotCharacter.character.voiceId
+
+          // 跳过没有台词或没有voiceId的角色
+          if (!dialogue) continue
+
+          if (!voiceId) {
+            // 如果有台词但没有voiceId，抛出错误
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `镜头 ${shot.shotNumber} 中的角色"${shotCharacter.character.name}"没有关联演员或演员没有Voice ID。请先为演员配置Voice ID。`,
+            })
+          }
+
+          tasksToCreate.push({
+            shotId: shot.id,
+            shotNumber: shot.shotNumber,
+            characterName: shotCharacter.character.name,
+            voiceId,
+            dialogue,
+          })
+        }
+      }
+
+      // 如果没有任何可生成的任务
+      if (tasksToCreate.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '没有找到可以生成TTS的台词。请确保镜头中的角色有台词且已关联演员。',
+        })
+      }
+
+      // 获取ElevenLabs TTS模型
+      const ttsModel = await ctx.db.aIModel.findFirst({
+        where: {
+          slug: 'elevenlabs-tts-v3',
+          isActive: true,
+        },
+        include: {
+          provider: true,
+        },
+      })
+
+      if (!ttsModel) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: 'ElevenLabs TTS 模型未配置。请在AI生成 > 供应商中配置。',
+        })
+      }
+
+      // 创建并执行所有AI生成任务（带速率限制）
+      const createdTasks = []
+      const modelConfig = toModelConfig(ttsModel)
+
+      // 速率限制：每秒1个请求，即1000ms延迟
+      const RATE_LIMIT_DELAY_MS = 1000
+
+      for (let i = 0; i < tasksToCreate.length; i++) {
+        const task = tasksToCreate[i]!
+        const parameters = {
+          custom_voice_id: task.voiceId,
+          language: input.language,
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0.5,
+          use_speaker_boost: true,
+        }
+
+        const aiTask = await ctx.db.aIGenerationTask.create({
+          data: {
+            modelId: ttsModel.id,
+            shotId: task.shotId,
+            prompt: task.dialogue,
+            parameters: JSON.stringify(parameters),
+            status: 'PENDING',
+            numberOfOutputs: 1,
+          },
+        })
+
+        createdTasks.push({
+          taskId: aiTask.id,
+          shotNumber: task.shotNumber,
+          characterName: task.characterName,
+        })
+
+        // 后台执行任务（带延迟，避免速率限制）
+        // 第一个任务立即执行，后续任务延迟 index * RATE_LIMIT_DELAY_MS
+        const delayMs = i * RATE_LIMIT_DELAY_MS
+        void (async () => {
+          // 等待指定的延迟时间
+          if (delayMs > 0) {
+            console.log(`[Studio TTS] Task ${aiTask.id} will start after ${delayMs}ms delay (position ${i + 1}/${tasksToCreate.length})`)
+            await new Promise(resolve => setTimeout(resolve, delayMs))
+          }
+          const startedAt = Date.now()
+          try {
+            // 更新状态为 PROCESSING
+            await taskManager.updateTask(aiTask.id, {
+              status: 'PROCESSING',
+            })
+
+            const adapter = createAdapter(modelConfig)
+
+            console.log(`[Studio TTS] Processing task ${aiTask.id} for shot ${task.shotNumber} - ${task.characterName}`)
+
+            const result = await adapter.dispatch({
+              prompt: task.dialogue,
+              inputImages: undefined,
+              numberOfOutputs: 1,
+              parameters,
+            })
+
+            console.log(`[Studio TTS] Task ${aiTask.id} result status: ${result.status}`)
+
+            // 处理结果
+            if (result.status === 'SUCCESS') {
+              // 处理存储（可能上传到S3）
+              const processedResults = await resultStorageService.processResults(
+                result.results || [],
+                {
+                  uploadToS3: ttsModel.provider.uploadToS3,
+                  s3PathPrefix: ttsModel.provider.s3PathPrefix || undefined,
+                }
+              )
+
+              await taskManager.updateTask(aiTask.id, {
+                status: 'SUCCESS',
+                results: JSON.stringify(processedResults),
+                completedAt: new Date(),
+                responsePayload: JSON.stringify(result),
+                durationMs: Date.now() - startedAt,
+              })
+
+              await taskManager.incrementModelUsage(ttsModel.id)
+              console.log(`[Studio TTS] Task ${aiTask.id} completed successfully`)
+            } else if (result.status === 'PROCESSING') {
+              // 异步任务 - 启动轮询
+              await taskManager.updateTask(aiTask.id, {
+                status: 'PROCESSING',
+                providerTaskId: result.providerTaskId || null,
+                responsePayload: JSON.stringify(result),
+                durationMs: Date.now() - startedAt,
+              })
+
+              if (result.providerTaskId) {
+                void pollAsyncTask(
+                  aiTask.id,
+                  result.providerTaskId,
+                  modelConfig,
+                  ctx.db,
+                  startedAt
+                )
+              }
+              console.log(`[Studio TTS] Task ${aiTask.id} is async, polling started`)
+            } else {
+              // 错误
+              await taskManager.updateTask(aiTask.id, {
+                status: 'FAILED',
+                errorMessage: result.message || 'Unknown error',
+                responsePayload: JSON.stringify(result),
+                durationMs: Date.now() - startedAt,
+              })
+              console.error(`[Studio TTS] Task ${aiTask.id} failed: ${result.message}`)
+            }
+          } catch (error) {
+            console.error(`[Studio TTS] Error processing task ${aiTask.id}:`, error)
+            await taskManager.updateTask(aiTask.id, {
+              status: 'FAILED',
+              errorMessage: error instanceof Error ? error.message : 'Unknown error',
+              responsePayload: JSON.stringify({
+                error: error instanceof Error ? error.message : 'Unknown error',
+              }),
+              durationMs: Date.now() - startedAt,
+            })
+          }
+        })()
+      }
+
+      // 计算预计完成时间
+      const estimatedTimeSeconds = Math.ceil((createdTasks.length - 1) * (RATE_LIMIT_DELAY_MS / 1000))
+      const timeMessage = estimatedTimeSeconds > 0
+        ? `，预计需要约 ${estimatedTimeSeconds} 秒（每秒处理1个任务）`
+        : ''
+
+      return {
+        success: true,
+        tasksCreated: createdTasks.length,
+        tasks: createdTasks,
+        message: `成功创建 ${createdTasks.length} 个TTS生成任务，正在后台处理中${timeMessage}。`,
+      }
+    }),
+
+  // ============================================
+  // 音频扩展功能
+  // ============================================
+
+  // 批量扩展音频
+  batchExtendAudio: userProcedure
+    .input(
+      z.object({
+        episodeId: z.string(),
+        prefixDuration: z.number().default(2),
+        suffixDuration: z.number().default(2),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 验证所有权并获取episode及所有镜头（包含AI生成任务）
+      const episode = await ctx.db.studioEpisode.findFirst({
+        where: {
+          id: input.episodeId,
+          project: { userId },
+        },
+        include: {
+          shots: {
+            orderBy: { shotNumber: 'asc' },
+            include: {
+              generationTasks: {
+                where: {
+                  status: 'SUCCESS',
+                  model: {
+                    outputType: 'AUDIO',
+                  },
+                },
+                orderBy: {
+                  createdAt: 'desc',
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+      })
+
+      if (!episode) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '集不存在',
+        })
+      }
+
+      // 筛选有音频且未扩展的镜头
+      const shotsToExtend = episode.shots.filter(shot =>
+        shot.generationTasks.length > 0 &&  // 有成功的音频生成任务
+        !shot.extendedAudioUrl  // 没有扩展音频
+      )
+
+      if (shotsToExtend.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: '没有需要扩展的音频文件。所有有音频的镜头都已扩展或没有音频文件。',
+        })
+      }
+
+      const extensionResults = []
+      let successCount = 0
+
+      for (const shot of shotsToExtend) {
+        try {
+          // 从最新的成功任务中获取音频URL
+          const latestTask = shot.generationTasks[0]
+          if (!latestTask?.results) {
+            extensionResults.push({
+              shotId: shot.id,
+              shotNumber: shot.shotNumber,
+              success: false,
+              error: '未找到音频结果',
+            })
+            continue
+          }
+
+          const results = JSON.parse(latestTask.results) as Array<{ type: string; url: string }>
+          const audioResult = results.find(r => r.type === 'audio')
+
+          if (!audioResult?.url) {
+            extensionResults.push({
+              shotId: shot.id,
+              shotNumber: shot.shotNumber,
+              success: false,
+              error: '音频结果中未找到URL',
+            })
+            continue
+          }
+
+          const result = await audioExtenderService.extendAudio({
+            inputUrl: audioResult.url,
+            prefixDuration: input.prefixDuration,
+            suffixDuration: input.suffixDuration,
+          })
+
+          if (result.success && result.outputUrl) {
+            // 更新镜头的扩展音频URL，同时将扩展后的音频设置为主音频
+            await ctx.db.studioShot.update({
+              where: { id: shot.id },
+              data: {
+                extendedAudioUrl: result.outputUrl,
+                cameraPrompt: result.outputUrl, // 将扩展后的音频设为主音频，自动显示在"选择音频"位置
+              },
+            })
+
+            extensionResults.push({
+              shotId: shot.id,
+              shotNumber: shot.shotNumber,
+              success: true,
+              originalUrl: audioResult.url,
+              extendedUrl: result.outputUrl,
+            })
+            successCount++
+          } else {
+            extensionResults.push({
+              shotId: shot.id,
+              shotNumber: shot.shotNumber,
+              success: false,
+              originalUrl: audioResult.url,
+              error: result.error,
+            })
+          }
+        } catch (error) {
+          extensionResults.push({
+            shotId: shot.id,
+            shotNumber: shot.shotNumber,
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })
+        }
+      }
+
+      return {
+        success: successCount > 0,
+        totalShots: shotsToExtend.length,
+        successCount,
+        results: extensionResults,
+        message: `音频扩展完成：成功 ${successCount}/${shotsToExtend.length} 个镜头。每个镜头的音频前后各增加了 ${input.prefixDuration} 和 ${input.suffixDuration} 秒。`,
+      }
+    }),
+
+  // 清理扩展音频
+  cleanExtendedAudio: userProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 获取所有扩展音频URL
+      const shots = await ctx.db.studioShot.findMany({
+        where: {
+          episode: {
+            id: input.episodeId,
+            project: { userId },
+          },
+          extendedAudioUrl: {
+            not: null,
+          },
+        },
+        select: {
+          id: true,
+          shotNumber: true,
+          extendedAudioUrl: true,
+        },
+      })
+
+      if (shots.length === 0) {
+        return {
+          success: true,
+          deletedCount: 0,
+          message: '没有找到扩展音频文件。',
+        }
+      }
+
+      // 提取所有扩展音频URL
+      const extendedAudioUrls = shots
+        .map(shot => shot.extendedAudioUrl)
+        .filter((url): url is string => !!url)
+
+      // 删除文件
+      const deletedCount = await audioExtenderService.deleteMultipleExtendedAudio(extendedAudioUrls)
+
+      // 清理数据库中的extendedAudioUrl字段
+      await ctx.db.studioShot.updateMany({
+        where: {
+          episodeId: input.episodeId,
+          extendedAudioUrl: {
+            not: null,
+          },
+        },
+        data: {
+          extendedAudioUrl: null,
+        },
+      })
+
+      return {
+        success: true,
+        deletedCount,
+        message: `已清理 ${deletedCount} 个扩展音频文件。`,
+      }
     }),
 })

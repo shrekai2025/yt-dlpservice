@@ -1,6 +1,7 @@
 "use client"
 
 import { api } from '~/components/providers/trpc-provider'
+import { useToast } from '~/components/ui/use-toast'
 import type { MediaFile } from '../types'
 
 interface UseMediaMutationsOptions {
@@ -16,6 +17,7 @@ export function useMediaMutations({
   onActorsChange,
   onFileDetailsUpdate,
 }: UseMediaMutationsOptions = {}) {
+  const { toast } = useToast()
   
   // ===== File Operations =====
   const addUrlsMutation = api.mediaBrowser.addUrls.useMutation()
@@ -54,10 +56,17 @@ export function useMediaMutations({
   
   const regenerateThumbnailMutation = api.mediaBrowser.regenerateThumbnail.useMutation({
     onSuccess: () => {
-      alert('缩略图重新生成任务已添加，请稍后刷新查看')
+      toast({
+        title: '缩略图重新生成',
+        description: '缩略图重新生成任务已添加，请稍后刷新查看',
+      })
     },
     onError: (error) => {
-      alert(`重新生成缩略图失败: ${error.message}`)
+      toast({
+        variant: 'destructive',
+        title: '重新生成失败',
+        description: error.message,
+      })
     },
   })
   

@@ -222,6 +222,7 @@ model User {
   mediaFolders   MediaFolder[]
   mediaTags      MediaTag[]
   studioProjects StudioProject[]
+  digitalHumanTasks DigitalHumanTask[]
 
   @@map("users")
 }
@@ -259,6 +260,51 @@ model MediaFile {
   @@index([source])
   @@index([starred])
   @@map("media_files")
+}
+
+// 数字人任务类型枚举
+enum DigitalHumanStage {
+  FACE_RECOGNITION_SUBMITTED    // 主体识别已提交
+  FACE_RECOGNITION_PROCESSING   // 主体识别处理中
+  FACE_RECOGNITION_COMPLETED    // 主体识别完成
+  SUBJECT_DETECTION_COMPLETED   // 主体检测完成（多主体模式）
+  AWAITING_SUBJECT_SELECTION    // 等待用户选择主体
+  VIDEO_GENERATION_SUBMITTED    // 视频生成已提交
+  VIDEO_GENERATION_PROCESSING   // 视频生成处理中
+  VIDEO_GENERATION_COMPLETED    // 视频生成完成
+  FAILED                         // 失败
+}
+
+// 数字人任务表
+model DigitalHumanTask {
+  id                        String               @id @default(cuid())
+  userId                    String
+  name                      String               // 任务名称
+  imageUrl                  String               // 输入图片URL
+  audioUrl                  String               // 输入音频URL
+  maskUrls                  String?              // JSON: 检测到的主体mask URL数组
+  selectedMaskIndex         Int?                 // 用户选择的mask索引
+  prompt                    String?              // 提示词
+  seed                      Int?                 // 随机种子
+  peFastMode                Boolean              @default(false)
+  enableMultiSubject        Boolean              @default(false)
+  stage                     DigitalHumanStage    @default(FACE_RECOGNITION_SUBMITTED)
+  faceRecognitionTaskId     String?              // 步骤1的task_id
+  subjectDetectionTaskId    String?              // 步骤2的task_id（如果有的话）
+  videoGenerationTaskId     String?              // 步骤3的task_id
+  resultVideoUrl            String?              // 最终生成的视频URL
+  aigcMetaTagged            Boolean?
+  errorMessage              String?
+  metadata                  String?              // JSON: 其他元数据
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
+
+  user                      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stage])
+  @@index([createdAt])
+  @@map("digital_human_tasks")
 }
 
 model MediaFolder {
@@ -523,6 +569,7 @@ model StudioCharacter {
   sourceEpisodeId  String?               // 从Episode的objective提取时记录来源
   appearancePrompt String?               // 角色外观描述
   referenceImage   String?               // 参考图URL
+  voiceId          String?               // ElevenLabs TTS Voice ID (从MediaActor同步)
   metadata         String?               // JSON: 其他元数据
   sortOrder        Int                   @default(0)
   createdAt        DateTime              @default(now())
@@ -548,9 +595,10 @@ model StudioShot {
   description     String?               // 镜头描述
   scenePrompt     String?               // 场景描述
   actionPrompt    String?               // 动作描述
-  cameraPrompt    String?               // 镜头运动
+  cameraPrompt    String?               // 镜头运动 / 原始音频URL
   dialogue        String?               // 对话内容(全局)
   duration        Float?                // 预期时长(秒)
+  extendedAudioUrl String?              // 扩展后的音频URL (前后各增加2秒)
   notes           String?               // 备注
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt

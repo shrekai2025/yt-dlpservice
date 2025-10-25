@@ -1588,6 +1588,26 @@ export const MODEL_PARAMETERS: Record<string, ParameterField[]> = {
     },
   ],
 
+  'tuzi-ai-nano-banana-edit': [
+    {
+      key: 'model',
+      label: '模型',
+      type: 'select',
+      defaultValue: 'gemini-2.5-flash-image',
+      options: [
+        { label: 'Gemini 2.5 Flash Image', value: 'gemini-2.5-flash-image' },
+      ],
+      helperText: '选择使用的 AI 模型（Chat Completions 格式）',
+    },
+    {
+      key: 'stream',
+      label: '流式输出',
+      type: 'boolean',
+      defaultValue: false,
+      helperText: '是否开启流式响应',
+    },
+  ],
+
   // ==================== OpenAI ====================
 
   'openai-dalle-3': [
@@ -2006,6 +2026,41 @@ export const MODEL_PARAMETERS: Record<string, ParameterField[]> = {
         { label: '21:9 超宽屏', value: '21:9' },
       ],
       helperText: '仅文生视频支持。图生视频时由输入图片决定比例',
+    },
+  ],
+
+  // ==================== Google Gemini ====================
+
+  'gemini-2.5-flash-image': [
+    {
+      key: 'aspectRatio',
+      label: '画面比例',
+      type: 'select',
+      defaultValue: '1:1',
+      options: [
+        { label: '1:1 正方形 (1024x1024)', value: '1:1' },
+        { label: '2:3 竖版 (832x1248)', value: '2:3' },
+        { label: '3:2 横版 (1248x832)', value: '3:2' },
+        { label: '3:4 竖版 (864x1184)', value: '3:4' },
+        { label: '4:3 横版 (1184x864)', value: '4:3' },
+        { label: '4:5 竖版 (896x1152)', value: '4:5' },
+        { label: '5:4 横版 (1152x896)', value: '5:4' },
+        { label: '9:16 手机竖屏 (768x1344)', value: '9:16' },
+        { label: '16:9 宽屏 (1344x768)', value: '16:9' },
+        { label: '21:9 超宽屏 (1536x672)', value: '21:9' },
+      ],
+      helperText: 'Gemini 2.5 Flash Image 支持的图片比例。所有比例token消耗均为1290',
+    },
+    {
+      key: 'responseModalities',
+      label: '响应模式',
+      type: 'select',
+      defaultValue: 'text_and_image',
+      options: [
+        { label: '图片和文字', value: 'text_and_image' },
+        { label: '仅图片', value: 'image_only' },
+      ],
+      helperText: '选择返回图片和文字说明，或仅返回图片',
     },
   ],
 }

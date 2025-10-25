@@ -373,7 +373,7 @@ export default function AIProvidersPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => handleSaveApiKey(provider.id, true)}
+                        onClick={() => handleSaveApiKey(provider.id, provider.slug, true)}
                         disabled={updateLLMApiKeyMutation.isPending}
                       >
                         保存

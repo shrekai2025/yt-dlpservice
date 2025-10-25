@@ -20,6 +20,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: 'studio', label: 'Studio', href: '/admin/ai-generation/studio' },
       { id: 'image-generation', label: 'Generator', href: '/admin/ai-generation' },
+      { id: 'digital-human', label: '数字人', href: '/digital-human' },
       { id: 'chat', label: 'Chat', href: '/admin/ai-chat' },
     ],
   },

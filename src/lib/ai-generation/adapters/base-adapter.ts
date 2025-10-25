@@ -12,6 +12,7 @@ import type {
   AdapterResponse,
   HttpClientConfig,
 } from './types'
+import { getAxiosProxyConfig, ProxyType } from '~/lib/utils/proxy-config'
 
 export abstract class BaseAdapter {
   protected config: ModelConfig
@@ -28,6 +29,7 @@ export abstract class BaseAdapter {
    */
   protected createHttpClient(): AxiosInstance {
     const clientConfig: HttpClientConfig = {
+      baseURL: this.getApiEndpoint(),
       timeout: 120000, // 默认 2 分钟超时
       headers: {
         'Content-Type': 'application/json',
@@ -44,6 +46,62 @@ export abstract class BaseAdapter {
     }
 
     return axios.create(clientConfig)
+  }
+
+  /**
+   * 应用代理配置到请求配置
+   * 异步方法，用于在发送请求前应用代理
+   */
+  protected async applyProxyConfig(requestConfig: any): Promise<any> {
+    const proxyConfig = await getAxiosProxyConfig(ProxyType.AI_GENERATION)
+
+    if (proxyConfig) {
+      this.log('info', `使用代理: ${proxyConfig.host}:${proxyConfig.port}`)
+      return {
+        ...requestConfig,
+        proxy: proxyConfig,
+        // 当使用代理时，需要确保不使用baseURL，而是使用完整的URL
+        baseURL: undefined,
+      }
+    }
+
+    return requestConfig
+  }
+
+  /**
+   * 发送 HTTP 请求（自动应用代理配置）
+   */
+  protected async request<T = any>(config: any): Promise<T> {
+    const configWithProxy = await this.applyProxyConfig(config)
+    const response = await axios.request<T>(configWithProxy)
+    return response.data
+  }
+
+  /**
+   * 发送 POST 请求（自动应用代理配置）
+   */
+  protected async post<T = any>(url: string, data?: any, config?: any): Promise<T> {
+    const configWithProxy = await this.applyProxyConfig({
+      method: 'POST',
+      url,
+      data,
+      ...config,
+    })
+    const response = await axios.request<T>(configWithProxy)
+    return response.data
+  }
+
+  /**
+   * 发送 GET 请求（自动应用代理配置）
+   */
+  protected async get<T = any>(url: string, config?: any): Promise<T> {
+    const configWithProxy = await this.applyProxyConfig({
+      method: 'GET',
+      url,
+      ...config,
+    })
+    const response = await axios.request<T>(configWithProxy)
+    return response.data
   }
 
   /**

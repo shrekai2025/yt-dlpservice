@@ -1594,9 +1594,11 @@ export default function MediaBrowserPage() {
                         setSelectedActor(actor.id)
                         setTempActorName(actor.name)
                         setTempActorBio(actor.bio || '')
+                        setTempActorVoiceId(actor.voiceId || '')
                         // 重置编辑状态
                         setEditingActorName(false)
                         setEditingActorBio(false)
+                        setEditingActorVoiceId(false)
                       }}
                       onDragOver={(e) => handleDragOverActor(e, actor.id)}
                       onDragLeave={handleDragLeave}
@@ -2252,6 +2254,46 @@ export default function MediaBrowserPage() {
                 >
                   {selectedActorData.bio || (
                     <span className="text-neutral-400">点击添加个性与背景...</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Actor Voice ID */}
+            <div className="mb-6">
+              <label className="text-xs font-semibold text-neutral-500 mb-2 block">
+                Voice ID (ElevenLabs)
+              </label>
+              {editingActorVoiceId ? (
+                <div>
+                  <input
+                    type="text"
+                    value={tempActorVoiceId}
+                    onChange={(e) => setTempActorVoiceId(e.target.value)}
+                    onBlur={handleActorVoiceIdEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleActorVoiceIdEdit()
+                      } else if (e.key === 'Escape') {
+                        setEditingActorVoiceId(false)
+                        setTempActorVoiceId(selectedActorData.voiceId || '')
+                      }
+                    }}
+                    placeholder="输入 ElevenLabs Voice ID..."
+                    autoFocus
+                    className="w-full px-3 py-2 text-sm border border-neutral-300 rounded focus:outline-none focus:border-neutral-900"
+                  />
+                </div>
+              ) : (
+                <div
+                  className="px-3 py-2 text-sm text-neutral-700 bg-neutral-50 rounded cursor-pointer hover:bg-neutral-100 transition-colors"
+                  onClick={() => {
+                    setEditingActorVoiceId(true)
+                    setTempActorVoiceId(selectedActorData.voiceId || '')
+                  }}
+                >
+                  {selectedActorData.voiceId || (
+                    <span className="text-neutral-400">点击添加 Voice ID...</span>
                   )}
                 </div>
               )}
