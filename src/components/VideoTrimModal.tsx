@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { X, Scissors, Loader2, Volume2, VolumeX, Crop } from 'lucide-react'
+import { X, Scissors, Loader2, Volume2, VolumeX, Crop, Image } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '~/components/ui/dialog'
 
 type CropMode = 'time' | 'region' | 'both'
@@ -48,6 +48,7 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
   const [isDraggingCrop, setIsDraggingCrop] = useState(false)
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
   const [resizeHandle, setResizeHandle] = useState<string | null>(null)
+  const [isUpdatingThumbnail, setIsUpdatingThumbnail] = useState(false)
 
   // 获取视频URL - 使用 useMemo 避免重复计算
   const videoUrl = useMemo(() =>
@@ -375,6 +376,51 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
     setCropArea(null)
   }
 
+  // 选定预览图：将当前时间点的帧设置为预览图
+  const handleSetThumbnail = async () => {
+    try {
+      console.log('开始更新预览图:', { fileId: videoFile.id, currentTime })
+      setIsUpdatingThumbnail(true)
+
+      const response = await fetch('/api/admin/media/update-thumbnail', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileId: videoFile.id,
+          timeInSeconds: currentTime,
+        }),
+      })
+
+      console.log('API响应状态:', response.status, response.statusText)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('API错误响应:', errorText)
+        throw new Error(`更新预览图失败: ${response.status}`)
+      }
+
+      const result = await response.json()
+      console.log('API响应结果:', result)
+
+      if (result.success) {
+        onClose() // 先关闭弹窗
+        // 短暂延迟后刷新页面，确保能看到变化
+        setTimeout(() => {
+          window.location.reload()
+        }, 300)
+      } else {
+        alert(`更新失败: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('更新预览图错误:', error)
+      alert(`更新预览图失败: ${error instanceof Error ? error.message : '请重试'}`)
+    } finally {
+      setIsUpdatingThumbnail(false)
+    }
+  }
+
   // 处理裁剪
   const handleTrim = async () => {
     try {
@@ -586,6 +632,28 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
               <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black bg-opacity-70 text-white px-4 py-2 rounded-md text-sm pointer-events-none">
                 拖动鼠标选择裁剪区域
               </div>
+            )}
+
+            {/* 选定预览图按钮 - 左下角 */}
+            {!isInitializing && videoDuration > 0 && (
+              <button
+                onClick={handleSetThumbnail}
+                disabled={isUpdatingThumbnail || isProcessing}
+                className="absolute bottom-4 left-4 px-3 py-2 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all z-10 shadow-lg"
+                title="将当前时间点的帧设置为视频预览图"
+              >
+                {isUpdatingThumbnail ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    更新中...
+                  </>
+                ) : (
+                  <>
+                    <Image className="h-3.5 w-3.5" />
+                    选定预览图
+                  </>
+                )}
+              </button>
             )}
 
             {/* Mute Button */}

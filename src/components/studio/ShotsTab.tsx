@@ -875,6 +875,21 @@ function ShotCard({
     },
   });
 
+  // 重试数字人任务 mutation
+  const retryDigitalHumanTaskMutation = api.studio.retryDigitalHumanTask.useMutation({
+    onSuccess: () => {
+      toast.success("已开始重试任务");
+      setDigitalHumanPolling(true);
+      // 触发父组件刷新以获取最新的任务状态
+      onRefresh?.();
+    },
+    onError: (error) => {
+      const errorMessage = error?.message || "重试失败，请稍后再试";
+      toast.error(`重试失败: ${errorMessage}`);
+      console.error("数字人任务重试失败:", error);
+    },
+  });
+
   // 获取最新的数字人任务
   const latestDigitalHumanTask = shot.digitalHumanTasks?.[0];
   const isDigitalHumanProcessing = latestDigitalHumanTask && [
@@ -1027,6 +1042,32 @@ function ShotCard({
     }
   };
 
+  // 处理数字人任务重试
+  const handleDigitalHumanRetry = () => {
+    if (!latestDigitalHumanTask) {
+      return;
+    }
+
+    if (confirm(`是否重试此任务？\n\n错误信息: ${latestDigitalHumanTask.errorMessage || '未知错误'}`)) {
+      retryDigitalHumanTaskMutation.mutate({
+        taskId: latestDigitalHumanTask.id,
+      });
+    }
+  };
+
+  // 处理手动取回任务结果
+  const handleDigitalHumanFetch = () => {
+    if (!latestDigitalHumanTask) {
+      return;
+    }
+
+    if (confirm('手动取回任务结果？\n\n这会尝试从即梦API获取最新的任务状态。')) {
+      retryDigitalHumanTaskMutation.mutate({
+        taskId: latestDigitalHumanTask.id,
+      });
+    }
+  };
+
   return (
     <div className="border rounded-lg overflow-hidden">
       {/* Header */}
@@ -1050,18 +1091,14 @@ function ShotCard({
                   0
                 );
 
-                // 加入数字人任务成本：$0.2/秒，失败任务（除超频失败外）也计费
+                // 加入数字人任务成本：$0.2/秒，只要成功创建任务就计费
                 const digitalHumanCost = (shot.digitalHumanTasks || []).reduce(
                   (sum: number, task: any) => {
-                    // 只有以下情况不计费：
-                    // 1. 没有duration（无法计算）
-                    // 2. stage是初始阶段（UPLOADING_ASSETS, UPLOAD_FAILED）
-                    // 3. stage是FACE_RECOGNITION_SUBMITTED（还未真正开始处理）
-                    const excludedStages = ['UPLOADING_ASSETS', 'UPLOAD_FAILED', 'FACE_RECOGNITION_SUBMITTED'];
-                    if (!task.duration || excludedStages.includes(task.stage)) {
+                    // 只要有 duration（任务成功创建）就计费
+                    if (!task.duration) {
                       return sum;
                     }
-                    // 其他所有情况（包括失败）都按 $0.2/秒 计费
+                    // 按 $0.2/秒 计费
                     return sum + (task.duration * 0.2);
                   },
                   0
@@ -1243,6 +1280,8 @@ function ShotCard({
                 ? "border-green-500 bg-green-50 hover:bg-green-100 cursor-pointer"
                 : isDigitalHumanProcessing
                 ? "border-blue-500 bg-blue-50"
+                : isDigitalHumanFailed
+                ? "border-red-500 bg-red-50 hover:bg-red-100 cursor-pointer"
                 : "border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer"
             }`}
             title={
@@ -1252,6 +1291,8 @@ function ShotCard({
                 ? "查看数字人视频"
                 : isDigitalHumanProcessing
                 ? "生成中..."
+                : isDigitalHumanFailed
+                ? `任务失败: ${latestDigitalHumanTask?.errorMessage || '未知错误'}`
                 : "生成数字人"
             }
           >
@@ -1259,10 +1300,41 @@ function ShotCard({
               <Loader2 className="h-3 w-3 text-blue-600 animate-spin" />
             ) : isDigitalHumanCompleted ? (
               <CheckCircle className="h-3 w-3 text-green-600" />
+            ) : isDigitalHumanFailed ? (
+              <X className="h-3 w-3 text-red-600" />
             ) : (
               <UserCircle className={`h-3 w-3 ${!imageUrl || !audioUrl ? "text-gray-400" : "text-gray-600"}`} />
             )}
           </button>
+
+          {/* 数字人重试/手动取回按钮 - 失败或处理中时显示 */}
+          {(isDigitalHumanFailed || isDigitalHumanProcessing) && latestDigitalHumanTask && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isDigitalHumanFailed) {
+                  handleDigitalHumanRetry();
+                } else {
+                  handleDigitalHumanFetch();
+                }
+              }}
+              disabled={retryDigitalHumanTaskMutation.isPending}
+              className={`h-8 w-8 border rounded flex items-center justify-center transition-colors cursor-pointer ${
+                isDigitalHumanFailed
+                  ? "border-orange-500 bg-orange-50 hover:bg-orange-100"
+                  : "border-blue-500 bg-blue-50 hover:bg-blue-100"
+              }`}
+              title={isDigitalHumanFailed ? "重试任务" : "手动取回结果"}
+            >
+              {retryDigitalHumanTaskMutation.isPending ? (
+                <Loader2 className={`h-3 w-3 animate-spin ${isDigitalHumanFailed ? "text-orange-600" : "text-blue-600"}`} />
+              ) : isDigitalHumanFailed ? (
+                <RefreshCw className="h-3 w-3 text-orange-600" />
+              ) : (
+                <Download className="h-3 w-3 text-blue-600" />
+              )}
+            </button>
+          )}
 
           <button
             onClick={(e) => {

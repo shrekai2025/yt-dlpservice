@@ -69,10 +69,16 @@ export default function StudioPage() {
           <h1 className="text-3xl font-bold">Studio</h1>
           <p className="text-gray-500 mt-1">AI 短片制作工作流系统</p>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          新建项目
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => router.push('/admin/ai-generation/studio/global-settings')} variant="outline" className="gap-2">
+            <Settings className="h-4 w-4" />
+            全局设定
+          </Button>
+          <Button onClick={() => setCreateDialogOpen(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            新建项目
+          </Button>
+        </div>
       </div>
 
       {/* 项目列表 */}

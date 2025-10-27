@@ -106,11 +106,26 @@ export class TaskProcessor {
         
         // 存储yt-dlp元数据到内存中，供后续爬虫使用
         this.taskMetadataCache.set(taskId, downloadResult.metadata)
-        
+
         // 立即将yt-dlp数据存储到extraMetadata字段（优先存储策略）
         const ytdlpExtraMetadata = this.createExtraMetadataFromYtdlp(downloadResult.metadata, updateData.platform)
         if (ytdlpExtraMetadata) {
-          updateData.extraMetadata = JSON.stringify(ytdlpExtraMetadata)
+          // 保留原有的 extraMetadata 中的重要信息（如 moveToMediaBrowser）
+          let mergedMetadata = ytdlpExtraMetadata
+          try {
+            if (task.extraMetadata) {
+              const existingMetadata = JSON.parse(task.extraMetadata)
+              // 将原有的重要字段合并到新元数据中
+              if (existingMetadata.moveToMediaBrowser !== undefined) {
+                mergedMetadata = { ...ytdlpExtraMetadata, ...existingMetadata }
+                Logger.info(`🔗 保留 extraMetadata 中的重要信息: moveToMediaBrowser=${existingMetadata.moveToMediaBrowser}, userId=${existingMetadata.userId}, folderId=${existingMetadata.folderId}`)
+              }
+            }
+          } catch (error) {
+            Logger.warn(`解析原有 extraMetadata 失败，使用新元数据: ${error}`)
+          }
+
+          updateData.extraMetadata = JSON.stringify(mergedMetadata)
           const platformData = ytdlpExtraMetadata.platformData as any
           const viewCount = platformData?.viewCount || platformData?.playCount || 0
           Logger.info(
@@ -157,6 +172,9 @@ export class TaskProcessor {
 
         // 处理S3转存（如果需要）
         await this.handleS3Transfer(taskId)
+
+        // 检查是否需要移动到媒体浏览器
+        await this.handleMoveToMediaBrowser(taskId)
         return
       }
 
@@ -172,6 +190,9 @@ export class TaskProcessor {
 
         // 处理S3转存（如果需要）
         await this.handleS3Transfer(taskId)
+
+        // 检查是否需要移动到媒体浏览器
+        await this.handleMoveToMediaBrowser(taskId)
         return
       }
 
@@ -514,6 +535,9 @@ export class TaskProcessor {
 
       // 检查是否需要转存到S3（并行处理，不阻塞主流程）
       await this.handleS3Transfer(taskId)
+
+      // 检查是否需要移动到媒体浏览器
+      await this.handleMoveToMediaBrowser(taskId)
       
     } catch (error: any) {
       Logger.error(`音频转录失败: ${taskId}, 错误: ${error.message}`)
@@ -818,6 +842,172 @@ export class TaskProcessor {
 
     } catch (error) {
       Logger.error(`任务 ${taskId} S3转存处理失败: ${error}`)
+      // 不抛出错误，避免影响主流程
+    }
+  }
+
+  /**
+   * 将下载的文件移动到媒体浏览器
+   */
+  private async handleMoveToMediaBrowser(taskId: string): Promise<void> {
+    try {
+      Logger.info(`📦 开始处理移动到媒体浏览器: ${taskId}`)
+
+      // 获取任务信息
+      const task = await db.task.findUnique({
+        where: { id: taskId },
+        select: {
+          videoPath: true,
+          audioPath: true,
+          downloadType: true,
+          extraMetadata: true,
+        }
+      })
+
+      if (!task) {
+        Logger.warn(`❌ 任务 ${taskId} 不存在，跳过移动到媒体浏览器`)
+        return
+      }
+
+      Logger.info(`📋 任务信息 ${taskId}: videoPath=${task.videoPath}, audioPath=${task.audioPath}, extraMetadata=${task.extraMetadata}`)
+
+      // 解析extraMetadata
+      let metadata: any = {}
+      try {
+        if (task.extraMetadata) {
+          metadata = JSON.parse(task.extraMetadata)
+          Logger.info(`✅ extraMetadata 解析成功: moveToMediaBrowser=${metadata.moveToMediaBrowser}, userId=${metadata.userId}, folderId=${metadata.folderId}`)
+        } else {
+          Logger.warn(`⚠️ 任务 ${taskId} extraMetadata 为空`)
+        }
+      } catch (error) {
+        Logger.warn(`❌ 任务 ${taskId} extraMetadata 解析失败: ${error}`)
+      }
+
+      // 检查是否需要移动到媒体浏览器
+      if (!metadata.moveToMediaBrowser) {
+        Logger.warn(`⏭️ 任务 ${taskId} 不需要移动到媒体浏览器 (moveToMediaBrowser=${metadata.moveToMediaBrowser})`)
+        return
+      }
+
+      const userId = metadata.userId
+      const folderId = metadata.folderId
+
+      if (!userId) {
+        Logger.warn(`❌ 任务 ${taskId} 缺少 userId，跳过移动到媒体浏览器`)
+        return
+      }
+
+      Logger.info(`👤 用户信息: userId=${userId}, folderId=${folderId}`)
+
+      // 确定要移动的文件路径
+      const filePath = task.videoPath || task.audioPath
+
+      if (!filePath) {
+        Logger.warn(`❌ 任务 ${taskId} 无可用文件路径，跳过移动到媒体浏览器`)
+        return
+      }
+
+      Logger.info(`📁 原始文件路径: ${filePath}`)
+
+      // 检查文件是否存在
+      const fs = await import('fs/promises')
+      const path = await import('path')
+
+      try {
+        await fs.access(filePath)
+        Logger.info(`✅ 文件存在确认: ${filePath}`)
+      } catch {
+        Logger.warn(`❌ 任务 ${taskId} 文件不存在: ${filePath}`)
+        return
+      }
+
+      // 获取文件元数据
+      const stats = await fs.stat(filePath)
+      const fileSize = stats.size
+      Logger.info(`📊 文件大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB`)
+
+      // 确定文件类型
+      const fileType = task.videoPath ? 'VIDEO' : 'AUDIO'
+      const fileName = path.basename(filePath)
+
+      // 将文件从临时目录移动到永久存储目录
+      const mediaStorageDir = './data/media-uploads'
+      await fs.mkdir(mediaStorageDir, { recursive: true })
+
+      // 生成新的文件名（保留原始文件名）
+      const timestamp = Date.now()
+      const ext = path.extname(fileName)
+      const baseName = path.basename(fileName, ext)
+      const newFileName = `${baseName}_${timestamp}${ext}`
+      const permanentPath = path.join(mediaStorageDir, newFileName)
+
+      // 复制文件到永久存储（而不是移动，因为临时文件稍后会被清理）
+      Logger.info(`📦 复制文件到永久存储: ${permanentPath}`)
+      await fs.copyFile(filePath, permanentPath)
+
+      // 获取视频时长（如果是视频文件）
+      let duration: number | null = null
+      if (fileType === 'VIDEO') {
+        try {
+          const { getMediaDuration } = await import('~/lib/services/audio-utils')
+          duration = await getMediaDuration(permanentPath)
+          if (duration) {
+            Logger.info(`⏱️ 视频时长: ${duration} 秒`)
+          }
+        } catch (error) {
+          Logger.warn(`⚠️ 无法获取视频时长: ${error}`)
+        }
+      }
+
+      Logger.info(`📝 准备创建媒体文件记录: name=${newFileName}, type=${fileType}, source=LOCAL, fileSize=${fileSize}, duration=${duration}, userId=${userId}, folderId=${folderId}`)
+
+      const mediaFile = await db.mediaFile.create({
+        data: {
+          name: newFileName,
+          type: fileType,
+          source: 'LOCAL',
+          originalPath: null, // LOCAL 类型不需要存储路径，文件在标准位置
+          fileSize: fileSize,
+          duration: duration,
+          userId: userId,
+          folderId: folderId || null,
+          remark: `从 URL2STT 任务下载: ${taskId}`,
+        },
+      })
+
+      Logger.info(`✅✅✅ 任务 ${taskId} 文件已成功添加到媒体浏览器: mediaFileId=${mediaFile.id}, 文件: ${newFileName}, 大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB${duration ? `, 时长: ${duration}s` : ''}`)
+
+      // 异步生成缩略图
+      if (fileType === 'VIDEO') {
+        const { thumbnailQueue } = await import('~/lib/services/thumbnail-generator')
+        thumbnailQueue.add({
+          id: mediaFile.id,
+          options: {
+            userId: userId,
+            fileId: mediaFile.id,
+            localPath: permanentPath, // 使用永久存储路径
+            type: 'video',
+          },
+          onComplete: async (result) => {
+            if (result.thumbnailPath) {
+              await db.mediaFile.update({
+                where: { id: mediaFile.id },
+                data: {
+                  thumbnailPath: result.thumbnailPath,
+                  width: result.width,
+                  height: result.height,
+                },
+              })
+              Logger.info(`媒体文件 ${mediaFile.id} 缩略图已生成: ${result.thumbnailPath}`)
+            }
+          },
+        })
+      }
+
+    } catch (error: any) {
+      Logger.error(`❌❌❌ 任务 ${taskId} 移动到媒体浏览器失败: ${error?.message || error}`)
+      Logger.error(`错误堆栈: ${error?.stack}`)
       // 不抛出错误，避免影响主流程
     }
   }

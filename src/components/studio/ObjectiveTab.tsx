@@ -13,7 +13,6 @@ import {
   Edit2,
   Check,
   X,
-  Copy,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/components/providers/trpc-provider";
@@ -446,46 +445,6 @@ export function ObjectiveTab({
     setIsEditingObjective(false);
   };
 
-  const insertVariable = (variable: string) => {
-    const textarea = document.getElementById(
-      "system-prompt-input",
-    ) as HTMLTextAreaElement;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const text = tempSystemPrompt;
-      const before = text.substring(0, start);
-      const after = text.substring(end);
-      const variableText = `{{${variable}}}`;
-      setTempSystemPrompt(before + variableText + after);
-
-      // 恢复光标位置
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(
-          start + variableText.length,
-          start + variableText.length,
-        );
-      }, 0);
-    }
-  };
-
-  const handleCopyTemplate = async () => {
-    const template = SYSTEM_PROMPT_TEMPLATES[episodeType] || '';
-    if (!template) {
-      alert(`暂无 ${episodeType} 类型的提示词模板`);
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(template);
-      alert('提示词模板已复制到剪贴板');
-    } catch (error) {
-      console.error('复制失败:', error);
-      alert('复制失败，请手动复制');
-    }
-  };
-
   const currentProvider = providers?.find(
     (p) => p.provider === selectedProvider,
   );
@@ -547,13 +506,6 @@ export function ObjectiveTab({
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium">System Prompt</label>
-            <button
-              onClick={handleCopyTemplate}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-              title="复制提示词模板"
-            >
-              <Copy className="h-3.5 w-3.5 text-gray-500" />
-            </button>
           </div>
 
           {/* 单行展示 */}
@@ -621,49 +573,7 @@ export function ObjectiveTab({
                 rows={16}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
               />
-              <div className="flex items-center justify-between">
-                <div className="flex gap-2 flex-wrap">
-                  <Button
-                    onClick={() => insertVariable("rawInput")}
-                    size="sm"
-                    variant="outline"
-                    className="gap-1 text-xs"
-                  >
-                    插入 {"{{rawInput}}"}
-                  </Button>
-                  <Button
-                    onClick={() => insertVariable("point")}
-                    size="sm"
-                    variant="outline"
-                    className="gap-1 text-xs"
-                  >
-                    插入 {"{{point}}"}
-                  </Button>
-                  <Button
-                    onClick={() => insertVariable("shotCount")}
-                    size="sm"
-                    variant="outline"
-                    className="gap-1 text-xs"
-                  >
-                    插入 {"{{shotCount}}"}
-                  </Button>
-                  <Button
-                    onClick={() => insertVariable("dialogueCount")}
-                    size="sm"
-                    variant="outline"
-                    className="gap-1 text-xs"
-                  >
-                    插入 {"{{dialogueCount}}"}
-                  </Button>
-                  <Button
-                    onClick={() => insertVariable("characterCount")}
-                    size="sm"
-                    variant="outline"
-                    className="gap-1 text-xs"
-                  >
-                    插入 {"{{characterCount}}"}
-                  </Button>
-                </div>
+              <div className="flex items-center justify-end">
                 <div className="flex gap-2">
                   <Button
                     onClick={handleCancelEditPrompt}
@@ -680,9 +590,6 @@ export function ObjectiveTab({
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-gray-500">
-                提示: 使用变量插入动态内容 - {"{{rawInput}}"}: 原始素材, {"{{point}}"}: 核心看点, {"{{shotCount}}"}: 镜头数, {"{{dialogueCount}}"}: 台词数, {"{{characterCount}}"}: 演员数
-              </p>
             </div>
           </div>
         </div>

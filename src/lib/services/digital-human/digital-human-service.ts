@@ -545,4 +545,146 @@ export class DigitalHumanService {
       where: { id: taskId },
     })
   }
+
+  /**
+   * 重试/恢复失败的任务
+   * 根据任务当前的stage和已有的taskId，尝试继续处理
+   */
+  async retryTask(taskId: string) {
+    const task = await db.digitalHumanTask.findUnique({
+      where: { id: taskId },
+    })
+
+    if (!task) {
+      throw new Error(`Task ${taskId} not found`)
+    }
+
+    // 重置错误状态
+    await db.digitalHumanTask.update({
+      where: { id: taskId },
+      data: {
+        errorMessage: null,
+      },
+    })
+
+    try {
+      // 根据任务的stage和已有的taskId判断从哪里恢复
+      if (task.videoGenerationTaskId) {
+        // 如果已经有视频生成任务ID，直接轮询视频生成结果
+        console.log(`[DigitalHuman ${taskId}] Retrying video generation polling...`)
+
+        await db.digitalHumanTask.update({
+          where: { id: taskId },
+          data: {
+            stage: DigitalHumanStage.VIDEO_GENERATION_PROCESSING,
+          },
+        })
+
+        const videoResult = await this.pollVideoGeneration(task.videoGenerationTaskId)
+
+        await db.digitalHumanTask.update({
+          where: { id: taskId },
+          data: {
+            resultVideoUrl: videoResult.videoUrl,
+            aigcMetaTagged: videoResult.aigcMetaTagged,
+            stage: DigitalHumanStage.VIDEO_GENERATION_COMPLETED,
+          },
+        })
+
+        console.log(`[DigitalHuman ${taskId}] Video generation recovered successfully`)
+        return task
+      } else if (task.faceRecognitionTaskId) {
+        // 如果有主体识别任务ID但没有视频生成ID，从主体识别结果开始恢复
+        console.log(`[DigitalHuman ${taskId}] Retrying from face recognition...`)
+
+        await db.digitalHumanTask.update({
+          where: { id: taskId },
+          data: {
+            stage: DigitalHumanStage.FACE_RECOGNITION_PROCESSING,
+          },
+        })
+
+        const faceResult = await this.pollFaceRecognition(task.faceRecognitionTaskId)
+
+        if (faceResult.status === 0) {
+          throw new Error('图片中未检测到人物或类人主体')
+        }
+
+        await db.digitalHumanTask.update({
+          where: { id: taskId },
+          data: {
+            stage: DigitalHumanStage.FACE_RECOGNITION_COMPLETED,
+          },
+        })
+
+        // 根据是否启用多主体模式继续
+        if (task.enableMultiSubject) {
+          // 如果已经检测过主体，直接等待用户选择
+          if (task.maskUrls) {
+            await db.digitalHumanTask.update({
+              where: { id: taskId },
+              data: {
+                stage: DigitalHumanStage.AWAITING_SUBJECT_SELECTION,
+              },
+            })
+            console.log(`[DigitalHuman ${taskId}] Waiting for user subject selection`)
+          } else {
+            // 重新检测主体
+            const detectionResult = await this.getClient().detectSubjects(task.imageUrl)
+
+            await db.digitalHumanTask.update({
+              where: { id: taskId },
+              data: {
+                maskUrls: JSON.stringify(detectionResult.maskUrls),
+                stage: DigitalHumanStage.AWAITING_SUBJECT_SELECTION,
+              },
+            })
+            console.log(`[DigitalHuman ${taskId}] Subject detection completed`)
+          }
+        } else {
+          // 单主体模式，直接进入视频生成
+          await this.startVideoGeneration(taskId)
+        }
+
+        return task
+      } else {
+        // 没有任何任务ID，从头开始
+        console.log(`[DigitalHuman ${taskId}] Retrying from beginning...`)
+        this.processTask(taskId).catch((error) => {
+          console.error(`Failed to retry digital human task ${taskId}:`, error)
+        })
+        return task
+      }
+    } catch (error) {
+      console.error(`[DigitalHuman ${taskId}] Retry failed:`, error)
+
+      // 提取更友好的错误信息
+      let errorMessage = 'Unknown error'
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response?: { status?: number; data?: unknown } }
+        if (axiosError.response?.status === 429) {
+          errorMessage = 'API 调用频率限制，请稍后再试'
+        } else if (axiosError.response?.status === 401 || axiosError.response?.status === 403) {
+          errorMessage = 'API 凭证无效或权限不足'
+        } else if (axiosError.response?.data && typeof axiosError.response.data === 'object') {
+          const data = axiosError.response.data as { message?: string }
+          errorMessage = data.message || `HTTP ${axiosError.response.status} 错误`
+        } else if (axiosError.response?.status) {
+          errorMessage = `HTTP ${axiosError.response.status} 错误`
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+
+      await db.digitalHumanTask.update({
+        where: { id: taskId },
+        data: {
+          stage: DigitalHumanStage.FAILED,
+          errorMessage,
+        },
+      })
+
+      throw error
+    }
+  }
 }

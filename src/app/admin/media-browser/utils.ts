@@ -3,23 +3,27 @@ import type { MediaFile } from './types'
 /**
  * Get thumbnail URL for a media file
  */
-export function getThumbnailUrl(file: MediaFile): string | null {
+export function getThumbnailUrl(file: MediaFile, bustCache = false): string | null {
   if (file.type === 'AUDIO') return null
 
-  // Prioritize thumbnail path
-  if (file.thumbnailPath) {
-    return file.thumbnailPath.startsWith('http')
+  // Prioritize thumbnail path (check for non-empty string)
+  if (file.thumbnailPath && file.thumbnailPath.trim()) {
+    const baseUrl = file.thumbnailPath.startsWith('http')
       ? file.thumbnailPath
       : `/api/serve-file?path=${encodeURIComponent(file.thumbnailPath)}`
+
+    // Always add cache busting parameter using current timestamp
+    // This ensures updated thumbnails are always loaded
+    return `${baseUrl}&v=${Date.now()}`
   }
 
-  // Fallback to local path for images
-  if (file.type === 'IMAGE' && file.localPath) {
+  // Fallback to local path for images (check for non-empty string)
+  if (file.type === 'IMAGE' && file.localPath && file.localPath.trim()) {
     return `/api/serve-file?path=${encodeURIComponent(file.localPath)}`
   }
 
-  // Fallback to source URL
-  if (file.sourceUrl) {
+  // Fallback to source URL (check for non-empty string)
+  if (file.sourceUrl && file.sourceUrl.trim()) {
     return file.sourceUrl
   }
 
@@ -45,13 +49,13 @@ export function isGif(file: MediaFile): boolean {
 export function getGifUrl(file: MediaFile): string | null {
   if (!isGif(file)) return null
 
-  // Use local path for GIFs
-  if (file.localPath) {
+  // Use local path for GIFs (check for non-empty string)
+  if (file.localPath && file.localPath.trim()) {
     return `/api/serve-file?path=${encodeURIComponent(file.localPath)}`
   }
 
-  // Fallback to source URL
-  if (file.sourceUrl) {
+  // Fallback to source URL (check for non-empty string)
+  if (file.sourceUrl && file.sourceUrl.trim()) {
     return file.sourceUrl
   }
 

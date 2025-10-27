@@ -33,10 +33,12 @@ export async function GET(
                        'application/octet-stream'
 
     // Return the file with appropriate headers
+    // Use shorter cache time to allow thumbnail updates
     return new NextResponse(fileBuffer, {
       headers: {
         'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Cache-Control': 'public, max-age=300, must-revalidate', // 5分钟缓存，允许重新验证
+        'Last-Modified': new Date().toUTCString(),
       },
     })
   } catch (error) {

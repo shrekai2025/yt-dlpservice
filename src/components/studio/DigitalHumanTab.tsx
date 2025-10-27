@@ -105,14 +105,34 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
     },
   })
 
+  const retryTaskMutation = api.studio.retryDigitalHumanTask.useMutation({
+    onSuccess: () => {
+      toast.success('已开始重试任务')
+      refetch()
+    },
+    onError: (error) => {
+      toast.error(`重试失败: ${error.message}`)
+    },
+  })
+
   const handleGenerate = (shotId: string) => {
     createTaskMutation.mutate({ shotId, peFastMode })
+  }
+
+  const handleRetry = (taskId: string) => {
+    retryTaskMutation.mutate({ taskId })
   }
 
   // 存媒体到媒体浏览器（只在有且仅有一个演员时可用）
   const handleSaveToMedia = (url: string, shot: any) => {
     // 必须有且只有一个演员
-    if (!shot.characters || shot.characters.length !== 1) {
+    if (!shot.characters || shot.characters.length === 0) {
+      toast.error('该镜头没有演员，无法保存到媒体浏览器')
+      return
+    }
+
+    if (shot.characters.length > 1) {
+      toast.error('该镜头有多个演员，无法保存到媒体浏览器')
       return
     }
 
@@ -120,7 +140,7 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
     const actorId = firstCharacter?.character?.sourceActorId
 
     if (!actorId) {
-      toast.error('演员未关联sourceActorId')
+      toast.error('演员未关联sourceActorId，无法保存')
       return
     }
 
@@ -487,7 +507,7 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
                     </div>
 
                     {/* 操作按钮 */}
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex gap-2">
                       {!task && (
                         <Button
                           size="sm"
@@ -512,18 +532,68 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
                       )}
 
                       {task && !isCompleted && !isFailed && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled
-                          className="h-8"
-                        >
-                          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                          生成中
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled
+                            className="h-8"
+                          >
+                            <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            生成中
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRetry(task.id)}
+                            disabled={retryTaskMutation.isPending}
+                            className="h-8"
+                            title="手动取回结果"
+                          >
+                            {retryTaskMutation.isPending ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            取回
+                          </Button>
+                        </>
                       )}
 
-                      {(isCompleted || isFailed) && (
+                      {isFailed && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleRetry(task.id)}
+                            disabled={retryTaskMutation.isPending}
+                            className="h-8 border-orange-500 text-orange-600 hover:bg-orange-50"
+                            title="重试任务"
+                          >
+                            {retryTaskMutation.isPending ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            重试
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleGenerate(shot.id)}
+                            disabled={!canGenerate || createTaskMutation.isPending}
+                            className="h-8"
+                          >
+                            {createTaskMutation.isPending ? (
+                              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                            ) : (
+                              <PlayCircle className="h-3.5 w-3.5 mr-1" />
+                            )}
+                            重新生成
+                          </Button>
+                        </>
+                      )}
+
+                      {isCompleted && (
                         <Button
                           size="sm"
                           onClick={() => handleGenerate(shot.id)}
@@ -533,7 +603,7 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
                           {createTaskMutation.isPending ? (
                             <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
                           ) : (
-                            <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                            <PlayCircle className="h-3.5 w-3.5 mr-1" />
                           )}
                           重新生成
                         </Button>

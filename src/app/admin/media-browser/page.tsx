@@ -15,7 +15,7 @@ import { useMediaQueries } from './hooks/useMediaQueries'
 import { useMediaMutations } from './hooks/useMediaMutations'
 import { useBulkOperations } from './hooks/useBulkOperations'
 import { useDragAndDrop } from './hooks/useDragAndDrop'
-import { AddUrlDialog, AddLocalPathDialog, CreateFolderDialog, CreateActorDialog } from './components/Dialogs'
+import { AddUrlDialog, AddLocalPathDialog, DownloadUrlDialog, CreateFolderDialog, CreateActorDialog } from './components/Dialogs'
 import { DragDropOverlay } from './components/FloatingWidgets/DragDropOverlay'
 import { MasonryGrid, JustifiedGrid, SingleColumnGrid } from './components/MediaGrid'
 import { MaximizedSplitView } from './components/MaximizedSplitView'
@@ -83,6 +83,7 @@ export default function MediaBrowserPage() {
   }, [hydrated, selectedFolder, selectedActor, showUnassigned, setShowUnassigned, setViewTab])
 
   const [addUrlDialogOpen, setAddUrlDialogOpen] = useState(false)
+  const [downloadUrlDialogOpen, setDownloadUrlDialogOpen] = useState(false)
   const [previewFile, setPreviewFile] = useState<MediaFile | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -636,6 +637,38 @@ export default function MediaBrowserPage() {
     }
   }
 
+  // 处理下载 URL 到媒体浏览器
+  const handleDownloadUrl = async (
+    url: string,
+    downloadType: 'AUDIO_ONLY' | 'VIDEO_ONLY' | 'BOTH',
+    folderId?: string | null
+  ) => {
+    try {
+      const response = await fetch('/api/admin/media/download-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url,
+          downloadType,
+          folderId,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '创建下载任务失败')
+      }
+
+      alert(`下载任务已创建！\n任务ID: ${result.data.taskId}\n${result.data.message}\n\n下载完成后文件将自动添加到媒体浏览器。`)
+    } catch (error: any) {
+      console.error('Download URL error:', error)
+      throw error
+    }
+  }
+
   // 处理添加 URL
   // 适配新的 AddUrlDialog 组件
   const handleAddUrls = async (tasks: UploadTask[]) => {
@@ -924,11 +957,11 @@ export default function MediaBrowserPage() {
     if (file.type !== 'VIDEO') return null
 
     if (file.source === 'LOCAL_REF') return `/api/media-ref/${file.id}`
-    if (file.localPath) {
+    if (file.localPath && file.localPath.trim()) {
       const localPath = file.localPath.replace('data/media-uploads/', '')
       return `/api/media-file/${localPath}`
     }
-    if (file.sourceUrl && file.source === 'URL') return file.sourceUrl
+    if (file.sourceUrl && file.sourceUrl.trim() && file.source === 'URL') return file.sourceUrl
     return null
   }, [])
 
@@ -937,11 +970,11 @@ export default function MediaBrowserPage() {
     if (!isGif(file)) return null
 
     if (file.source === 'LOCAL_REF') return `/api/media-ref/${file.id}`
-    if (file.localPath) {
+    if (file.localPath && file.localPath.trim()) {
       const localPath = file.localPath.replace('data/media-uploads/', '')
       return `/api/media-file/${localPath}`
     }
-    if (file.sourceUrl && file.source === 'URL') return file.sourceUrl
+    if (file.sourceUrl && file.sourceUrl.trim() && file.source === 'URL') return file.sourceUrl
     return null
   }, [isGif])
 
@@ -1287,7 +1320,7 @@ export default function MediaBrowserPage() {
                 className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-800"
               >
                 <Plus className="h-3.5 w-3.5" />
-                从URL
+                加URL
               </button>
               <button
                 onClick={() => setAddLocalPathDialogOpen(true)}
@@ -1314,6 +1347,13 @@ export default function MediaBrowserPage() {
               />
             </div>
             <div className="flex gap-2 mt-2">
+              <button
+                onClick={() => setDownloadUrlDialogOpen(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-green-700 px-3 py-2 text-xs font-medium text-white hover:bg-green-600"
+              >
+                <Download className="h-3.5 w-3.5" />
+                下载URL
+              </button>
               <button
                 onClick={handleExport}
                 disabled={exportMutation.isPending}
@@ -1900,9 +1940,9 @@ export default function MediaBrowserPage() {
                         starred: starred,
                       })
                     }}
-                    getThumbnailUrl={(file) => getThumbnailUrl(file) ?? ''}
-                    getVideoUrl={(file) => getVideoUrl(file) ?? ''}
-                    getGifUrl={(file) => getGifUrl(file) ?? ''}
+                    getThumbnailUrl={getThumbnailUrl}
+                    getVideoUrl={getVideoUrl}
+                    getGifUrl={getGifUrl}
                     isGif={(file) => isGif(file) ?? false}
                   />
                 )
@@ -2498,6 +2538,14 @@ export default function MediaBrowserPage() {
         open={addLocalPathDialogOpen}
         onOpenChange={setAddLocalPathDialogOpen}
         onAddLocalPaths={handleAddLocalPaths}
+      />
+
+      {/* Download URL Dialog */}
+      <DownloadUrlDialog
+        open={downloadUrlDialogOpen}
+        onOpenChange={setDownloadUrlDialogOpen}
+        onSubmit={handleDownloadUrl}
+        currentFolder={selectedFolder}
       />
 
       {/* Create Folder Dialog */}

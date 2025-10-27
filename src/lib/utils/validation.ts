@@ -135,12 +135,18 @@ export function isValidStatusTransition(currentStatus: TaskStatus, newStatus: Ta
 
 /**
  * 获取下载类型的显示名称
+ * 支持新旧两种格式
  */
 export function getDownloadTypeDisplayName(downloadType: string): string {
   const displayNames: Record<string, string> = {
+    // 标准格式
     'AUDIO_ONLY': '仅音频',
-    'VIDEO_ONLY': '仅视频', 
-    'BOTH': '视频+音频'
+    'VIDEO_ONLY': '仅视频',
+    'BOTH': '视频+音频',
+    // 兼容旧格式（小写）
+    'audio': '仅音频',
+    'video': '仅视频',
+    'video+audio': '视频+音频'
   }
   return displayNames[downloadType] || downloadType // 如果找不到，返回原始值
 } 

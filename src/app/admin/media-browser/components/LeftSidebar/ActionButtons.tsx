@@ -5,6 +5,7 @@ import { Plus, Folder, Upload, Download, List, Grid3x3, Play, Maximize2, Minimiz
 interface ActionButtonsProps {
   onAddUrl: () => void
   onAddLocalPath: () => void
+  onDownloadUrl: () => void
   onFileUpload: () => void
   onExport: () => void
   isUploading?: boolean
@@ -22,6 +23,7 @@ interface ActionButtonsProps {
 export function ActionButtons({
   onAddUrl,
   onAddLocalPath,
+  onDownloadUrl,
   onFileUpload,
   onExport,
   isUploading,
@@ -43,7 +45,7 @@ export function ActionButtons({
           className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-xs font-medium text-white hover:bg-neutral-800"
         >
           <Plus className="h-3.5 w-3.5" />
-          从URL
+          加URL
         </button>
         <button
           onClick={onAddLocalPath}
@@ -69,8 +71,15 @@ export function ActionButtons({
           className="hidden"
         />
       </div>
-      
+
       <div className="flex gap-2 mt-2">
+        <button
+          onClick={onDownloadUrl}
+          className="flex-1 flex items-center justify-center gap-1.5 rounded-md bg-green-700 px-3 py-2 text-xs font-medium text-white hover:bg-green-600"
+        >
+          <Download className="h-3.5 w-3.5" />
+          下载URL
+        </button>
         <button
           onClick={onExport}
           disabled={isExporting}

@@ -123,6 +123,89 @@ export function FileDetailsPanel({
           </button>
         </div>
 
+        {/* Actions - Compact Buttons at Top */}
+        <div className="flex-shrink-0 px-3 py-2 bg-neutral-50 border-b border-neutral-200">
+          <div className="flex flex-wrap gap-1.5">
+            {file.type === 'VIDEO' && (
+              <>
+                <button
+                  onClick={onTrimVideo}
+                  className="flex-1 px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
+                >
+                  <Scissors className="h-3 w-3" />
+                  裁剪
+                </button>
+                <button
+                  onClick={onRotateVideo}
+                  disabled={isRotating}
+                  className="flex-1 px-2 py-1.5 text-xs font-medium bg-neutral-600 text-white rounded hover:bg-neutral-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
+                >
+                  {isRotating ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      旋转中
+                    </>
+                  ) : (
+                    <>
+                      <RotateCw className="h-3 w-3" />
+                      旋转
+                    </>
+                  )}
+                </button>
+              </>
+            )}
+            {file.source === 'URL' && (
+              <button
+                onClick={onConvertToLocal}
+                disabled={isConverting}
+                className="w-full px-2 py-1.5 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
+              >
+                {isConverting ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    转存中
+                  </>
+                ) : (
+                  <>
+                    <HardDrive className="h-3 w-3" />
+                    转存本地
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Generate Thumbnail Button */}
+            {(file.type === 'VIDEO' || file.type === 'IMAGE') && (
+              <button
+                onClick={onGenerateThumbnail}
+                disabled={isGeneratingThumbnail}
+                className="flex-1 px-2 py-1.5 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
+              >
+                {isGeneratingThumbnail ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    生成中
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="h-3 w-3" />
+                    预览图
+                  </>
+                )}
+              </button>
+            )}
+
+            {/* Delete Button */}
+            <button
+              onClick={onDelete}
+              className="flex-1 px-2 py-1.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center justify-center gap-1"
+            >
+              <Trash2 className="h-3 w-3" />
+              删除
+            </button>
+          </div>
+        </div>
+
         {/* Content - Compact Scrollable */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2.5 text-xs">
           {/* Media Preview - Auto-play */}
@@ -352,87 +435,6 @@ export function FileDetailsPanel({
               </div>
             </div>
           )}
-
-          {/* Actions - Compact Buttons */}
-          <div className="flex flex-wrap gap-1.5 pt-2 border-t">
-            {file.type === 'VIDEO' && (
-              <>
-                <button
-                  onClick={onTrimVideo}
-                  className="flex-1 px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors flex items-center justify-center gap-1"
-                >
-                  <Scissors className="h-3 w-3" />
-                  裁剪
-                </button>
-                <button
-                  onClick={onRotateVideo}
-                  disabled={isRotating}
-                  className="flex-1 px-2 py-1.5 text-xs font-medium bg-neutral-600 text-white rounded hover:bg-neutral-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
-                >
-                  {isRotating ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      旋转中
-                    </>
-                  ) : (
-                    <>
-                      <RotateCw className="h-3 w-3" />
-                      旋转
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-            {file.source === 'URL' && (
-              <button
-                onClick={onConvertToLocal}
-                disabled={isConverting}
-                className="w-full px-2 py-1.5 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
-              >
-                {isConverting ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    转存中
-                  </>
-                ) : (
-                  <>
-                    <HardDrive className="h-3 w-3" />
-                    转存本地
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* Generate Thumbnail Button */}
-            {(file.type === 'VIDEO' || file.type === 'IMAGE') && (
-              <button
-                onClick={onGenerateThumbnail}
-                disabled={isGeneratingThumbnail}
-                className="flex-1 px-2 py-1.5 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1"
-              >
-                {isGeneratingThumbnail ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    生成中
-                  </>
-                ) : (
-                  <>
-                    <ImageIcon className="h-3 w-3" />
-                    预览图
-                  </>
-                )}
-              </button>
-            )}
-
-            {/* Delete Button */}
-            <button
-              onClick={onDelete}
-              className="flex-1 px-2 py-1.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors flex items-center justify-center gap-1"
-            >
-              <Trash2 className="h-3 w-3" />
-              删除
-            </button>
-          </div>
         </div>
       </div>
     </div>

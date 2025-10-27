@@ -18,6 +18,7 @@ interface LeftSidebarProps {
   // Action handlers
   onAddUrl: () => void
   onAddLocalPath: () => void
+  onDownloadUrl: () => void
   onFileUpload: () => void
   onExport: () => void
   isUploading?: boolean

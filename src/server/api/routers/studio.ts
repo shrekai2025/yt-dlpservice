@@ -337,11 +337,10 @@ export const studioRouter = createTRPCRouter({
               }
             }
 
-            // 数字人任务成本
+            // 数字人任务成本：只要有 duration（任务成功创建）就计费
             if (shot.digitalHumanTasks && Array.isArray(shot.digitalHumanTasks)) {
               for (const task of shot.digitalHumanTasks) {
-                const excludedStages = ['UPLOADING_ASSETS', 'UPLOAD_FAILED', 'FACE_RECOGNITION_SUBMITTED']
-                if (task.duration && !excludedStages.includes(task.stage)) {
+                if (task.duration) {
                   totalCost += task.duration * 0.2
                 }
               }
@@ -401,6 +400,10 @@ export const studioRouter = createTRPCRouter({
                   createdAt: true,
                 },
                 orderBy: { createdAt: 'desc' },
+              },
+              digitalHumanTasks: {
+                orderBy: { createdAt: 'desc' },
+                take: 1, // 只取最新的一个任务
               },
             },
             orderBy: { shotNumber: 'asc' },
@@ -2887,6 +2890,7 @@ export const studioRouter = createTRPCRouter({
           hasAudio: !!shot.cameraPrompt,
           prompt,
           latestTask: shot.digitalHumanTasks[0] || null,
+          characters: shot.characters, // 添加 characters 字段以支持存媒体功能
         }
       })
 
@@ -2998,6 +3002,56 @@ export const studioRouter = createTRPCRouter({
     }),
 
   /**
+   * 重试失败的数字人任务
+   */
+  retryDigitalHumanTask: userProcedure
+    .input(
+      z.object({
+        taskId: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 获取任务信息
+      const task = await ctx.db.digitalHumanTask.findUnique({
+        where: { id: input.taskId },
+        include: {
+          shot: {
+            include: {
+              episode: {
+                include: {
+                  project: true,
+                },
+              },
+            },
+          },
+        },
+      })
+
+      if (!task) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '任务不存在',
+        })
+      }
+
+      // 验证权限
+      if (task.userId !== userId) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: '无权限操作此任务',
+        })
+      }
+
+      // 调用重试服务
+      const service = await getDigitalHumanService()
+      const retriedTask = await service.retryTask(task.id)
+
+      return retriedTask
+    }),
+
+  /**
    * 获取集的成本明细
    */
   getEpisodeCostDetail: userProcedure
@@ -3078,10 +3132,9 @@ export const studioRouter = createTRPCRouter({
           }
         }
 
-        // 收集数字人任务成本
+        // 收集数字人任务成本：只要有 duration（任务成功创建）就计费
         for (const task of shot.digitalHumanTasks) {
-          const excludedStages = ['UPLOADING_ASSETS', 'UPLOAD_FAILED', 'FACE_RECOGNITION_SUBMITTED']
-          if (task.duration && !excludedStages.includes(task.stage)) {
+          if (task.duration) {
             const cost = task.duration * 0.2
             digitalHumanCost += cost
 
@@ -3110,5 +3163,84 @@ export const studioRouter = createTRPCRouter({
         },
         details,
       }
+    }),
+
+  // ============================================
+  // 全局设定
+  // ============================================
+
+  // 获取全局设定
+  getGlobalSettings: userProcedure.query(async ({ ctx }) => {
+    const userId = ctx.userId!
+
+    // 查找用户的全局设定（存储在一个特殊的 project 中）
+    const settingsProject = await ctx.db.studioProject.findFirst({
+      where: {
+        userId,
+        slug: '__global_settings__',
+      },
+      select: {
+        config: true,
+      },
+    })
+
+    let config: { promptTemplate?: string } = {}
+    if (settingsProject?.config) {
+      try {
+        config = JSON.parse(settingsProject.config)
+      } catch (e) {
+        console.error('Failed to parse global settings config:', e)
+      }
+    }
+
+    return {
+      promptTemplate: config.promptTemplate || '',
+    }
+  }),
+
+  // 更新全局设定
+  updateGlobalSettings: userProcedure
+    .input(
+      z.object({
+        promptTemplate: z.string(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      const config = {
+        promptTemplate: input.promptTemplate,
+      }
+
+      // 查找或创建全局设定项目
+      const existingSettings = await ctx.db.studioProject.findFirst({
+        where: {
+          userId,
+          slug: '__global_settings__',
+        },
+      })
+
+      if (existingSettings) {
+        // 更新现有设定
+        await ctx.db.studioProject.update({
+          where: { id: existingSettings.id },
+          data: {
+            config: JSON.stringify(config),
+            updatedAt: new Date(),
+          },
+        })
+      } else {
+        // 创建新的设定项目
+        await ctx.db.studioProject.create({
+          data: {
+            userId,
+            name: 'Global Settings',
+            slug: '__global_settings__',
+            config: JSON.stringify(config),
+          },
+        })
+      }
+
+      return { success: true }
     }),
 })
