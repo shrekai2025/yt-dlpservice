@@ -9,23 +9,25 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ArrowLeft, Save, FileText, Target, Settings, Film, Eye, User } from 'lucide-react'
+import { ArrowLeft, Save, FileText, Target, Settings, Film, Eye, User, Sparkles } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
 import { Button } from '~/components/ui/button'
 import { Card } from '~/components/ui/card'
 import { RawInputTab } from '~/components/studio/RawInputTab'
 import { ObjectiveTab } from '~/components/studio/ObjectiveTab'
 import { SettingTab } from '~/components/studio/SettingTab'
+import { VisualPromptTab } from '~/components/studio/VisualPromptTab'
 import { ShotsTab } from '~/components/studio/ShotsTab'
 import { PreviewTab } from '~/components/studio/PreviewTab'
 import { DigitalHumanTab } from '~/components/studio/DigitalHumanTab'
 
-type WorkflowTab = 'input' | 'objective' | 'setting' | 'shots' | 'digitalhuman' | 'preview'
+type WorkflowTab = 'input' | 'objective' | 'setting' | 'visual' | 'shots' | 'digitalhuman' | 'preview'
 
 const TABS: Array<{ id: WorkflowTab; label: string; icon: any }> = [
   { id: 'input', label: '概念', icon: FileText },
   { id: 'objective', label: '设定+脚本', icon: Target },
   { id: 'setting', label: '角色', icon: Settings },
+  { id: 'visual', label: '视觉优化', icon: Sparkles },
   { id: 'shots', label: '镜头制作', icon: Film },
   { id: 'digitalhuman', label: '数字人合成', icon: User },
   { id: 'preview', label: '预览导出', icon: Eye },
@@ -48,9 +50,9 @@ export default function EpisodeWorkflowPage() {
     }
   )
 
-  // 查询项目角色列表
+  // 查询项目角色列表（只显示当前集的角色）
   const { data: characters } = api.studio.listCharacters.useQuery(
-    { projectId: episode?.project.id ?? '' },
+    { projectId: episode?.project.id ?? '', episodeId },
     { enabled: !!episode?.project.id }
   )
 
@@ -181,6 +183,7 @@ export default function EpisodeWorkflowPage() {
               <div className="max-w-4xl mx-auto">
                 <ObjectiveTab
                   episodeId={episodeId}
+                  episodeType={episode.type}
                   initialObjective={episode.objective}
                   initialObjectiveLLM={episode.objectiveLLM}
                   initialSystemPrompt={episode.systemPrompt}
@@ -208,10 +211,26 @@ export default function EpisodeWorkflowPage() {
             </div>
           )}
 
+          {activeTab === 'visual' && (
+            <div className="h-full overflow-y-auto">
+              <div className="max-w-6xl mx-auto">
+                <VisualPromptTab
+                  episodeId={episodeId}
+                  episodeType={episode.type}
+                  onSave={() => {
+                    setHasUnsavedChanges(false)
+                    void refetch()
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {activeTab === 'shots' && (
             <div className="h-full px-4 py-4">
               <ShotsTab
                 episodeId={episodeId}
+                episodeType={episode.type || 'TYPE01'}
                 projectId={episode.project.id}
                 shots={episode.shots || []}
                 characters={characters || []}

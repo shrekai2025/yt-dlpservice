@@ -59,6 +59,7 @@ async function seedAllAIProviders() {
     // JIMENG
     { provider: '即梦AI', platform: '即梦', slug: 'jimeng', modelId: 'jimeng-4.0', name: 'Jimeng 4.0', adapterName: 'Jimeng40Adapter', type: 'IMAGE', description: '文生图、图生图、图像编辑、多图组合' },
     { provider: '即梦AI', platform: '即梦', slug: 'jimeng', modelId: 'jimeng-text-to-image-v21', name: 'Jimeng 2.1 文生图', adapterName: 'JimengTextToImageAdapter', type: 'IMAGE', description: '文生图（高质量）' },
+    { provider: '即梦AI', platform: '即梦', slug: 'jimeng', modelId: 'jimeng-text-to-image-v31', name: 'Jimeng 3.1 文生图', adapterName: 'JimengTextToImageV31Adapter', type: 'IMAGE', description: '文生图3.1（画面效果升级，在美感塑造、风格精准多样及画面细节丰富度方面显著提升）' },
     { provider: '即梦AI', platform: '即梦', slug: 'jimeng', modelId: 'jimeng-video-30', name: 'Jimeng Video 3.0', adapterName: 'JimengVideo30Adapter', type: 'VIDEO', description: '文生视频、图生视频，支持1080P' },
 
     // ELEVENLABS

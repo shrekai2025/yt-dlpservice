@@ -213,15 +213,7 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
     return '50 Credits/5秒 ≈ $0.25'
   },
 
-  'kie-kling-v2-5-turbo-pro': (params) => {
-    const duration = params.duration as string || '5'
-    if (duration === '10') {
-      return '84 Credits/10秒 ≈ $0.42'
-    }
-    return '42 Credits/5秒 ≈ $0.21'
-  },
-
-  'kie-kling-v2-5-turbo-text-to-video-pro': (params) => {
+  'kie-kling-v2-5-turbo-i2v-pro': (params) => {
     const duration = params.duration as string || '5'
     if (duration === '10') {
       return '84 Credits/10秒 ≈ $0.42'
@@ -471,6 +463,33 @@ export const MODEL_PRICING_INFO: Record<string, string | ((params: Record<string
 
     const duration = frames === 121 ? '5秒' : '10秒'
     return `约 $${baseCost.toFixed(2)}/${duration} (1080P高清)`
+  },
+
+  'jimeng-text-to-image-v31': (params) => {
+    // 即梦AI文生图3.1定价
+    // 基础费用参考火山引擎官方定价
+    const width = params.width as number ?? 1328
+    const height = params.height as number ?? 1328
+
+    // 计算图片面积（像素）
+    const pixelCount = width * height
+
+    // 基础费用（根据分辨率）
+    let baseCost = 0.012 // 默认标清1K费用
+
+    if (pixelCount <= 1328 * 1328) {
+      // 标清1K（约1.76M像素）
+      baseCost = 0.012
+    } else if (pixelCount <= 2048 * 2048) {
+      // 高清2K（约4.19M像素）
+      baseCost = 0.020
+    } else {
+      // 超出2K范围
+      baseCost = 0.025
+    }
+
+    const resolution = pixelCount <= 1328 * 1328 ? '标清1K' : '高清2K'
+    return `约 $${baseCost.toFixed(3)}/张 (${width}x${height}, ${resolution})`
   },
 }
 

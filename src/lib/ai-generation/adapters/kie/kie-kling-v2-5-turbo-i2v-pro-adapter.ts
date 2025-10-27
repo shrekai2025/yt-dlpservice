@@ -1,7 +1,7 @@
 /**
- * KieKlingV25TurboProAdapter - Kie.ai Kling v2.5 Turbo Image to Video Pro
+ * KieKlingV25TurboI2VProAdapter - Kie.ai Kling v2.5 Turbo Image to Video Pro
  *
- * 对应模型: kie-kling-v2-5-turbo-pro
+ * 对应模型: kie-kling-v2-5-turbo-i2v-pro
  * 功能: 图生视频（v2.5 Turbo Pro，快速生成，专业质量）
  *
  * API文档: https://api.kie.ai/api/v1/jobs/createTask
@@ -15,7 +15,7 @@ import type {
   AdapterResponse,
 } from '../types'
 
-interface KieKlingV2TaskResponse {
+interface KieCreateTaskResponse {
   code: number
   msg: string
   data: {
@@ -23,7 +23,7 @@ interface KieKlingV2TaskResponse {
   }
 }
 
-interface KieKlingV2StatusResponse {
+interface KieTaskStatusResponse {
   code: number
   msg: string
   data: {
@@ -40,11 +40,11 @@ interface KieKlingV2StatusResponse {
   }
 }
 
-interface KieKlingV2ResultJson {
+interface KieResultJson {
   resultUrls: string[]
 }
 
-export class KieKlingV25TurboProAdapter extends BaseAdapter {
+export class KieKlingV25TurboI2VProAdapter extends BaseAdapter {
   /**
    * 调度生成请求
    */
@@ -63,7 +63,7 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         }
       }
 
-      // 验证 prompt 参数
+      // 验证必填参数: prompt
       if (!request.prompt) {
         return {
           status: 'ERROR',
@@ -76,28 +76,37 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         }
       }
 
-      // 验证输入图片 (必填)
+      // 验证必填参数: image_url
       if (!request.inputImages || request.inputImages.length === 0) {
         return {
           status: 'ERROR',
-          message: 'Input image is required',
+          message: 'Missing required parameter: image_url',
           error: {
-            code: 'MISSING_INPUT_IMAGE',
+            code: 'MISSING_PARAMETER',
             message: 'At least one input image is required for image-to-video',
             isRetryable: false,
           },
         }
       }
 
-      // 构建 input 参数对象
+      // 构建 input 对象
       const input: Record<string, unknown> = {
         prompt: request.prompt,
         image_url: request.inputImages[0], // 使用第一张图片
       }
 
-      // 可选参数: duration (5 or 10)
+      // 可选参数: duration (必须是字符串 "5" 或 "10")
       if (request.parameters?.duration) {
-        input.duration = String(request.parameters.duration)
+        const duration = request.parameters.duration
+        // 确保是字符串类型，且是有效值
+        const durationStr = String(duration)
+        if (durationStr === '5' || durationStr === '10') {
+          input.duration = durationStr
+        } else {
+          // 如果不是有效值，使用默认值
+          input.duration = '5'
+          this.log('warn', `Invalid duration value: ${duration}, using default: 5`)
+        }
       }
 
       // 可选参数: negative_prompt
@@ -113,7 +122,7 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         }
       }
 
-      // 构建完整的请求体
+      // 构建完整请求体
       const payload: Record<string, unknown> = {
         model: 'kling/v2-5-turbo-image-to-video-pro',
         input,
@@ -124,18 +133,21 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         payload.callBackUrl = request.parameters.callBackUrl
       }
 
-      this.log('info', 'Creating Kie Kling v2.5 Turbo Pro task', payload)
+      this.log('info', 'Creating Kie Kling v2.5 Turbo I2V Pro task', payload)
 
-      // 创建任务
-      const response = await this.httpClient.post<KieKlingV2TaskResponse>(
-        '/api/v1/jobs/createTask',
+      // 发送请求
+      const apiEndpoint = this.getApiEndpoint() || 'https://api.kie.ai'
+      const fullUrl = `${apiEndpoint}/api/v1/jobs/createTask`
+
+      const response = await this.post<KieCreateTaskResponse>(
+        fullUrl,
         payload,
         {
-          baseURL: this.getApiEndpoint() || 'https://api.kie.ai',
+          headers: this.getAuthHeaders(apiKey),
         }
       )
 
-      const { code, msg, data } = response.data
+      const { code, msg, data } = response
 
       if (code !== 200 || !data?.taskId) {
         return {
@@ -149,16 +161,15 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         }
       }
 
-      this.log('info', `Kling v2.5 Turbo Pro task created: ${data.taskId}`)
+      this.log('info', `Kling v2.5 Turbo I2V Pro task created: ${data.taskId}`)
 
-      // 返回异步任务
       return {
         status: 'PROCESSING',
         providerTaskId: data.taskId,
         message: 'Video generation in progress',
       }
     } catch (error: unknown) {
-      this.log('error', 'Kie Kling v2.5 Turbo Pro dispatch failed', error)
+      this.log('error', 'Kie Kling v2.5 Turbo I2V Pro dispatch failed', error)
 
       return {
         status: 'ERROR',
@@ -177,15 +188,18 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
    */
   async checkTaskStatus(taskId: string): Promise<AdapterResponse> {
     try {
-      const response = await this.httpClient.get<KieKlingV2StatusResponse>(
-        '/api/v1/jobs/recordInfo',
+      const apiKey = this.getApiKey()
+      const apiEndpoint = this.getApiEndpoint() || 'https://api.kie.ai'
+      const fullUrl = `${apiEndpoint}/api/v1/jobs/recordInfo?taskId=${taskId}`
+
+      const response = await this.get<KieTaskStatusResponse>(
+        fullUrl,
         {
-          baseURL: this.getApiEndpoint() || 'https://api.kie.ai',
-          params: { taskId },
+          headers: this.getAuthHeaders(apiKey),
         }
       )
 
-      const { code, msg, data } = response.data
+      const { code, msg, data } = response
 
       if (code !== 200 || !data) {
         return {
@@ -197,7 +211,7 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
 
       const { state, resultJson, failCode, failMsg } = data
 
-      // 等待中、排队中、生成中
+      // 处理等待/排队/生成中状态
       if (state === 'waiting' || state === 'queueing' || state === 'generating') {
         const stateMessages = {
           waiting: 'Waiting for video generation...',
@@ -211,11 +225,11 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         }
       }
 
-      // 成功
+      // 处理成功状态
       if (state === 'success' && resultJson) {
-        let parsedResult: KieKlingV2ResultJson
+        let parsedResult: KieResultJson
         try {
-          parsedResult = JSON.parse(resultJson) as KieKlingV2ResultJson
+          parsedResult = JSON.parse(resultJson) as KieResultJson
         } catch {
           return {
             status: 'ERROR',
@@ -238,7 +252,7 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         }
       }
 
-      // 失败
+      // 处理失败状态
       if (state === 'fail') {
         return {
           status: 'ERROR',
@@ -259,7 +273,7 @@ export class KieKlingV25TurboProAdapter extends BaseAdapter {
         providerTaskId: taskId,
       }
     } catch (error: unknown) {
-      this.log('error', 'Failed to check Kling v2.5 Turbo Pro task status', error)
+      this.log('error', 'Failed to check Kling v2.5 Turbo I2V Pro task status', error)
 
       return {
         status: 'ERROR',

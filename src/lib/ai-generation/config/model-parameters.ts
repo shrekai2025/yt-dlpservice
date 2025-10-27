@@ -1000,7 +1000,7 @@ export const MODEL_PARAMETERS: Record<string, ParameterField[]> = {
     },
   ],
 
-  'kie-kling-v2-5-turbo-pro': [
+  'kie-kling-v2-5-turbo-i2v-pro': [
     {
       key: 'duration',
       label: '视频时长',
@@ -1038,7 +1038,7 @@ export const MODEL_PARAMETERS: Record<string, ParameterField[]> = {
     },
   ],
 
-  'kie-kling-v2-5-turbo-text-to-video-pro': [
+  'kie-kling-v2-5-turbo-text-to-video-pro-DELETED': [
     {
       key: 'duration',
       label: '视频时长',
@@ -2026,6 +2026,63 @@ export const MODEL_PARAMETERS: Record<string, ParameterField[]> = {
         { label: '21:9 超宽屏', value: '21:9' },
       ],
       helperText: '仅文生视频支持。图生视频时由输入图片决定比例',
+    },
+  ],
+
+  // 即梦AI 文生图3.1
+  'jimeng-text-to-image-v31': [
+    {
+      key: 'width',
+      label: '图片宽度',
+      type: 'number',
+      defaultValue: 1328,
+      min: 512,
+      max: 2048,
+      helperText: '生成图像的宽度（像素）。宽高比需在1:3到3:1之间，长度在[512, 2048]之间',
+    },
+    {
+      key: 'height',
+      label: '图片高度',
+      type: 'number',
+      defaultValue: 1328,
+      min: 512,
+      max: 2048,
+      helperText: '生成图像的高度（像素）。宽高比需在1:3到3:1之间，长度在[512, 2048]之间',
+    },
+    {
+      key: 'size_preset',
+      label: '尺寸预设',
+      type: 'select',
+      defaultValue: '1328x1328',
+      options: [
+        { label: '1328x1328 (1:1) 标清1K', value: '1328x1328' },
+        { label: '1472x1104 (4:3) 标清1K', value: '1472x1104' },
+        { label: '1584x1056 (3:2) 标清1K', value: '1584x1056' },
+        { label: '1664x936 (16:9) 标清1K', value: '1664x936' },
+        { label: '2016x864 (21:9) 标清1K', value: '2016x864' },
+        { label: '2048x2048 (1:1) 高清2K', value: '2048x2048' },
+        { label: '2304x1728 (4:3) 高清2K', value: '2304x1728' },
+        { label: '2496x1664 (3:2) 高清2K', value: '2496x1664' },
+        { label: '2560x1440 (16:9) 高清2K', value: '2560x1440' },
+        { label: '3024x1296 (21:9) 高清2K', value: '3024x1296' },
+      ],
+      helperText: '选择推荐的宽高比预设，或手动设置宽度和高度',
+    },
+    {
+      key: 'use_pre_llm',
+      label: '开启文本扩写',
+      type: 'boolean',
+      defaultValue: true,
+      helperText: '针对输入prompt进行扩写优化，如果输入prompt较短建议开启，较长建议关闭',
+    },
+    {
+      key: 'seed',
+      label: '随机种子',
+      type: 'number',
+      defaultValue: -1,
+      min: -1,
+      max: 2147483647,
+      helperText: '固定种子可生成相似图片。-1表示随机。若随机种子为相同正整数且其他参数均一致，则生成图片极大概率效果一致',
     },
   ],
 

@@ -1,0 +1,91 @@
+{
+  "styleSettings": "3D动画，迪士尼风格，色彩鲜艳明亮，光影细腻",
+  "characters": [
+    {
+      "name": "Priya",
+      "appearance": "印度女特工，25岁，黑色长发扎成马尾，身材健美，穿军装迷彩服"
+    },
+    {
+      "name": "反派首领",
+      "appearance": "神秘黑衣人，戴白色面具，身材魁梧"
+    },
+    {
+      "name": "飞行员",
+      "appearance": "中年男性，制服整洁，表情严肃"
+    }
+  ],
+  "shots": [
+    {
+      "shotNumber": 1,
+      "character": "Priya",
+      "ShotSize&View": "全景 (FS) / 跟踪镜头 (Tracking Shot)",
+      "Setting&Background": "繁忙的客机客舱内部，狭窄过道，乘客惊恐四散",
+      "Composition&Position": "Priya 从座位上腾空而起，身体成弧线，双手向上伸展准备抓住起落架",
+      "Pose&Expression&Costume": "奔跑姿态，坚毅表情，眉头紧锁，全身军装迷彩服，背部印有印度国旗标志",
+      "dialogue": ""
+    },
+    {
+      "shotNumber": 2,
+      "character": "Priya",
+      "ShotSize&View": "特写 (CU)",
+      "Setting&Background": "飞机外部，万米高空，白云飘过，阳光刺眼",
+      "Composition&Position": "Priya 悬挂在起落架上，强风吹拂，身体随风摇摆",
+      "Pose&Expression&Costume": "紧张表情，牙关紧咬，双手紧紧抓住起落架，头发被强风吹起飞舞",
+      "dialogue": "我必须坚持住！绝不能放弃！"
+    },
+    {
+      "shotNumber": 3,
+      "character": "反派首领",
+      "ShotSize&View": "中景 (MS) / 低角度镜头 (Low Angle)",
+      "Setting&Background": "飞机驾驶舱内部，各种仪表盘闪烁红光，警报声响起",
+      "Composition&Position": "反派首领站在驾驶员座位后方，俯视前方，双手按在座椅靠背上",
+      "Pose&Expression&Costume": "傲慢姿态，白色面具后隐约可见邪恶笑容，黑色长袍随风飘动",
+      "dialogue": "她逃不掉的，这是她的宿命。"
+    },
+    {
+      "shotNumber": 4,
+      "character": "Priya",
+      "ShotSize&View": "远景 (LS) / 鸟瞰镜头 (Bird's Eye View)",
+      "Setting&Background": "高空俯瞰，飞机在云层中飞行，下方是蓝色海洋",
+      "Composition&Position": "Priya 从起落架上翻身，攀爬进入机舱底部的紧急舱口",
+      "Pose&Expression&Costume": "攀爬动作，肌肉紧绷，汗水滴落，迷彩服在阳光下反光",
+      "dialogue": ""
+    },
+    {
+      "shotNumber": 5,
+      "character": "飞行员",
+      "ShotSize&View": "特写 (CU)",
+      "Setting&Background": "驾驶舱内，窗外是蓝天白云，仪表盘正常运作",
+      "Composition&Position": "飞行员侧脸特写，眼睛盯着雷达显示屏，手握操纵杆",
+      "Pose&Expression&Costume": "警觉表情，眉头紧皱，制服领口扣子整齐，耳机戴在头上",
+      "dialogue": "塔台，这里是 Flight 472，请求紧急降落许可。"
+    },
+    {
+      "shotNumber": 6,
+      "character": "Priya",
+      "ShotSize&View": "中景 (MS) / 跟踪镜头 (Tracking Shot)",
+      "Setting&Background": "飞机货舱内部，昏暗狭窄，堆满行李箱和货物",
+      "Composition&Position": "Priya 从舱口落地翻滚，迅速起身拔出武器，警戒四周",
+      "Pose&Expression&Costume": "战斗姿态，双手持枪，身体微蹲，迷彩服上沾满灰尘，表情严肃",
+      "dialogue": "目标位置确认，开始行动。"
+    },
+    {
+      "shotNumber": 7,
+      "character": "反派首领",
+      "ShotSize&View": "近景 (MCU) / 荷兰角度 (Dutch Angle)",
+      "Setting&Background": "货舱深处，一个被改造的密室，墙上挂着武器和监控屏幕",
+      "Composition&Position": "反派首领转身面对监控屏幕，屏幕上显示 Priya 的位置",
+      "Pose&Expression&Costume": "冷笑姿态，一只手抚摸面具边缘，黑袍下隐约可见高科技装备",
+      "dialogue": "欢迎来到我的游戏，特工。"
+    },
+    {
+      "shotNumber": 8,
+      "character": "Priya",
+      "ShotSize&View": "全景 (FS) / 移动镜头 (Dolly In)",
+      "Setting&Background": "货舱主通道，两侧堆满货物箱，前方是密室门，门上红光闪烁",
+      "Composition&Position": "Priya 快速前进，身体贴着货物箱边缘移动，枪口始终指向前方",
+      "Pose&Expression&Costume": "潜行姿态，猫腰前进，眼神锐利扫视四周，迷彩服与阴影融为一体",
+      "dialogue": ""
+    }
+  ]
+}

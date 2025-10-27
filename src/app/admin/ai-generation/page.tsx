@@ -310,7 +310,25 @@ export default function AIGenerationPage() {
     setSelectedProviderId('')
     setSelectedModelId('')
     setParameters({})
-  }, [selectedOutputType])
+
+    // 切换到IMAGE类型时，自动选择即梦AI和jimeng 4.0
+    if (selectedOutputType === 'IMAGE' && modelsData && providersData) {
+      // 找到即梦AI供应商
+      const jimengProvider = providersData.find(p => p.name.includes('即梦'))
+      if (jimengProvider) {
+        setSelectedProviderId(jimengProvider.id)
+
+        // 找到jimeng 4.0模型
+        const jimeng4Model = modelsData.find(m =>
+          m.provider.id === jimengProvider.id &&
+          (m.name.includes('4.0') || m.apiIdentifier?.includes('v4'))
+        )
+        if (jimeng4Model) {
+          setSelectedModelId(jimeng4Model.id)
+        }
+      }
+    }
+  }, [selectedOutputType, modelsData, providersData])
 
   // 当切换供应商时重置模型
   useEffect(() => {

@@ -58,7 +58,7 @@ const STAGE_LABELS: Record<string, string> = {
 }
 
 export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
-  const [peFastMode, setPeFastMode] = useState(true) // 默认启用快速模式
+  const [peFastMode, setPeFastMode] = useState(false) // 默认不启用快速模式
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set())
   const [delayMinutes, setDelayMinutes] = useState(2) // 延迟时间（分钟），默认2分钟
   const [isBatchGenerating, setIsBatchGenerating] = useState(false)

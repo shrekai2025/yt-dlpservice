@@ -30,8 +30,7 @@ import { KieKlingV2MasterImageToVideoAdapter } from './kie/kie-kling-v2-master-i
 import { KieKlingV2MasterTextToVideoAdapter } from './kie/kie-kling-v2-master-text-to-video-adapter'
 import { KieKlingV2StandardAdapter } from './kie/kie-kling-v2-standard-adapter'
 import { KieKlingV2ProAdapter } from './kie/kie-kling-v2-pro-adapter'
-import { KieKlingV25TurboProAdapter } from './kie/kie-kling-v2-5-turbo-pro-adapter'
-import { KieKlingV25TurboTextToVideoProAdapter } from './kie/kie-kling-v2-5-turbo-text-to-video-pro-adapter'
+import { KieKlingV25TurboI2VProAdapter } from './kie/kie-kling-v2-5-turbo-i2v-pro-adapter'
 import { KieWan22A14bTextToVideoTurboAdapter } from './kie/kie-wan-2-2-a14b-text-to-video-turbo-adapter'
 import { KieWan22A14bImageToVideoTurboAdapter } from './kie/kie-wan-2-2-a14b-image-to-video-turbo-adapter'
 import { KieWan25TextToVideoAdapter } from './kie/kie-wan-2-5-text-to-video-adapter'
@@ -56,6 +55,7 @@ import { PolloKlingAdapter } from './pollo/pollo-kling-adapter'
 import { ElevenLabsTTSAdapter } from './elevenlabs/elevenlabs-tts-adapter'
 
 import { JimengTextToImageAdapter } from './jimeng/jimeng-text-to-image-adapter'
+import { JimengTextToImageV31Adapter } from './jimeng/jimeng-text-to-image-v31-adapter'
 import { Jimeng40Adapter } from './jimeng/jimeng-40-adapter'
 import { JimengVideo30Adapter } from './jimeng/jimeng-video-30-adapter'
 
@@ -90,8 +90,7 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   KieKlingV2MasterTextToVideoAdapter,
   KieKlingV2StandardAdapter,
   KieKlingV2ProAdapter,
-  KieKlingV25TurboProAdapter,
-  KieKlingV25TurboTextToVideoProAdapter,
+  KieKlingV25TurboI2VProAdapter,
   KieWan22A14bTextToVideoTurboAdapter,
   KieWan22A14bImageToVideoTurboAdapter,
   KieWan25TextToVideoAdapter,
@@ -122,6 +121,7 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
 
   // Jimeng AI (火山引擎即梦AI)
   JimengTextToImageAdapter,
+  JimengTextToImageV31Adapter,
   Jimeng40Adapter,
   JimengVideo30Adapter,
 

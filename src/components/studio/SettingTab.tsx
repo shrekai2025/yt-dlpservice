@@ -24,9 +24,9 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
   const [showLinkActorDialog, setShowLinkActorDialog] = useState(false)
   const [linkingCharacterId, setLinkingCharacterId] = useState<string | null>(null)
 
-  // 查询角色列表
+  // 查询角色列表（只显示当前集的角色）
   const { data: characters, refetch: refetchCharacters } = api.studio.listCharacters.useQuery(
-    { projectId },
+    { projectId, episodeId },
     { refetchOnWindowFocus: false }
   )
 

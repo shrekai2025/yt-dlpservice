@@ -81,9 +81,16 @@ export class KieKlingV2MasterTextToVideoAdapter extends BaseAdapter {
         prompt: request.prompt,
       }
 
-      // 可选参数: duration (5 or 10)
+      // 可选参数: duration (必须是字符串 "5" 或 "10")
       if (request.parameters?.duration) {
-        input.duration = String(request.parameters.duration)
+        const duration = request.parameters.duration
+        const durationStr = String(duration)
+        if (durationStr === '5' || durationStr === '10') {
+          input.duration = durationStr
+        } else {
+          input.duration = '5'
+          this.log('warn', `Invalid duration value: ${duration}, using default: 5`)
+        }
       }
 
       // 可选参数: aspect_ratio

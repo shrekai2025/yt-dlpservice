@@ -209,7 +209,7 @@ export class DigitalHumanService {
   /**
    * 轮询视频生成结果
    */
-  private async pollVideoGeneration(taskId: string, maxAttempts = 120) {
+  private async pollVideoGeneration(taskId: string, maxAttempts = 100) {
     for (let i = 0; i < maxAttempts; i++) {
       const result = await this.getClient().queryVideoGeneration(taskId)
 
@@ -217,8 +217,8 @@ export class DigitalHumanService {
         return result
       }
 
-      // 等待5秒后重试
-      await new Promise((resolve) => setTimeout(resolve, 5000))
+      // 等待20秒后重试
+      await new Promise((resolve) => setTimeout(resolve, 20000))
     }
 
     throw new Error('Video generation polling timeout')

@@ -38,6 +38,7 @@ export default function ProjectDetailPage() {
 
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [newEpisodeTitle, setNewEpisodeTitle] = useState('')
+  const [newEpisodeType, setNewEpisodeType] = useState<'TYPE01' | 'TYPE02' | 'TYPE03'>('TYPE01')
   const [selectedStatus, setSelectedStatus] = useState<EpisodeStatus | undefined>()
   const [editingEpisodeId, setEditingEpisodeId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
@@ -64,6 +65,7 @@ export default function ProjectDetailPage() {
     onSuccess: () => {
       setCreateDialogOpen(false)
       setNewEpisodeTitle('')
+      setNewEpisodeType('TYPE01')
       void refetch()
     },
   })
@@ -89,6 +91,7 @@ export default function ProjectDetailPage() {
     createMutation.mutate({
       projectId: project.id,
       title: newEpisodeTitle.trim() || undefined,
+      type: newEpisodeType,
     })
   }
 
@@ -330,6 +333,22 @@ export default function ProjectDetailPage() {
             <DialogTitle>新建集</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">类型</label>
+              <select
+                value={newEpisodeType}
+                onChange={(e) => setNewEpisodeType(e.target.value as 'TYPE01' | 'TYPE02' | 'TYPE03')}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+              >
+                <option value="TYPE01">Type01 - 对话为主</option>
+                <option value="TYPE02">Type02 - 故事短片</option>
+                <option value="TYPE03">Type03 - 对话为主v2.0</option>
+              </select>
+              <p className="text-xs text-gray-500">
+                {newEpisodeType === 'TYPE01' ? '适用于动作较少、台词对话为主的影片' : newEpisodeType === 'TYPE02' ? '适用于故事类短片，包含详细的镜头描述' : '对话为主的增强版，包含更详细的镜头参数（景别、构图、朝向、表情等）'}
+              </p>
+            </div>
+
             <div className="space-y-2">
               <label className="text-sm font-medium">标题(可选)</label>
               <input

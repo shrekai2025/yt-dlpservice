@@ -27,6 +27,7 @@ import { toast } from "~/components/ui/toast";
 
 type Props = {
   episodeId: string;
+  episodeType: string; // TYPE01 | TYPE02
   projectId: string;
   shots: any[];
   characters: any[];
@@ -37,6 +38,7 @@ type Props = {
 
 export function ShotsTab({
   episodeId,
+  episodeType,
   projectId,
   shots,
   characters,
@@ -205,8 +207,81 @@ export function ShotsTab({
   };
 
   // 构建完整 Prompt
-  // 格式: 当前镜头action + '说' + 当前镜头dialogue (不使用逗号分隔)
   const buildPrompt = (shot: any) => {
+    // TYPE03: 对话为主v2.0
+    if (episodeType === 'TYPE03') {
+      // 从 objective 提取 styleSettings
+      let styleSettings = '';
+      if (objective) {
+        try {
+          const extractJsonFromString = (str: string): string => {
+            const firstBrace = str.indexOf('{');
+            const lastBrace = str.lastIndexOf('}');
+            if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
+              return str;
+            }
+            return str.substring(firstBrace, lastBrace + 1);
+          };
+          const jsonStr = extractJsonFromString(objective);
+          const data = JSON.parse(jsonStr);
+          styleSettings = data.styleSettings || '';
+        } catch (e) {
+          console.error('解析 objective 失败:', e);
+        }
+      }
+
+      const parts = [
+        styleSettings,
+        shot.framing,
+        shot.cameraMovement,
+        shot.bodyOrientation,
+        shot.faceDirection,
+        shot.expression,
+        shot.action,
+        shot.dialogue ? `说"${shot.dialogue}"` : '',
+      ].filter(Boolean);
+
+      return parts.join('\n');
+    }
+
+    // TYPE02: 故事短片模式
+    if (episodeType === 'TYPE02') {
+      // 从 objective 提取 styleSettings
+      let styleSettings = '';
+      if (objective) {
+        try {
+          const extractJsonFromString = (str: string): string => {
+            const firstBrace = str.indexOf('{');
+            const lastBrace = str.lastIndexOf('}');
+            if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) {
+              return str;
+            }
+            return str.substring(firstBrace, lastBrace + 1);
+          };
+          const jsonStr = extractJsonFromString(objective);
+          const data = JSON.parse(jsonStr);
+          styleSettings = data.styleSettings || '';
+        } catch (e) {
+          console.error('解析 objective 失败:', e);
+        }
+      }
+
+      // 获取主要角色名称
+      const mainCharacterName = shot.characters?.[0]?.character?.name || '';
+
+      const parts = [
+        styleSettings,
+        shot.shotSizeView,
+        shot.settingBackground,
+        shot.compositionPosition,
+        mainCharacterName,
+        shot.poseExpressionCostume,
+      ].filter(Boolean);
+
+      return parts.join(' ');
+    }
+
+    // TYPE01: 对话为主模式（原有逻辑）
     const parts: string[] = [];
 
     shot.characters?.forEach((sc: any) => {
@@ -318,106 +393,110 @@ export function ShotsTab({
             {syncShotsMutation.isPending ? "同步中..." : "从目标同步"}
           </Button>
 
-          {/* 一键TTS按钮组 */}
-          <div className="relative">
-            <div className="flex">
-              <Button
-                onClick={() => handleBatchGenerateTTS('en')}
-                variant="default"
-                className="gap-2 rounded-r-none"
-                disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
-              >
-                <MusicIcon className="h-4 w-4" />
-                {batchGenerateTTSMutation.isPending ? "生成中..." : "一键TTS"}
-              </Button>
-              <Button
-                onClick={() => setShowTTSLanguageMenu(!showTTSLanguageMenu)}
-                variant="default"
-                className="px-2 rounded-l-none border-l border-white/20"
-                disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* 语言选择下拉菜单 */}
-            {showTTSLanguageMenu && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
-                {[
-                  { code: 'en', name: '英语' },
-                  { code: 'zh', name: '中文' },
-                  { code: 'ja', name: '日语' },
-                  { code: 'ko', name: '韩语' },
-                  { code: 'es', name: '西班牙语' },
-                  { code: 'fr', name: '法语' },
-                  { code: 'de', name: '德语' },
-                ].map((lang) => (
-                  <button
-                    key={lang.code}
-                    onClick={() => handleBatchGenerateTTS(lang.code as any)}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+          {/* TYPE01 和 TYPE03: 一键TTS按钮组 */}
+          {(episodeType === 'TYPE01' || episodeType === 'TYPE03') && (
+            <>
+              <div className="relative">
+                <div className="flex">
+                  <Button
+                    onClick={() => handleBatchGenerateTTS('en')}
+                    variant="default"
+                    className="gap-2 rounded-r-none"
+                    disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
                   >
-                    {lang.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* 音频扩展按钮组 */}
-          <div className="relative">
-            <div className="flex">
-              <Button
-                onClick={() => handleBatchExtendAudio(2)}
-                variant="outline"
-                className="gap-2 rounded-r-none"
-                disabled={batchExtendAudioMutation.isPending || shots.length === 0}
-              >
-                <MusicIcon className="h-4 w-4" />
-                {batchExtendAudioMutation.isPending ? "扩展中..." : "音频扩长度"}
-              </Button>
-              <Button
-                onClick={() => setShowAudioExtendMenu(!showAudioExtendMenu)}
-                variant="outline"
-                className="px-2 rounded-l-none border-l border-gray-300"
-                disabled={batchExtendAudioMutation.isPending || shots.length === 0}
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* 扩展时长选择下拉菜单 */}
-            {showAudioExtendMenu && (
-              <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
-                {[
-                  { duration: 0.5, label: '0.5秒' },
-                  { duration: 1, label: '1秒' },
-                  { duration: 1.5, label: '1.5秒' },
-                  { duration: 2, label: '2秒' },
-                  { duration: 2.5, label: '2.5秒' },
-                  { duration: 3, label: '3秒' },
-                ].map((option) => (
-                  <button
-                    key={option.duration}
-                    onClick={() => handleBatchExtendAudio(option.duration)}
-                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                    <MusicIcon className="h-4 w-4" />
+                    {batchGenerateTTSMutation.isPending ? "生成中..." : "一键TTS"}
+                  </Button>
+                  <Button
+                    onClick={() => setShowTTSLanguageMenu(!showTTSLanguageMenu)}
+                    variant="default"
+                    className="px-2 rounded-l-none border-l border-white/20"
+                    disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
                   >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </div>
 
-          <Button
-            onClick={handleCleanExtendedAudio}
-            variant="outline"
-            className="gap-2"
-            disabled={cleanExtendedAudioMutation.isPending}
-          >
-            <Trash2 className="h-4 w-4" />
-            清理扩音频文件
-          </Button>
+                {/* 语言选择下拉菜单 */}
+                {showTTSLanguageMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
+                    {[
+                      { code: 'en', name: '英语' },
+                      { code: 'zh', name: '中文' },
+                      { code: 'ja', name: '日语' },
+                      { code: 'ko', name: '韩语' },
+                      { code: 'es', name: '西班牙语' },
+                      { code: 'fr', name: '法语' },
+                      { code: 'de', name: '德语' },
+                    ].map((lang) => (
+                      <button
+                        key={lang.code}
+                        onClick={() => handleBatchGenerateTTS(lang.code as any)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                      >
+                        {lang.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 音频扩展按钮组 */}
+              <div className="relative">
+                <div className="flex">
+                  <Button
+                    onClick={() => handleBatchExtendAudio(2)}
+                    variant="outline"
+                    className="gap-2 rounded-r-none"
+                    disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+                  >
+                    <MusicIcon className="h-4 w-4" />
+                    {batchExtendAudioMutation.isPending ? "扩展中..." : "音频扩长度"}
+                  </Button>
+                  <Button
+                    onClick={() => setShowAudioExtendMenu(!showAudioExtendMenu)}
+                    variant="outline"
+                    className="px-2 rounded-l-none border-l border-gray-300"
+                    disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* 扩展时长选择下拉菜单 */}
+                {showAudioExtendMenu && (
+                  <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
+                    {[
+                      { duration: 0.5, label: '0.5秒' },
+                      { duration: 1, label: '1秒' },
+                      { duration: 1.5, label: '1.5秒' },
+                      { duration: 2, label: '2秒' },
+                      { duration: 2.5, label: '2.5秒' },
+                      { duration: 3, label: '3秒' },
+                    ].map((option) => (
+                      <button
+                        key={option.duration}
+                        onClick={() => handleBatchExtendAudio(option.duration)}
+                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <Button
+                onClick={handleCleanExtendedAudio}
+                variant="outline"
+                className="gap-2"
+                disabled={cleanExtendedAudioMutation.isPending}
+              >
+                <Trash2 className="h-4 w-4" />
+                清理扩音频文件
+              </Button>
+            </>
+          )}
 
           <Button
             onClick={handleCreateShot}
@@ -574,6 +653,7 @@ export function ShotsTab({
             <ShotCard
               key={shot.id}
               shot={shot}
+              episodeType={episodeType}
               characters={characters}
               isExpanded={expandedShot === shot.id}
               onToggleExpand={() =>
@@ -643,6 +723,7 @@ export function ShotsTab({
 // 单个镜头卡片组件
 function ShotCard({
   shot,
+  episodeType,
   characters,
   isExpanded,
   onToggleExpand,
@@ -655,6 +736,7 @@ function ShotCard({
   setting,
 }: {
   shot: any;
+  episodeType: string;
   characters: any[];
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -851,16 +933,15 @@ function ShotCard({
               if (audioUrl) {
                 setPreviewMedia({ type: "audio", url: audioUrl });
               } else {
-                // 音频不能直接点击添加，只显示状态
-                toast.info("请从右侧任务历史中选择音频");
+                setShowAudioUrlInput(true);
               }
             }}
             className={`h-12 w-12 border-2 rounded flex items-center justify-center transition-colors ${
               audioUrl
                 ? "border-orange-500 bg-orange-50 hover:bg-orange-100"
-                : "border-gray-300 hover:border-gray-400"
+                : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
             }`}
-            title={audioUrl ? "查看音频" : "从任务历史选择音频"}
+            title={audioUrl ? "查看音频" : "添加音频"}
           >
             {audioUrl ? (
               <MusicIcon className="h-5 w-5 text-orange-600" />
@@ -889,7 +970,238 @@ function ShotCard({
       {/* Expanded Content */}
       {isExpanded && (
         <div className="p-4 space-y-4">
-          {/* 角色管理 */}
+          {/* TYPE02: 镜头字段编辑 */}
+          {episodeType === 'TYPE02' && (
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm text-blue-700">镜头信息</h4>
+
+              {/* 景别与视角 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  景别与视角 (ShotSize & View)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.shotSizeView || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      shotSizeView: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 全景 (FS) / 跟踪镜头 (Tracking Shot)"
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 场景与背景 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  场景与背景 (Setting & Background)
+                </label>
+                <textarea
+                  defaultValue={shot.settingBackground || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      settingBackground: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 繁忙的客机客舱内部，过道"
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 构图与位置 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  构图与人物位置 (Composition & Position)
+                </label>
+                <textarea
+                  defaultValue={shot.compositionPosition || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      compositionPosition: e.target.value,
+                    })
+                  }
+                  placeholder="例如: Priya 腾空而起，双手抓住了客机收起的起落架轮胎"
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 姿势表情服装 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  姿势表情与服装 (Pose, Expression & Costume)
+                </label>
+                <textarea
+                  defaultValue={shot.poseExpressionCostume || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      poseExpressionCostume: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 奔跑，全身军装迷彩服，背部印有印度国旗"
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 台词 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  台词 (可选)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.dialogue || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      dialogue: e.target.value,
+                    })
+                  }
+                  placeholder="台词内容..."
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TYPE03: 对话为主v2.0 字段 */}
+          {episodeType === 'TYPE03' && (
+            <div className="space-y-3">
+              <h4 className="font-medium text-sm text-blue-700">镜头信息</h4>
+
+              {/* 景别 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  景别 (Framing)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.framing || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      framing: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 特写、近景、中景、全景"
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 身体朝向 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  身体朝向 (Body Orientation)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.bodyOrientation || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      bodyOrientation: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 身体正对前方、身体稍朝右、身体侧向左"
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 面部和眼神朝向 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  面部和眼神朝向 (Face Direction)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.faceDirection || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      faceDirection: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 面朝左前方，眼睛看着左前方"
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 表情描述 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  表情描述 (Expression)
+                </label>
+                <textarea
+                  defaultValue={shot.expression || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      expression: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 很高兴，显得很可爱"
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 动作描述 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  动作描述 (Action)
+                </label>
+                <textarea
+                  defaultValue={shot.action || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      action: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 边说话边在键盘上打字"
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 镜头运动 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  镜头运动 (Camera Movement)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.cameraMovement || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      cameraMovement: e.target.value,
+                    })
+                  }
+                  placeholder="例如: 镜头静止、镜头缓慢推进、跟随移动"
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* 台词 */}
+              <div>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  台词 (Dialogue)
+                </label>
+                <input
+                  type="text"
+                  defaultValue={shot.dialogue || ""}
+                  onBlur={(e) =>
+                    onUpdate({
+                      dialogue: e.target.value,
+                    })
+                  }
+                  placeholder="台词内容..."
+                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TYPE01: 角色管理 */}
+          {episodeType === 'TYPE01' && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <h4 className="font-medium">角色与台词</h4>
@@ -1030,6 +1342,7 @@ function ShotCard({
               </div>
             )}
           </div>
+          )}
 
           {/* 完整 Prompt 预览 */}
           <PromptEditor
@@ -1099,6 +1412,38 @@ function ShotCard({
                 取消
               </Button>
               <Button onClick={handleSaveVideoUrl}>保存</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* URL输入对话框 - 音频 */}
+      {showAudioUrlInput && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowAudioUrlInput(false)}
+        >
+          <div
+            className="bg-white rounded-lg p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-medium mb-4">添加音频 URL</h3>
+            <input
+              type="text"
+              value={audioUrl}
+              onChange={(e) => setAudioUrl(e.target.value)}
+              placeholder="请输入音频 URL"
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none mb-4"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowAudioUrlInput(false)}
+              >
+                取消
+              </Button>
+              <Button onClick={handleSaveAudioUrl}>保存</Button>
             </div>
           </div>
         </div>

@@ -110,13 +110,7 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
   useEffect(() => {
     if (selectedProviderId && availableModels.length > 0) {
       const savedModelId = localStorage.getItem('shot-ai-model-id')
-      // 检查保存的模型是否是 v2.5 turbo pro，如果是则清除（因为该模型不可用）
-      const savedModel = availableModels.find(m => m.id === savedModelId)
-      if (savedModel?.slug === 'kie-kling-v2-5-turbo-pro') {
-        console.warn('清除不可用的模型缓存: v2.5 turbo pro')
-        localStorage.removeItem('shot-ai-model-id')
-        setSelectedModelId(availableModels[0]!.id)
-      } else if (savedModelId && availableModels.some(m => m.id === savedModelId)) {
+      if (savedModelId && availableModels.some(m => m.id === savedModelId)) {
         setSelectedModelId(savedModelId)
       } else {
         setSelectedModelId(availableModels[0]!.id)
@@ -138,7 +132,37 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
     setSelectedProviderId('')
     setSelectedModelId('')
     setParameters({})
-  }, [selectedOutputType])
+
+    // 切换到IMAGE类型时，智能选择默认模型
+    if (selectedOutputType === 'IMAGE' && modelsData && providersData) {
+      // 优先选择 KIE + nano banana edit
+      const kieProvider = providersData.find(p => p.name.toLowerCase().includes('kie'))
+      if (kieProvider) {
+        const nanoBananaModel = modelsData.find(m =>
+          m.provider.id === kieProvider.id &&
+          (m.name.toLowerCase().includes('nano') || m.name.toLowerCase().includes('banana'))
+        )
+        if (nanoBananaModel) {
+          setSelectedProviderId(kieProvider.id)
+          setSelectedModelId(nanoBananaModel.id)
+          return
+        }
+      }
+
+      // 备选：即梦 + jimeng 4.0
+      const jimengProvider = providersData.find(p => p.name.includes('即梦'))
+      if (jimengProvider) {
+        const jimeng4Model = modelsData.find(m =>
+          m.provider.id === jimengProvider.id &&
+          (m.name.includes('4.0') || m.apiIdentifier?.includes('v4'))
+        )
+        if (jimeng4Model) {
+          setSelectedProviderId(jimengProvider.id)
+          setSelectedModelId(jimeng4Model.id)
+        }
+      }
+    }
+  }, [selectedOutputType, modelsData, providersData])
 
   // 当切换模型时初始化参数
   useEffect(() => {

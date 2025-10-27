@@ -376,6 +376,7 @@ export const studioRouter = createTRPCRouter({
       z.object({
         projectId: z.string(),
         title: z.string().optional(),
+        type: z.enum(['TYPE01', 'TYPE02', 'TYPE03']).default('TYPE01'),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -407,6 +408,7 @@ export const studioRouter = createTRPCRouter({
           projectId: input.projectId,
           episodeNumber: nextNumber,
           title: input.title,
+          type: input.type,
           setting: {
             create: {},
           },
@@ -606,7 +608,10 @@ export const studioRouter = createTRPCRouter({
 
   // 列出项目角色
   listCharacters: userProcedure
-    .input(z.object({ projectId: z.string() }))
+    .input(z.object({
+      projectId: z.string(),
+      episodeId: z.string().optional(), // 可选：按集筛选角色
+    }))
     .query(async ({ ctx, input }) => {
       const userId = ctx.userId!
 
@@ -623,7 +628,11 @@ export const studioRouter = createTRPCRouter({
       }
 
       const characters = await ctx.db.studioCharacter.findMany({
-        where: { projectId: input.projectId },
+        where: {
+          projectId: input.projectId,
+          // 如果提供了 episodeId，只返回从该集提取的角色
+          ...(input.episodeId ? { sourceEpisodeId: input.episodeId } : {}),
+        },
         include: {
           sourceActor: true,
           sourceEpisode: true,
@@ -935,6 +944,16 @@ export const studioRouter = createTRPCRouter({
         duration: z.number().optional(),
         promptText: z.string().optional(), // 镜头提示词
         notes: z.string().optional(),
+        // TYPE02 字段
+        sceneDescription: z.string().optional(),
+        soundEffect: z.string().optional(),
+        action: z.string().optional(),
+        // TYPE03 字段
+        framing: z.string().optional(),
+        bodyOrientation: z.string().optional(),
+        faceDirection: z.string().optional(),
+        expression: z.string().optional(),
+        cameraMovement: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1391,7 +1410,7 @@ export const studioRouter = createTRPCRouter({
           characters?: Array<{
             name: string
             appearance: string
-            environment: string
+            environment?: string // TYPE01 有 environment，TYPE02 没有
           }>
         }
 
@@ -1399,11 +1418,14 @@ export const studioRouter = createTRPCRouter({
           return { characters: [], created: 0 }
         }
 
+        // 根据集的类型提取不同的字段
+        const episodeType = episode.type
+
         // 将新格式的角色数据转换为内部格式
         const extractedCharacters = data.characters.map((char) => ({
           name: char.name,
-          appearance: char.appearance,
-          environment: char.environment,
+          appearance: episodeType === 'TYPE03' ? '' : (char.appearance || ''),
+          environment: episodeType === 'TYPE02' || episodeType === 'TYPE03' ? '' : (char.environment || ''),
         }))
 
         // 批量创建或更新角色
@@ -1425,7 +1447,7 @@ export const studioRouter = createTRPCRouter({
                 projectId: episode.projectId,
                 name: char.name,
                 appearancePrompt: char.appearance,
-                description: char.environment,
+                description: char.environment || '', // TYPE02 时为空
                 sourceEpisodeId: input.episodeId,
               },
             })
@@ -1436,7 +1458,7 @@ export const studioRouter = createTRPCRouter({
               where: { id: existing.id },
               data: {
                 appearancePrompt: char.appearance,
-                description: char.environment,
+                description: char.environment || '', // TYPE02 时为空
                 sourceEpisodeId: input.episodeId,
               },
             })
@@ -1578,155 +1600,492 @@ export const studioRouter = createTRPCRouter({
 
       try {
         const jsonStr = extractJsonFromString(episode.objective)
-        const data = JSON.parse(jsonStr) as {
-          shots?: Array<{
-            shotNumber: number
-            character?: string
-            action?: string
-            dialogue?: string
-          }>
-        }
 
-        if (!data.shots || data.shots.length === 0) {
-          return { shots: [], created: 0, updated: 0 }
-        }
+        // 根据集的类型解析不同的数据结构
+        const episodeType = episode.type
 
-        // 获取项目的所有角色（用于匹配）
-        const characters = await ctx.db.studioCharacter.findMany({
-          where: { projectId: episode.projectId },
-        })
+        if (episodeType === 'TYPE03') {
+          // TYPE03: 对话为主v2.0
+          const data = JSON.parse(jsonStr) as {
+            styleSettings?: string
+            shots?: Array<{
+              shotNumber: number
+              character?: string
+              framing?: string
+              composition?: string
+              bodyOrientation?: string
+              faceDirection?: string
+              expression?: string
+              action?: string
+              cameraMovement?: string
+              dialogue?: string
+            }>
+          }
 
-        const characterMap = new Map(characters.map((c) => [c.name, c.id]))
+          if (!data.shots || data.shots.length === 0) {
+            return { shots: [], created: 0, updated: 0 }
+          }
 
-        let createdCount = 0
-        let updatedCount = 0
-
-        // 辅助函数：构建镜头的 promptText
-        const buildPromptText = (shotCharacters: Array<{ action: string | null; dialogue: string | null }>): string => {
-          const parts: string[] = []
-          shotCharacters.forEach((sc) => {
-            const characterParts: string[] = []
-            if (sc.action) characterParts.push(sc.action)
-            if (sc.dialogue) characterParts.push(`说"${sc.dialogue}"`)
-            if (characterParts.length > 0) parts.push(characterParts.join(''))
-          })
-          return parts.join(' ')
-        }
-
-        // 同步每个镜头
-        for (const shotData of data.shots) {
-          // 查找现有镜头
-          const existingShot = await ctx.db.studioShot.findFirst({
-            where: {
-              episodeId: input.episodeId,
-              shotNumber: shotData.shotNumber,
-            },
+          const characters = await ctx.db.studioCharacter.findMany({
+            where: { projectId: episode.projectId },
           })
 
-          if (existingShot) {
-            // 更新现有镜头（新结构中镜头本身不再存储场景和动作信息）
-            await ctx.db.studioShot.update({
-              where: { id: existingShot.id },
-              data: {
-                name: `镜头 ${shotData.shotNumber}`,
-                dialogue: shotData.dialogue || undefined,
+          const characterMap = new Map(characters.map((c) => [c.name, c.id]))
+          const styleSettings = data.styleSettings || ''
+
+          let createdCount = 0
+          let updatedCount = 0
+
+          // 辅助函数：构建 Type03 的 promptText（用换行符连接）
+          const buildType03PromptText = (
+            styleSettings: string,
+            framing: string,
+            cameraMovement: string,
+            bodyOrientation: string,
+            faceDirection: string,
+            expression: string,
+            action: string,
+            dialogue: string
+          ): string => {
+            const parts = [
+              styleSettings,
+              framing,
+              cameraMovement,
+              bodyOrientation,
+              faceDirection,
+              expression,
+              action,
+              dialogue ? `说"${dialogue}"` : ''
+            ].filter(Boolean)
+            return parts.join('\n')
+          }
+
+          // 同步每个镜头
+          for (const shotData of data.shots) {
+            const framing = shotData.framing || ''
+            const bodyOrientation = shotData.bodyOrientation || ''
+            const faceDirection = shotData.faceDirection || ''
+            const expression = shotData.expression || ''
+            const action = shotData.action || ''
+            const cameraMovement = shotData.cameraMovement || ''
+            const characterName = shotData.character || ''
+            const dialogue = shotData.dialogue ? removeQuotes(shotData.dialogue) : undefined
+
+            const existingShot = await ctx.db.studioShot.findFirst({
+              where: {
+                episodeId: input.episodeId,
+                shotNumber: shotData.shotNumber,
               },
             })
-            updatedCount++
 
-            // 如果有角色信息，添加或更新角色到镜头
-            if (shotData.character && characterMap.has(shotData.character)) {
-              const characterId = characterMap.get(shotData.character)!
-              const cleanDialogue = shotData.dialogue ? removeQuotes(shotData.dialogue) : undefined
+            // 构建 promptText
+            const promptText = buildType03PromptText(
+              styleSettings,
+              framing,
+              cameraMovement,
+              bodyOrientation,
+              faceDirection,
+              expression,
+              action,
+              dialogue || ''
+            )
 
-              // 检查是否已添加
-              const existingChar = await ctx.db.studioShotCharacter.findFirst({
-                where: {
-                  shotId: existingShot.id,
-                  characterId,
+            if (existingShot) {
+              // 更新现有镜头
+              await ctx.db.studioShot.update({
+                where: { id: existingShot.id },
+                data: {
+                  name: `镜头 ${shotData.shotNumber}`,
+                  framing,
+                  bodyOrientation,
+                  faceDirection,
+                  expression,
+                  action,
+                  cameraMovement,
+                  dialogue,
+                  promptText,
                 },
               })
+              updatedCount++
 
-              if (existingChar) {
-                // 更新台词和动作
-                await ctx.db.studioShotCharacter.update({
-                  where: { id: existingChar.id },
-                  data: {
-                    dialogue: cleanDialogue,
-                    action: shotData.action || undefined, // 角色在此镜头的具体动作和表情
+              // 如果有角色信息，添加或更新角色到镜头
+              if (characterName && characterMap.has(characterName)) {
+                const characterId = characterMap.get(characterName)!
+
+                const existingChar = await ctx.db.studioShotCharacter.findFirst({
+                  where: {
+                    shotId: existingShot.id,
+                    characterId,
                   },
                 })
-              } else {
-                // 创建新的角色关联，包含台词和动作
+
+                if (existingChar) {
+                  await ctx.db.studioShotCharacter.update({
+                    where: { id: existingChar.id },
+                    data: { dialogue },
+                  })
+                } else {
+                  await ctx.db.studioShotCharacter.create({
+                    data: {
+                      shotId: existingShot.id,
+                      characterId,
+                      dialogue,
+                      sortOrder: 0,
+                    },
+                  })
+                }
+              }
+            } else {
+              // 创建新镜头
+              const newShot = await ctx.db.studioShot.create({
+                data: {
+                  episodeId: input.episodeId,
+                  shotNumber: shotData.shotNumber,
+                  name: `镜头 ${shotData.shotNumber}`,
+                  framing,
+                  bodyOrientation,
+                  faceDirection,
+                  expression,
+                  action,
+                  cameraMovement,
+                  dialogue,
+                  promptText,
+                },
+              })
+              createdCount++
+
+              // 如果有角色信息，创建角色关联
+              if (characterName && characterMap.has(characterName)) {
+                const characterId = characterMap.get(characterName)!
                 await ctx.db.studioShotCharacter.create({
                   data: {
+                    shotId: newShot.id,
+                    characterId,
+                    dialogue,
+                    sortOrder: 0,
+                  },
+                })
+              }
+            }
+          }
+
+          return {
+            shots: data.shots,
+            created: createdCount,
+            updated: updatedCount,
+          }
+        } else if (episodeType === 'TYPE02') {
+          // TYPE02: 故事短片模式
+          const data = JSON.parse(jsonStr) as {
+            styleSettings?: string
+            shots?: Array<{
+              shotNumber: number
+              character?: string
+              'ShotSize&View'?: string
+              'Setting&Background'?: string
+              'Composition&Position'?: string
+              'Pose&Expression&Costume'?: string
+              dialogue?: string
+            }>
+          }
+
+          if (!data.shots || data.shots.length === 0) {
+            return { shots: [], created: 0, updated: 0 }
+          }
+
+          // 获取项目的所有角色（用于匹配）
+          const characters = await ctx.db.studioCharacter.findMany({
+            where: { projectId: episode.projectId },
+          })
+
+          const characterMap = new Map(characters.map((c) => [c.name, c.id]))
+          const styleSettings = data.styleSettings || ''
+
+          let createdCount = 0
+          let updatedCount = 0
+
+          // 辅助函数：构建 Type02 的 promptText
+          const buildType02PromptText = (
+            styleSettings: string,
+            shotSizeView: string,
+            settingBackground: string,
+            compositionPosition: string,
+            characterName: string,
+            poseExpressionCostume: string
+          ): string => {
+            const parts = [
+              styleSettings,
+              shotSizeView,
+              settingBackground,
+              compositionPosition,
+              characterName,
+              poseExpressionCostume
+            ].filter(Boolean)
+            return parts.join(' ')
+          }
+
+          // 同步每个镜头
+          for (const shotData of data.shots) {
+            const shotSizeView = shotData['ShotSize&View'] || ''
+            const settingBackground = shotData['Setting&Background'] || ''
+            const compositionPosition = shotData['Composition&Position'] || ''
+            const poseExpressionCostume = shotData['Pose&Expression&Costume'] || ''
+            const characterName = shotData.character || ''
+            const dialogue = shotData.dialogue ? removeQuotes(shotData.dialogue) : undefined
+
+            // 查找现有镜头
+            const existingShot = await ctx.db.studioShot.findFirst({
+              where: {
+                episodeId: input.episodeId,
+                shotNumber: shotData.shotNumber,
+              },
+            })
+
+            // 构建 promptText
+            const promptText = buildType02PromptText(
+              styleSettings,
+              shotSizeView,
+              settingBackground,
+              compositionPosition,
+              characterName,
+              poseExpressionCostume
+            )
+
+            if (existingShot) {
+              // 更新现有镜头
+              await ctx.db.studioShot.update({
+                where: { id: existingShot.id },
+                data: {
+                  name: `镜头 ${shotData.shotNumber}`,
+                  shotSizeView,
+                  settingBackground,
+                  compositionPosition,
+                  poseExpressionCostume,
+                  dialogue,
+                  promptText,
+                },
+              })
+              updatedCount++
+
+              // 如果有角色信息，添加或更新角色到镜头
+              if (characterName && characterMap.has(characterName)) {
+                const characterId = characterMap.get(characterName)!
+
+                const existingChar = await ctx.db.studioShotCharacter.findFirst({
+                  where: {
                     shotId: existingShot.id,
+                    characterId,
+                  },
+                })
+
+                if (existingChar) {
+                  // 更新台词
+                  await ctx.db.studioShotCharacter.update({
+                    where: { id: existingChar.id },
+                    data: { dialogue },
+                  })
+                } else {
+                  // 创建新的角色关联
+                  await ctx.db.studioShotCharacter.create({
+                    data: {
+                      shotId: existingShot.id,
+                      characterId,
+                      dialogue,
+                      sortOrder: 0,
+                    },
+                  })
+                }
+              }
+            } else {
+              // 创建新镜头
+              const newShot = await ctx.db.studioShot.create({
+                data: {
+                  episodeId: input.episodeId,
+                  shotNumber: shotData.shotNumber,
+                  name: `镜头 ${shotData.shotNumber}`,
+                  shotSizeView,
+                  settingBackground,
+                  compositionPosition,
+                  poseExpressionCostume,
+                  dialogue,
+                  promptText,
+                },
+              })
+              createdCount++
+
+              // 如果有角色信息，添加角色到镜头
+              if (characterName && characterMap.has(characterName)) {
+                const characterId = characterMap.get(characterName)!
+
+                await ctx.db.studioShotCharacter.create({
+                  data: {
+                    shotId: newShot.id,
+                    characterId,
+                    dialogue,
+                    sortOrder: 0,
+                  },
+                })
+              }
+            }
+          }
+
+          return {
+            shots: data.shots,
+            created: createdCount,
+            updated: updatedCount,
+          }
+        } else {
+          // TYPE01: 对话为主模式（原有逻辑）
+          const data = JSON.parse(jsonStr) as {
+            shots?: Array<{
+              shotNumber: number
+              character?: string
+              action?: string
+              dialogue?: string
+            }>
+          }
+
+          if (!data.shots || data.shots.length === 0) {
+            return { shots: [], created: 0, updated: 0 }
+          }
+
+          // 获取项目的所有角色（用于匹配）
+          const characters = await ctx.db.studioCharacter.findMany({
+            where: { projectId: episode.projectId },
+          })
+
+          const characterMap = new Map(characters.map((c) => [c.name, c.id]))
+
+          let createdCount = 0
+          let updatedCount = 0
+
+          // 辅助函数：构建镜头的 promptText
+          const buildPromptText = (shotCharacters: Array<{ action: string | null; dialogue: string | null }>): string => {
+            const parts: string[] = []
+            shotCharacters.forEach((sc) => {
+              const characterParts: string[] = []
+              if (sc.action) characterParts.push(sc.action)
+              if (sc.dialogue) characterParts.push(`说"${sc.dialogue}"`)
+              if (characterParts.length > 0) parts.push(characterParts.join(''))
+            })
+            return parts.join(' ')
+          }
+
+          // 同步每个镜头
+          for (const shotData of data.shots) {
+            // 查找现有镜头
+            const existingShot = await ctx.db.studioShot.findFirst({
+              where: {
+                episodeId: input.episodeId,
+                shotNumber: shotData.shotNumber,
+              },
+            })
+
+            if (existingShot) {
+              // 更新现有镜头（新结构中镜头本身不再存储场景和动作信息）
+              await ctx.db.studioShot.update({
+                where: { id: existingShot.id },
+                data: {
+                  name: `镜头 ${shotData.shotNumber}`,
+                  dialogue: shotData.dialogue || undefined,
+                },
+              })
+              updatedCount++
+
+              // 如果有角色信息，添加或更新角色到镜头
+              if (shotData.character && characterMap.has(shotData.character)) {
+                const characterId = characterMap.get(shotData.character)!
+                const cleanDialogue = shotData.dialogue ? removeQuotes(shotData.dialogue) : undefined
+
+                // 检查是否已添加
+                const existingChar = await ctx.db.studioShotCharacter.findFirst({
+                  where: {
+                    shotId: existingShot.id,
+                    characterId,
+                  },
+                })
+
+                if (existingChar) {
+                  // 更新台词和动作
+                  await ctx.db.studioShotCharacter.update({
+                    where: { id: existingChar.id },
+                    data: {
+                      dialogue: cleanDialogue,
+                      action: shotData.action || undefined, // 角色在此镜头的具体动作和表情
+                    },
+                  })
+                } else {
+                  // 创建新的角色关联，包含台词和动作
+                  await ctx.db.studioShotCharacter.create({
+                    data: {
+                      shotId: existingShot.id,
+                      characterId,
+                      dialogue: cleanDialogue,
+                      action: shotData.action || undefined, // 角色在此镜头的具体动作和表情
+                      sortOrder: 0,
+                    },
+                  })
+                }
+              }
+
+              // 角色信息更新完成后，重新构建并保存 promptText
+              const shotCharacters = await ctx.db.studioShotCharacter.findMany({
+                where: { shotId: existingShot.id },
+                select: { action: true, dialogue: true },
+                orderBy: { sortOrder: 'asc' },
+              })
+              const promptText = buildPromptText(shotCharacters)
+              await ctx.db.studioShot.update({
+                where: { id: existingShot.id },
+                data: { promptText },
+              })
+            } else {
+              // 创建新镜头（新结构中镜头本身不再存储场景和动作信息）
+              const newShot = await ctx.db.studioShot.create({
+                data: {
+                  episodeId: input.episodeId,
+                  shotNumber: shotData.shotNumber,
+                  name: `镜头 ${shotData.shotNumber}`,
+                  dialogue: shotData.dialogue || undefined,
+                },
+              })
+              createdCount++
+
+              // 如果有角色信息，添加角色到镜头，包含台词和动作
+              if (shotData.character && characterMap.has(shotData.character)) {
+                const characterId = characterMap.get(shotData.character)!
+                const cleanDialogue = shotData.dialogue ? removeQuotes(shotData.dialogue) : undefined
+
+                await ctx.db.studioShotCharacter.create({
+                  data: {
+                    shotId: newShot.id,
                     characterId,
                     dialogue: cleanDialogue,
                     action: shotData.action || undefined, // 角色在此镜头的具体动作和表情
                     sortOrder: 0,
                   },
                 })
+
+                // 新镜头创建角色后，构建并保存 promptText
+                const shotCharacters = await ctx.db.studioShotCharacter.findMany({
+                  where: { shotId: newShot.id },
+                  select: { action: true, dialogue: true },
+                  orderBy: { sortOrder: 'asc' },
+                })
+                const promptText = buildPromptText(shotCharacters)
+                await ctx.db.studioShot.update({
+                  where: { id: newShot.id },
+                  data: { promptText },
+                })
               }
             }
-
-            // 角色信息更新完成后，重新构建并保存 promptText
-            const shotCharacters = await ctx.db.studioShotCharacter.findMany({
-              where: { shotId: existingShot.id },
-              select: { action: true, dialogue: true },
-              orderBy: { sortOrder: 'asc' },
-            })
-            const promptText = buildPromptText(shotCharacters)
-            await ctx.db.studioShot.update({
-              where: { id: existingShot.id },
-              data: { promptText },
-            })
-          } else {
-            // 创建新镜头（新结构中镜头本身不再存储场景和动作信息）
-            const newShot = await ctx.db.studioShot.create({
-              data: {
-                episodeId: input.episodeId,
-                shotNumber: shotData.shotNumber,
-                name: `镜头 ${shotData.shotNumber}`,
-                dialogue: shotData.dialogue || undefined,
-              },
-            })
-            createdCount++
-
-            // 如果有角色信息，添加角色到镜头，包含台词和动作
-            if (shotData.character && characterMap.has(shotData.character)) {
-              const characterId = characterMap.get(shotData.character)!
-              const cleanDialogue = shotData.dialogue ? removeQuotes(shotData.dialogue) : undefined
-
-              await ctx.db.studioShotCharacter.create({
-                data: {
-                  shotId: newShot.id,
-                  characterId,
-                  dialogue: cleanDialogue,
-                  action: shotData.action || undefined, // 角色在此镜头的具体动作和表情
-                  sortOrder: 0,
-                },
-              })
-
-              // 新镜头创建角色后，构建并保存 promptText
-              const shotCharacters = await ctx.db.studioShotCharacter.findMany({
-                where: { shotId: newShot.id },
-                select: { action: true, dialogue: true },
-                orderBy: { sortOrder: 'asc' },
-              })
-              const promptText = buildPromptText(shotCharacters)
-              await ctx.db.studioShot.update({
-                where: { id: newShot.id },
-                data: { promptText },
-              })
-            }
           }
-        }
 
-        return {
-          shots: data.shots,
-          created: createdCount,
-          updated: updatedCount,
+          return {
+            shots: data.shots,
+            created: createdCount,
+            updated: updatedCount,
+          }
         }
       } catch (error) {
         throw new TRPCError({

@@ -13,13 +13,199 @@ import {
   Edit2,
   Check,
   X,
+  Copy,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/components/providers/trpc-provider";
 import { ScriptDataViewer } from "./ScriptDataViewer";
 
+// System Prompt Templates for different episode types
+const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
+  TYPE01: `你是一个尽职尽责的脚本写作助手,专门为英语实景对话学习短片系列撰写脚本。
+任务是根据 POINT 中提到的预期视频看点,参考 RAWINPUT 中提供的相关内容,规划出本次AI短片的脚本。
+
+***
+
+## 说明:
+1. 英语实景对话学习短片系列是为了让非英语母语者轻松学习地道英语而制作的系列,每集由2个角色演绎,通过简单情景对话演示某个地道英语表达的用法。
+   例如:on the house是免单的意思;喉咙痛是have a sore throat 而不是 neck pain。
+   短片很短,每一集通常不到一分钟。
+
+2. 下面提供的 POINT 里通常包含了这一集视频的核心目标,例如学习哪个地道英语表达(英语学习要点,必须有),以及在影视演绎方面是否要求有特点,例如全部穿着动物装扮服装来演绎(可能有)等。
+
+3. RAWINPUT 里面信息非常杂乱,你只需要参考跟核心目标有关的内容(对白、场景/背景设定、戏剧性的表演桥段),其余的抛弃。不要照搬对角色衣着,需要有变化。
+
+***
+
+## 输入内容:
+
+**POINT:**
+{{point}}
+
+**RAWINPUT:**
+{{rawInput}}
+
+***
+
+## 任务要求:
+
+你必须严格按照以下JSON格式输出,不要添加任何其他文字、解释或markdown代码块标记。
+
+### JSON结构要求:
+
+1. **风格设定** (\`styleSettings\`): 描述整体视觉风格,不要出现具体场景描绘(可以写在现代与哥特风格相融合的面包店里,但不能写面包店柜台里)。例如"70年代宇宙科幻电影风格的飞船里"。需要站在AI视觉生成角度描绘,例如"这是电影镜头"、"警察执法记录仪效果"、"cosplay写真效果"、"非常随意的日常拍照记录,没有摆拍痕迹"等。
+2. **全局角色设定** (\`characters\`): 角色数组,每个角色包含:
+   - \`name\`: 角色名称(根据对话自定义名称,例如医生、患者)
+   - \`appearance\`: 角色外观设定(服装+配饰+发型+身体朝向),例如"穿着70年代星舰船员的制服,短发,佩戴通讯耳机,身体和头部微微朝左"。禁止对角色面貌和头发颜色进行描写。可以写发型,不能写颜色。
+   - \`environment\`: 角色所在场景位置,例如"站在飞船操控台前,背景是闪烁的仪表盘和星空视窗"
+3. **镜头列表** (\`shots\`): 10-14个镜头的数组,每个镜头包含:
+   - \`shotNumber\`: 镜头编号
+   - \`character\`: 角色名称
+   - \`action\`: 角色在此镜头的动作+面部朝向+表情/情绪,必须延续角色设定中的朝向,强调面部和眼神的朝向;强化 可爱、疑惑、拒绝等表演情绪,镜头没有情绪时多表达积极的情绪如很高兴很可爱(女角色);有台词时需要强调'说话'动作。例如"角色 面朝左前方,看着左前方说话。表情有些疑惑,但很可爱。双手在键盘上快速操作,表情专注","角色 面朝右前方,微笑着向客人打招呼。表情很高兴。",
+   - \`dialogue\`: 台词内容
+
+### 重要约束:
+- 脚本台词总长度:12-16句话
+- 镜头数量:10-14个
+- 每个镜头出现1个演员
+- 不同角色轮流对话
+- 每个角色外观在所有镜头中必须保持一致(可以使用相同的外观描述)
+- 必须添加对角色表情/情绪的描绘,无特殊要求时使用中性描写如"表情柔和"
+- 角色可以根据镜头需要与场景交互
+- 脚本中多个角色的appearance身体朝向不能一样,必须面对面
+
+***
+
+## 输出格式(严格遵循):
+
+{
+  "styleSettings": "风格设定描述",
+  "learningPoint": "本集的英语学习要点",
+  "characters": [
+    {
+      "name": "角色A",
+      "appearance": "角色外观设定(服装+配饰)",
+      "environment": "角色所在场景位置描述"
+    },
+    {
+      "name": "角色B",
+      "appearance": "角色外观设定(服装+配饰)",
+      "environment": "角色所在场景位置描述"
+    }
+  ],
+  "shots": [
+    {
+      "shotNumber": 1,
+      "character": "角色A",
+      "action": "角色在此镜头的动作+表情/情绪",
+      "dialogue": "台词内容"
+    }
+  ]
+}
+
+**重要:你的回复必须是且仅是一个有效的JSON对象,不要包含任何其他内容。**`,
+
+  TYPE02: '',
+
+  TYPE03: `你是一个尽职尽责的脚本写作助手,专门为英语实景对话学习短片系列撰写脚本。
+任务是根据 POINT 中提到的预期视频看点,参考 RAWINPUT 中提供的相关内容,规划出本次AI短片的脚本。
+
+***
+
+## 说明:
+1. 英语实景对话学习短片系列是为了让非英语母语者轻松学习地道英语而制作的系列,每集由2个角色演绎,通过简单情景对话演示某个地道英语表达的用法。
+   例如:on the house是免单的意思;喉咙痛是have a sore throat 而不是 neck pain。
+   短片很短,每一集通常不到一分钟。
+
+2. 下面提供的 POINT 里通常包含了这一集视频的核心目标,例如学习哪个地道英语表达(英语学习要点,必须有),以及在影视演绎方面是否要求有特点,例如全部穿着动物装扮服装来演绎(可能有)等。
+
+3. RAWINPUT 里面信息非常杂乱,你只需要参考跟核心目标有关的内容(对白、场景/背景设定、戏剧性的表演桥段),其余的抛弃。不要照搬对角色衣着,需要有变化。
+
+***
+
+## 输入内容:
+
+**POINT:**
+{{point}}
+
+**RAWINPUT:**
+{{rawInput}}
+
+***
+
+## 任务要求:
+
+你必须严格按照以下JSON格式输出,不要添加任何其他文字、解释或markdown代码块标记。
+
+### JSON结构要求:
+
+1. **风格设定** (\`styleSettings\`): 描述整体视觉风格,不要出现具体场景描绘(可以写在现代与哥特风格相融合的面包店里,但不能写面包店柜台里)。例如"70年代宇宙科幻电影风格的飞船里"。需要站在AI视觉生成角度描绘,例如"这是电影镜头"、"警察执法记录仪效果"、"cosplay写真效果"、"非常随意的日常拍照记录,没有摆拍痕迹"等。
+
+2. **全局角色设定** (\`characters\`): 角色数组,每个角色包含:
+   - \`name\`: 角色名称,根据对话自定义名称,例如医生、患者。
+
+3. **镜头列表** (\`shots\`): 9-11个镜头的数组,每个镜头包含:
+   - \`shotNumber\`: 镜头编号
+   - \`character\`: 角色名称(必须与characters中的name一致)
+   - \`framing\`: 景别,如"特写"、"近景"、"中景"、"全景"
+   - \`bodyOrientation\`: 身体朝向,必须明确,如"身体正对前方"、"身体稍朝右"、"身体侧向左"。**重要:多个角色的身体朝向必须相反,形成面对面对话的关系**
+   - \`faceDirection\`: 面部和眼神朝向,必须强调,如"面朝左前方,眼睛看着左前方"、"面朝镜头,眼神直视前方"、"面朝右,眼睛始终看着右侧"
+   - \`expression\`: 表情描述。**重要规则**:
+     * 积极表情直接表达,为女性角色增加"可爱"、"优雅"等词汇,如"很高兴,显得很可爱"
+     * 消极表情必须弱化,如"稍有些悲伤"、"稍有些恐惧但目光坚毅"
+     * 无特殊要求时使用中性描写如"表情柔和"、"神情自然"
+   - \`action\`: 角色动作描述。有台词时必须包含"说话"动作,如"边说话边键盘打字"、"一边说话一边用手势比划"
+   - \`cameraMovement\`: 镜头运动与运镜指令,如"镜头静止"、"镜头缓慢推进"、"跟随移动"
+   - \`dialogue\`: 台词内容(英文)
+
+
+### 重要约束【铁律】:
+- 脚本台词总长度:11-13句话
+- 镜头数量:9-11个
+- 每个镜头只出现1个演员
+- 不同角色轮流出现和对话
+- 每个角色外观/服装在所有镜头中必须保持完全一致,只需包含会出现在画面中的部分(如近景半身不描述裤子和鞋子)
+- 每个角色的身体朝向在每个镜头中必须保持完全一致;多个角色的身体朝向不能相同,必须形成面对面交流的关系
+- 每个镜头必须添加对角色表情/情绪的描绘
+- **【核心原则】你在镜头中描绘的是这个镜头的第一帧画面,而不是镜头中发生的全部内容。将注意力集中在第一帧的静态表现,忽略之后会发生的所有动态内容**
+
+
+***
+
+## 输出格式(严格遵循):
+
+{
+  "styleSettings": "整体视觉风格和拍摄手法描述",
+  "learningPoint": "本集的英语学习要点",
+  "characters": [
+    {
+      "name": "角色A"
+    },
+    {
+      "name": "角色B"
+    }
+  ],
+  "shots": [
+    {
+     "shotNumber": 1,
+      "character": "角色A",
+      "framing": "景别",
+      "bodyOrientation": "身体朝向",
+      "faceDirection": "面部和眼神朝向",
+      "expression": "表情描述",
+      "action": "动作描述",
+      "cameraMovement": "镜头运动",
+      "dialogue": "台词内容"
+    }
+  ]
+}
+
+**重要:你的回复必须是且仅是一个有效的JSON对象,不要包含任何其他内容。**`
+};
+
 type Props = {
   episodeId: string;
+  episodeType: string;
   initialObjective?: string | null;
   initialObjectiveLLM?: string | null;
   initialSystemPrompt?: string | null;
@@ -30,6 +216,7 @@ type Props = {
 
 export function ObjectiveTab({
   episodeId,
+  episodeType,
   initialObjective,
   initialObjectiveLLM,
   initialSystemPrompt,
@@ -229,6 +416,22 @@ export function ObjectiveTab({
     }
   };
 
+  const handleCopyTemplate = async () => {
+    const template = SYSTEM_PROMPT_TEMPLATES[episodeType] || '';
+    if (!template) {
+      alert(`暂无 ${episodeType} 类型的提示词模板`);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(template);
+      alert('提示词模板已复制到剪贴板');
+    } catch (error) {
+      console.error('复制失败:', error);
+      alert('复制失败，请手动复制');
+    }
+  };
+
   const currentProvider = providers?.find(
     (p) => p.provider === selectedProvider,
   );
@@ -341,7 +544,16 @@ export function ObjectiveTab({
 
       {/* System Prompt - 两种状态 */}
       <div className="space-y-2">
-        <label className="text-sm font-medium">System Prompt</label>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium">System Prompt</label>
+          <button
+            onClick={handleCopyTemplate}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            title="复制提示词模板"
+          >
+            <Copy className="h-3.5 w-3.5 text-gray-500" />
+          </button>
+        </div>
 
         {!isEditingPrompt ? (
           // 展示状态

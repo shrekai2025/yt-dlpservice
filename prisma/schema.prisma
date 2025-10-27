@@ -524,6 +524,7 @@ model StudioEpisode {
   projectId     String
   episodeNumber Int               // 第几集
   title         String?
+  type          String            @default("TYPE01") // TYPE01 | TYPE02
   status        String            @default("draft") // draft/in-progress/completed/archived
   rawInput      String?           // JSON: 原始输入素材
   corePoint     String?           // 核心看点
@@ -598,10 +599,29 @@ model StudioShot {
   shotNumber       Int                   // 镜头序号
   name             String?               // 镜头名称
   description      String?               // 镜头描述
+
+  // TYPE01 字段 (对话为主)
   scenePrompt      String?               // 场景描述
   actionPrompt     String?               // 动作描述
   cameraPrompt     String?               // 镜头运动 / 原始音频URL
   dialogue         String?               // 对话内容(全局)
+
+  // TYPE02 字段 (故事短片)
+  shotSizeView         String?           // 景别与视角 (例如: 全景 FS / 跟踪镜头 Tracking Shot)
+  settingBackground    String?           // 场景与镜头背景
+  compositionPosition  String?           // 构图与人物位置
+  poseExpressionCostume String?          // 姿势表情与服装
+
+  // TYPE03 字段 (对话为主v2.0)
+  framing              String?           // 景别
+  composition          String?           // 构图与人物位置
+  bodyOrientation      String?           // 身体朝向
+  faceDirection        String?           // 面部和眼神朝向
+  expression           String?           // 表情描述
+  action               String?           // 动作描述
+  cameraMovement       String?           // 镜头运动
+
+  // 通用字段
   duration         Float?                // 预期时长(秒)
   extendedAudioUrl String?               // 扩展后的音频URL (前后各增加2秒)
   promptText       String?               // 镜头提示词 (从角色动作和台词拼接而成，可编辑)
