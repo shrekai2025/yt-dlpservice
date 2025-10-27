@@ -25,13 +25,18 @@ async function generateThumbnailAtTime(
   return new Promise((resolve, reject) => {
     Logger.info(`开始生成缩略图: 视频=${videoPath}, 输出=${outputPath}, 时间=${timeInSeconds}秒`)
 
-    ffmpeg(videoPath)
-      .seekInput(timeInSeconds) // 跳转到指定时间
+    // 使用 setStartTime 方法来精确定位时间点
+    // 这个方法在 fluent-ffmpeg 中会在输入后应用 -ss，确保精确性
+    const command = ffmpeg(videoPath)
+      .setStartTime(timeInSeconds) // 精确跳转到指定时间
       .outputOptions([
         '-vframes 1', // 只提取一帧
         '-vf', `scale=${THUMBNAIL_SIZE}:-1`, // 缩放到指定宽度，高度自动
       ])
       .output(outputPath)
+      .on('start', (commandLine) => {
+        Logger.info(`FFmpeg 命令: ${commandLine}`)
+      })
       .on('end', () => {
         Logger.info(`✅ 缩略图生成成功: ${outputPath}, 时间点: ${timeInSeconds}秒`)
         resolve()
@@ -40,7 +45,8 @@ async function generateThumbnailAtTime(
         Logger.error(`❌ 缩略图生成失败: ${error.message}`)
         reject(new Error(`Failed to generate thumbnail: ${error.message}`))
       })
-      .run()
+
+    command.run()
   })
 }
 
@@ -48,6 +54,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const { fileId, timeInSeconds } = body
+
+    Logger.info(`📥 收到更新预览图请求: fileId=${fileId}, timeInSeconds=${timeInSeconds}`)
 
     // 验证参数
     if (!fileId || typeof timeInSeconds !== 'number') {
@@ -72,7 +80,9 @@ export async function POST(req: NextRequest) {
         name: true,
         type: true,
         localPath: true,
+        originalPath: true,
         sourceUrl: true,
+        source: true,
         duration: true,
         userId: true,
       },
@@ -101,16 +111,30 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // 确定视频源路径
+    // 记录文件信息用于调试
+    Logger.info(`文件信息: source=${mediaFile.source}, localPath=${mediaFile.localPath}, originalPath=${(mediaFile as any).originalPath}`)
+
+    // 确定视频源路径 - 支持多种路径来源
     let videoPath: string
     if (mediaFile.localPath) {
       videoPath = path.join(process.cwd(), mediaFile.localPath)
+      Logger.info(`使用 localPath: ${videoPath}`)
+    } else if ((mediaFile as any).originalPath) {
+      // originalPath 可以是绝对路径（LOCAL_REF）或相对路径
+      const originalPath = (mediaFile as any).originalPath
+      if (path.isAbsolute(originalPath)) {
+        videoPath = originalPath
+      } else {
+        videoPath = path.join(process.cwd(), originalPath)
+      }
+      Logger.info(`使用 originalPath: ${videoPath}`)
     } else if (mediaFile.sourceUrl) {
       return NextResponse.json(
         { success: false, error: '暂不支持从远程视频URL更新预览图，请先下载视频' },
         { status: 400 }
       )
     } else {
+      Logger.error(`无可用路径: localPath=${mediaFile.localPath}, originalPath=${(mediaFile as any).originalPath}`)
       return NextResponse.json(
         { success: false, error: '视频文件路径不存在' },
         { status: 400 }

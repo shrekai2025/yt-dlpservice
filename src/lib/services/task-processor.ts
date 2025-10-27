@@ -960,14 +960,17 @@ export class TaskProcessor {
         }
       }
 
-      Logger.info(`📝 准备创建媒体文件记录: name=${newFileName}, type=${fileType}, source=LOCAL, fileSize=${fileSize}, duration=${duration}, userId=${userId}, folderId=${folderId}`)
+      // 计算相对路径（从项目根目录）
+      const relativePath = path.relative(process.cwd(), permanentPath)
+
+      Logger.info(`📝 准备创建媒体文件记录: name=${newFileName}, type=${fileType}, source=LOCAL, fileSize=${fileSize}, duration=${duration}, originalPath=${relativePath}, userId=${userId}, folderId=${folderId}`)
 
       const mediaFile = await db.mediaFile.create({
         data: {
           name: newFileName,
           type: fileType,
           source: 'LOCAL',
-          originalPath: null, // LOCAL 类型不需要存储路径，文件在标准位置
+          originalPath: relativePath, // 存储相对路径以便访问
           fileSize: fileSize,
           duration: duration,
           userId: userId,
@@ -976,7 +979,7 @@ export class TaskProcessor {
         },
       })
 
-      Logger.info(`✅✅✅ 任务 ${taskId} 文件已成功添加到媒体浏览器: mediaFileId=${mediaFile.id}, 文件: ${newFileName}, 大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB${duration ? `, 时长: ${duration}s` : ''}`)
+      Logger.info(`✅✅✅ 任务 ${taskId} 文件已成功添加到媒体浏览器: mediaFileId=${mediaFile.id}, 文件: ${newFileName}, 路径: ${relativePath}, 大小: ${(fileSize / 1024 / 1024).toFixed(2)} MB${duration ? `, 时长: ${duration}s` : ''}`)
 
       // 异步生成缩略图
       if (fileType === 'VIDEO') {

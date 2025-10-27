@@ -957,10 +957,14 @@ export default function MediaBrowserPage() {
     if (file.type !== 'VIDEO') return null
 
     if (file.source === 'LOCAL_REF') return `/api/media-ref/${file.id}`
-    if (file.localPath && file.localPath.trim()) {
-      const localPath = file.localPath.replace('data/media-uploads/', '')
-      return `/api/media-file/${localPath}`
+
+    // 优先使用 originalPath（新逻辑），然后 localPath（旧逻辑）
+    const filePath = file.originalPath || file.localPath
+    if (filePath && filePath.trim()) {
+      const cleanPath = filePath.replace('data/media-uploads/', '')
+      return `/api/media-file/${cleanPath}`
     }
+
     if (file.sourceUrl && file.sourceUrl.trim() && file.source === 'URL') return file.sourceUrl
     return null
   }, [])

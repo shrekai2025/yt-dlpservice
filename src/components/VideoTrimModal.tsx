@@ -20,6 +20,7 @@ type VideoTrimModalProps = {
     id: string
     name: string
     localPath?: string | null
+    originalPath?: string | null
     sourceUrl?: string | null
     duration?: number | null
   }
@@ -49,13 +50,18 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null)
   const [resizeHandle, setResizeHandle] = useState<string | null>(null)
   const [isUpdatingThumbnail, setIsUpdatingThumbnail] = useState(false)
+  const [isDraggingMove, setIsDraggingMove] = useState(false) // 移动遮罩
+  const [dragType, setDragType] = useState<'create' | 'move' | 'resize' | null>(null)
 
   // 获取视频URL - 使用 useMemo 避免重复计算
-  const videoUrl = useMemo(() =>
-    videoFile.localPath
-      ? `/api/media-file/${videoFile.localPath.replace('data/media-uploads/', '')}`
-      : videoFile.sourceUrl || ''
-  , [videoFile.localPath, videoFile.sourceUrl])
+  // 优先使用 originalPath（新逻辑），然后 localPath（旧逻辑），最后 sourceUrl
+  const videoUrl = useMemo(() => {
+    const filePath = videoFile.originalPath || videoFile.localPath
+    if (filePath) {
+      return `/api/media-file/${filePath.replace('data/media-uploads/', '')}`
+    }
+    return videoFile.sourceUrl || ''
+  }, [videoFile.originalPath, videoFile.localPath, videoFile.sourceUrl])
 
   // 当视频加载完成时设置时长
   useEffect(() => {
@@ -314,40 +320,152 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
   // 处理区域选择开始
   const handleCropMouseDown = (e: React.MouseEvent) => {
     if (cropMode === 'time' || !videoRef.current) return
+    // 如果已经有裁剪区域，不要创建新的
+    if (cropArea) return
 
     e.preventDefault()
     const coords = getRelativeCoordinates(e)
     setDragStart(coords)
     setIsDraggingCrop(true)
+    setDragType('create')
     setCropArea(null) // 清除旧的裁剪区域
     setTempCropArea(null)
   }
 
-  // 处理区域选择移动
+  // 处理遮罩移动
+  const handleCropBoxMove = (e: React.MouseEvent) => {
+    if (!cropArea || !videoRef.current) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    const coords = getRelativeCoordinates(e)
+    setDragStart(coords)
+    setIsDraggingMove(true)
+    setDragType('move')
+  }
+
+  // 处理遮罩调整大小
+  const handleResizeStart = (e: React.MouseEvent, handle: string) => {
+    if (!cropArea) return
+    e.preventDefault()
+    e.stopPropagation()
+
+    const coords = getRelativeCoordinates(e)
+    setDragStart(coords)
+    setResizeHandle(handle)
+    setDragType('resize')
+  }
+
+  // 处理所有拖拽操作（创建、移动、调整大小）
   useEffect(() => {
-    if (!isDraggingCrop || !dragStart) return
+    if ((!isDraggingCrop && !isDraggingMove && !resizeHandle) || !dragStart) return
+
+    const video = videoRef.current
+    if (!video) return
 
     const handleMouseMove = (e: MouseEvent) => {
       e.preventDefault()
       const coords = getRelativeCoordinates(e)
+      const deltaX = coords.x - dragStart.x
+      const deltaY = coords.y - dragStart.y
 
-      const x = Math.min(dragStart.x, coords.x)
-      const y = Math.min(dragStart.y, coords.y)
-      const width = Math.abs(coords.x - dragStart.x)
-      const height = Math.abs(coords.y - dragStart.y)
+      if (dragType === 'create' && isDraggingCrop) {
+        // 创建新裁剪区域
+        const x = Math.min(dragStart.x, coords.x)
+        const y = Math.min(dragStart.y, coords.y)
+        const width = Math.abs(coords.x - dragStart.x)
+        const height = Math.abs(coords.y - dragStart.y)
+        setTempCropArea({ x, y, width, height })
+      } else if (dragType === 'move' && isDraggingMove && cropArea) {
+        // 移动裁剪区域 - 需要将实际坐标转换为显示坐标
+        const scaleX = video.clientWidth / video.videoWidth
+        const scaleY = video.clientHeight / video.videoHeight
+        const displayCrop = {
+          x: cropArea.x * scaleX,
+          y: cropArea.y * scaleY,
+          width: cropArea.width * scaleX,
+          height: cropArea.height * scaleY,
+        }
 
-      // 设置临时显示坐标（用于实时显示选择框）
-      setTempCropArea({ x, y, width, height })
+        // 计算新位置（限制在视频范围内）
+        const newX = Math.max(0, Math.min(displayCrop.x + deltaX, video.clientWidth - displayCrop.width))
+        const newY = Math.max(0, Math.min(displayCrop.y + deltaY, video.clientHeight - displayCrop.height))
+
+        // 转换回实际坐标并更新
+        const actualCoords = convertToVideoCoordinates(newX, newY, displayCrop.width, displayCrop.height)
+        setCropArea(actualCoords)
+        setDragStart(coords)
+      } else if (dragType === 'resize' && resizeHandle && cropArea) {
+        // 调整裁剪区域大小
+        const scaleX = video.clientWidth / video.videoWidth
+        const scaleY = video.clientHeight / video.videoHeight
+        const displayCrop = {
+          x: cropArea.x * scaleX,
+          y: cropArea.y * scaleY,
+          width: cropArea.width * scaleX,
+          height: cropArea.height * scaleY,
+        }
+
+        let newX = displayCrop.x
+        let newY = displayCrop.y
+        let newWidth = displayCrop.width
+        let newHeight = displayCrop.height
+
+        // 根据拖拽手柄调整尺寸
+        switch (resizeHandle) {
+          case 'nw': // 左上角
+            newX = Math.max(0, displayCrop.x + deltaX)
+            newY = Math.max(0, displayCrop.y + deltaY)
+            newWidth = displayCrop.width - (newX - displayCrop.x)
+            newHeight = displayCrop.height - (newY - displayCrop.y)
+            break
+          case 'ne': // 右上角
+            newY = Math.max(0, displayCrop.y + deltaY)
+            newWidth = Math.max(20, displayCrop.width + deltaX)
+            newHeight = displayCrop.height - (newY - displayCrop.y)
+            break
+          case 'sw': // 左下角
+            newX = Math.max(0, displayCrop.x + deltaX)
+            newWidth = displayCrop.width - (newX - displayCrop.x)
+            newHeight = Math.max(20, displayCrop.height + deltaY)
+            break
+          case 'se': // 右下角
+            newWidth = Math.max(20, displayCrop.width + deltaX)
+            newHeight = Math.max(20, displayCrop.height + deltaY)
+            break
+          case 'n': // 上边
+            newY = Math.max(0, displayCrop.y + deltaY)
+            newHeight = displayCrop.height - (newY - displayCrop.y)
+            break
+          case 's': // 下边
+            newHeight = Math.max(20, displayCrop.height + deltaY)
+            break
+          case 'w': // 左边
+            newX = Math.max(0, displayCrop.x + deltaX)
+            newWidth = displayCrop.width - (newX - displayCrop.x)
+            break
+          case 'e': // 右边
+            newWidth = Math.max(20, displayCrop.width + deltaX)
+            break
+        }
+
+        // 确保不超出视频边界
+        newWidth = Math.min(newWidth, video.clientWidth - newX)
+        newHeight = Math.min(newHeight, video.clientHeight - newY)
+
+        // 最小尺寸限制
+        if (newWidth >= 20 && newHeight >= 20) {
+          const actualCoords = convertToVideoCoordinates(newX, newY, newWidth, newHeight)
+          setCropArea(actualCoords)
+          setDragStart(coords)
+        }
+      }
     }
 
     const handleMouseUp = () => {
-      setIsDraggingCrop(false)
-      setDragStart(null)
-
-      // 转换为实际视频像素坐标
-      if (tempCropArea && tempCropArea.width > 10 && tempCropArea.height > 10) {
-        const video = videoRef.current
-        if (video) {
+      if (dragType === 'create' && isDraggingCrop) {
+        // 创建完成，转换为实际坐标
+        if (tempCropArea && tempCropArea.width > 10 && tempCropArea.height > 10) {
           const actualCoords = convertToVideoCoordinates(
             tempCropArea.x,
             tempCropArea.y,
@@ -355,11 +473,16 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
             tempCropArea.height
           )
           setCropArea(actualCoords)
-          setTempCropArea(null)
         }
-      } else {
         setTempCropArea(null)
       }
+
+      // 重置所有拖拽状态
+      setIsDraggingCrop(false)
+      setIsDraggingMove(false)
+      setResizeHandle(null)
+      setDragStart(null)
+      setDragType(null)
     }
 
     document.addEventListener('mousemove', handleMouseMove)
@@ -369,7 +492,7 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDraggingCrop, dragStart, tempCropArea])
+  }, [isDraggingCrop, isDraggingMove, resizeHandle, dragStart, tempCropArea, cropArea, dragType])
 
   // 重置裁剪区域
   const resetCropArea = () => {
@@ -379,18 +502,37 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
   // 选定预览图：将当前时间点的帧设置为预览图
   const handleSetThumbnail = async () => {
     try {
-      console.log('开始更新预览图:', { fileId: videoFile.id, currentTime })
+      // 直接从视频元素读取当前时间，确保准确性
+      const video = videoRef.current
+      if (!video) {
+        alert('视频未加载')
+        return
+      }
+
+      const actualCurrentTime = video.currentTime
+      console.log('开始更新预览图:', {
+        fileId: videoFile.id,
+        stateCurrentTime: currentTime,
+        videoCurrentTime: actualCurrentTime,
+        videoPaused: video.paused
+      })
       setIsUpdatingThumbnail(true)
+
+      const requestBody = {
+        fileId: videoFile.id,
+        timeInSeconds: actualCurrentTime,
+      }
+      console.log('发送请求体:', requestBody)
 
       const response = await fetch('/api/admin/media/update-thumbnail', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          fileId: videoFile.id,
-          timeInSeconds: currentTime,
-        }),
+        body: JSON.stringify(requestBody),
+      }).catch(fetchError => {
+        console.error('Fetch 错误详情:', fetchError)
+        throw new Error(`网络请求失败: ${fetchError.message}`)
       })
 
       console.log('API响应状态:', response.status, response.statusText)
@@ -398,7 +540,7 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
       if (!response.ok) {
         const errorText = await response.text()
         console.error('API错误响应:', errorText)
-        throw new Error(`更新预览图失败: ${response.status}`)
+        throw new Error(`更新预览图失败: ${response.status} - ${errorText}`)
       }
 
       const result = await response.json()
@@ -429,6 +571,8 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
       // 根据模式选择不同的 API
       if (cropMode === 'time') {
         // 纯时间裁剪
+        console.log('发送时间裁剪请求:', { fileId: videoFile.id, startTime, endTime })
+
         const response = await fetch('/api/admin/media/trim-video', {
           method: 'POST',
           headers: {
@@ -439,13 +583,21 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
             startTime,
             endTime,
           }),
+        }).catch(fetchError => {
+          console.error('Fetch 错误:', fetchError)
+          throw new Error(`网络请求失败: ${fetchError.message}`)
         })
 
+        console.log('API 响应状态:', response.status, response.statusText)
+
         if (!response.ok) {
-          throw new Error('视频裁剪失败')
+          const errorText = await response.text()
+          console.error('API 错误响应:', errorText)
+          throw new Error(`视频裁剪失败 (${response.status}): ${errorText}`)
         }
 
         const result = await response.json()
+        console.log('API 响应结果:', result)
 
         if (result.success) {
           onTrimComplete()
@@ -471,19 +623,29 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
           requestBody.endTime = endTime
         }
 
+        console.log('发送区域裁剪请求:', requestBody)
+
         const response = await fetch('/api/admin/media/crop-video', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(requestBody),
+        }).catch(fetchError => {
+          console.error('Fetch 错误:', fetchError)
+          throw new Error(`网络请求失败: ${fetchError.message}`)
         })
 
+        console.log('API 响应状态:', response.status, response.statusText)
+
         if (!response.ok) {
-          throw new Error('视频裁剪失败')
+          const errorText = await response.text()
+          console.error('API 错误响应:', errorText)
+          throw new Error(`视频裁剪失败 (${response.status}): ${errorText}`)
         }
 
         const result = await response.json()
+        console.log('API 响应结果:', result)
 
         if (result.success) {
           onTrimComplete()
@@ -494,7 +656,7 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
       }
     } catch (error) {
       console.error('视频裁剪错误:', error)
-      alert('视频裁剪失败，请重试')
+      alert(`视频裁剪失败: ${error instanceof Error ? error.message : '请重试'}`)
     } finally {
       setIsProcessing(false)
     }
@@ -610,19 +772,69 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
 
               return displayCrop ? (
                 <div
-                  className="absolute border-2 border-white bg-white bg-opacity-25 pointer-events-none"
+                  className="absolute border-2 border-orange-500"
                   style={{
                     left: `${videoOffsetX + displayCrop.x}px`,
                     top: `${videoOffsetY + displayCrop.y}px`,
                     width: `${displayCrop.width}px`,
                     height: `${displayCrop.height}px`,
+                    backgroundColor: 'rgba(255, 87, 34, 0.2)', // 橘红色 20% 不透明度
+                    pointerEvents: cropArea ? 'auto' : 'none', // 只有确定的裁剪区域才能交互
+                    cursor: cropArea ? 'move' : 'default',
+                  }}
+                  onMouseDown={(e) => {
+                    if (cropArea) {
+                      e.stopPropagation()
+                      handleCropBoxMove(e)
+                    }
                   }}
                 >
-                  {/* 裁剪框四角标记 */}
-                  <div className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-blue-500 rounded-full" />
-                  <div className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-blue-500 rounded-full" />
-                  <div className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border-2 border-blue-500 rounded-full" />
-                  <div className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border-2 border-blue-500 rounded-full" />
+                  {/* 裁剪框四角拖拽手柄 */}
+                  {cropArea && (
+                    <>
+                      <div
+                        className="absolute -top-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-orange-500 rounded-full cursor-nwse-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'nw')}
+                      />
+                      <div
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-orange-500 rounded-full cursor-nesw-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'ne')}
+                      />
+                      <div
+                        className="absolute -bottom-1.5 -left-1.5 w-4 h-4 bg-white border-2 border-orange-500 rounded-full cursor-nesw-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'sw')}
+                      />
+                      <div
+                        className="absolute -bottom-1.5 -right-1.5 w-4 h-4 bg-white border-2 border-orange-500 rounded-full cursor-nwse-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'se')}
+                      />
+                      {/* 四条边的拖拽手柄 */}
+                      <div
+                        className="absolute -top-1 left-1/2 -translate-x-1/2 w-8 h-2 bg-white border border-orange-500 rounded cursor-ns-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'n')}
+                      />
+                      <div
+                        className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-8 h-2 bg-white border border-orange-500 rounded cursor-ns-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 's')}
+                      />
+                      <div
+                        className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-8 bg-white border border-orange-500 rounded cursor-ew-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'w')}
+                      />
+                      <div
+                        className="absolute -right-1 top-1/2 -translate-y-1/2 w-2 h-8 bg-white border border-orange-500 rounded cursor-ew-resize z-10"
+                        style={{ pointerEvents: 'auto' }}
+                        onMouseDown={(e) => handleResizeStart(e, 'e')}
+                      />
+                    </>
+                  )}
                 </div>
               ) : null
             })()}

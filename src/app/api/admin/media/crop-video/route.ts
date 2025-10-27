@@ -104,13 +104,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 获取原文件路径
+    // 记录文件信息用于调试
+    Logger.info(`文件信息: source=${originalFile.source}, localPath=${originalFile.localPath}, originalPath=${originalFile.originalPath}`)
+
+    // 获取原文件路径 - 支持多种路径来源
     let inputPath: string
     if (originalFile.localPath) {
       inputPath = path.join(process.cwd(), originalFile.localPath)
-    } else if (originalFile.originalPath && originalFile.source === 'LOCAL_REF') {
-      inputPath = originalFile.originalPath
+      Logger.info(`使用 localPath: ${inputPath}`)
+    } else if (originalFile.originalPath) {
+      // originalPath 可以是绝对路径（LOCAL_REF）或相对路径
+      if (path.isAbsolute(originalFile.originalPath)) {
+        inputPath = originalFile.originalPath
+      } else {
+        inputPath = path.join(process.cwd(), originalFile.originalPath)
+      }
+      Logger.info(`使用 originalPath: ${inputPath}`)
     } else {
+      Logger.error(`无可用路径: localPath=${originalFile.localPath}, originalPath=${originalFile.originalPath}`)
       return NextResponse.json(
         {
           success: false,
