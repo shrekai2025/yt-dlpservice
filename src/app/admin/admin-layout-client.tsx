@@ -144,7 +144,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <aside
         className={cn(
           'flex shrink-0 flex-col border-r border-neutral-200 bg-white/95 pb-6 pt-8 max-h-screen overflow-y-auto transition-all duration-300',
-          isSidebarCollapsed ? 'w-16' : 'w-56'
+          isSidebarCollapsed ? 'w-11' : 'w-40'
         )}
       >
         <div className={cn('px-6', isSidebarCollapsed && 'px-4')}>

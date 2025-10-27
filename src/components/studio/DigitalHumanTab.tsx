@@ -20,6 +20,7 @@ import {
   Volume2,
   PlayCircle,
   RefreshCw,
+  Save,
 } from 'lucide-react'
 import { toast } from '~/components/ui/toast'
 
@@ -95,8 +96,38 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
     },
   })
 
+  const saveToMediaBrowserMutation = api.mediaBrowser.downloadAndSaveUrl.useMutation({
+    onSuccess: (data) => {
+      toast.success(`已下载并保存: ${data.fileName}`)
+    },
+    onError: (error) => {
+      toast.error(`保存失败: ${error.message}`)
+    },
+  })
+
   const handleGenerate = (shotId: string) => {
     createTaskMutation.mutate({ shotId, peFastMode })
+  }
+
+  // 存媒体到媒体浏览器（只在有且仅有一个演员时可用）
+  const handleSaveToMedia = (url: string, shot: any) => {
+    // 必须有且只有一个演员
+    if (!shot.characters || shot.characters.length !== 1) {
+      return
+    }
+
+    const firstCharacter = shot.characters[0]
+    const actorId = firstCharacter?.character?.sourceActorId
+
+    if (!actorId) {
+      toast.error('演员未关联sourceActorId')
+      return
+    }
+
+    saveToMediaBrowserMutation.mutate({
+      url,
+      actorId,
+    })
   }
 
   // 切换镜头选中状态
@@ -542,14 +573,36 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
                           <PlayCircle className="h-8 w-8 text-white" />
                         </div>
                       </a>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-700 mb-1 flex items-center">
-                          <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1" />
-                          生成完成
-                        </p>
-                        <p className="text-xs text-gray-500 truncate">
-                          点击预览窗口在新标签页查看视频
-                        </p>
+                      <div className="flex-1 min-w-0 space-y-2">
+                        <div>
+                          <p className="text-xs font-medium text-gray-700 mb-1 flex items-center">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1" />
+                            生成完成
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">
+                            点击预览窗口在新标签页查看视频
+                          </p>
+                        </div>
+                        {/* 存媒体按钮 */}
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveToMedia(task.resultVideoUrl!, shot)}
+                            disabled={saveToMediaBrowserMutation.isPending}
+                            className="h-7 text-xs"
+                            title={
+                              !shot.characters || shot.characters.length === 0
+                                ? "镜头无演员，点击查看详情"
+                                : shot.characters.length > 1
+                                ? "镜头有多个演员，点击查看详情"
+                                : "保存到媒体浏览器"
+                            }
+                          >
+                            <Save className="h-3 w-3 mr-1" />
+                            存媒体
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   )}

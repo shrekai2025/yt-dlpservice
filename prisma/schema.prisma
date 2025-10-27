@@ -285,6 +285,7 @@ model DigitalHumanTask {
   name                      String               // 任务名称
   imageUrl                  String               // 输入图片URL
   audioUrl                  String               // 输入音频URL
+  duration                  Float?               // 音频时长（秒）
   maskUrls                  String?              // JSON: 检测到的主体mask URL数组
   selectedMaskIndex         Int?                 // 用户选择的mask索引
   prompt                    String?              // 提示词
@@ -531,6 +532,9 @@ model StudioEpisode {
   objective     String?           // 目标确定结果
   objectiveLLM  String?           // 使用的LLM记录(JSON)
   systemPrompt  String?           // 目标确定的 System Prompt
+  shotCount     String?           // 镜头数量范围，如 "8-10"
+  dialogueCount String?           // 台词数量范围，如 "10-12"
+  characterCount String?          // 演员数量，如 "2"
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   archivedAt    DateTime?

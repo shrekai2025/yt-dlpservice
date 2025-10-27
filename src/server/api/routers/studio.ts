@@ -301,6 +301,21 @@ export const studioRouter = createTRPCRouter({
                 shots: true,
               },
             },
+            shots: {
+              include: {
+                generationTasks: {
+                  select: {
+                    costUSD: true,
+                  },
+                },
+                digitalHumanTasks: {
+                  select: {
+                    duration: true,
+                    stage: true,
+                  },
+                },
+              },
+            },
           },
           skip: (page - 1) * pageSize,
           take: pageSize,
@@ -309,8 +324,41 @@ export const studioRouter = createTRPCRouter({
         ctx.db.studioEpisode.count({ where }),
       ])
 
+      // 计算每个集的成本
+      const episodesWithCost = episodes.map((episode) => {
+        let totalCost = 0
+
+        if (episode.shots && Array.isArray(episode.shots)) {
+          for (const shot of episode.shots) {
+            // AI 生成任务成本
+            if (shot.generationTasks && Array.isArray(shot.generationTasks)) {
+              for (const task of shot.generationTasks) {
+                totalCost += task.costUSD || 0
+              }
+            }
+
+            // 数字人任务成本
+            if (shot.digitalHumanTasks && Array.isArray(shot.digitalHumanTasks)) {
+              for (const task of shot.digitalHumanTasks) {
+                const excludedStages = ['UPLOADING_ASSETS', 'UPLOAD_FAILED', 'FACE_RECOGNITION_SUBMITTED']
+                if (task.duration && !excludedStages.includes(task.stage)) {
+                  totalCost += task.duration * 0.2
+                }
+              }
+            }
+          }
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { shots, ...episodeWithoutShots } = episode
+        return {
+          ...episodeWithoutShots,
+          totalCost,
+        }
+      })
+
       return {
-        episodes,
+        episodes: episodesWithCost,
         pagination: {
           page,
           pageSize,
@@ -433,6 +481,9 @@ export const studioRouter = createTRPCRouter({
         objective: z.string().optional(),
         objectiveLLM: z.string().optional(),
         systemPrompt: z.string().optional(),
+        shotCount: z.string().optional(),
+        dialogueCount: z.string().optional(),
+        characterCount: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1608,6 +1659,11 @@ export const studioRouter = createTRPCRouter({
           // TYPE03: 对话为主v2.0
           const data = JSON.parse(jsonStr) as {
             styleSettings?: string
+            characters?: Array<{
+              name: string
+              appearance?: string
+              environment?: string
+            }>
             shots?: Array<{
               shotNumber: number
               character?: string
@@ -1624,6 +1680,41 @@ export const studioRouter = createTRPCRouter({
 
           if (!data.shots || data.shots.length === 0) {
             return { shots: [], created: 0, updated: 0 }
+          }
+
+          // 同步角色信息
+          if (data.characters && data.characters.length > 0) {
+            for (const charData of data.characters) {
+              const existingChar = await ctx.db.studioCharacter.findFirst({
+                where: {
+                  projectId: episode.projectId,
+                  name: charData.name,
+                },
+              })
+
+              if (existingChar) {
+                // 更新现有角色
+                await ctx.db.studioCharacter.update({
+                  where: { id: existingChar.id },
+                  data: {
+                    appearancePrompt: charData.appearance || existingChar.appearancePrompt,
+                    description: charData.environment || existingChar.description,
+                    sourceEpisodeId: input.episodeId,
+                  },
+                })
+              } else {
+                // 创建新角色
+                await ctx.db.studioCharacter.create({
+                  data: {
+                    projectId: episode.projectId,
+                    name: charData.name,
+                    appearancePrompt: charData.appearance,
+                    description: charData.environment,
+                    sourceEpisodeId: input.episodeId,
+                  },
+                })
+              }
+            }
           }
 
           const characters = await ctx.db.studioCharacter.findMany({
@@ -2904,5 +2995,120 @@ export const studioRouter = createTRPCRouter({
       })
 
       return task
+    }),
+
+  /**
+   * 获取集的成本明细
+   */
+  getEpisodeCostDetail: userProcedure
+    .input(z.object({ episodeId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      // 验证权限
+      const episode = await ctx.db.studioEpisode.findFirst({
+        where: {
+          id: input.episodeId,
+          project: { userId },
+        },
+        include: {
+          shots: {
+            include: {
+              generationTasks: {
+                include: {
+                  model: {
+                    include: {
+                      provider: true,
+                    },
+                  },
+                },
+                orderBy: { createdAt: 'desc' },
+              },
+              digitalHumanTasks: {
+                orderBy: { createdAt: 'desc' },
+              },
+            },
+          },
+        },
+      })
+
+      if (!episode) {
+        throw new TRPCError({
+          code: 'NOT_FOUND',
+          message: '集不存在',
+        })
+      }
+
+      // 计算成本汇总和明细
+      let imageCost = 0
+      let videoCost = 0
+      let audioCost = 0
+      let digitalHumanCost = 0
+      const details: Array<{
+        createdAt: Date
+        type: string
+        provider: string
+        model: string
+        taskId: string
+        cost: number
+      }> = []
+
+      // 收集 AI 生成任务成本
+      for (const shot of episode.shots) {
+        for (const task of shot.generationTasks) {
+          const cost = task.costUSD || 0
+          if (cost > 0) {
+            const type = task.model?.outputType || 'IMAGE'
+            if (type === 'IMAGE') {
+              imageCost += cost
+            } else if (type === 'VIDEO') {
+              videoCost += cost
+            } else if (type === 'AUDIO') {
+              audioCost += cost
+            }
+
+            details.push({
+              createdAt: task.createdAt,
+              type,
+              provider: task.model?.provider?.name || '未知',
+              model: task.model?.name || '未知',
+              taskId: task.id,
+              cost,
+            })
+          }
+        }
+
+        // 收集数字人任务成本
+        for (const task of shot.digitalHumanTasks) {
+          const excludedStages = ['UPLOADING_ASSETS', 'UPLOAD_FAILED', 'FACE_RECOGNITION_SUBMITTED']
+          if (task.duration && !excludedStages.includes(task.stage)) {
+            const cost = task.duration * 0.2
+            digitalHumanCost += cost
+
+            details.push({
+              createdAt: task.createdAt,
+              type: 'DIGITAL_HUMAN',
+              provider: '即梦AI',
+              model: '数字人合成',
+              taskId: task.id,
+              cost,
+            })
+          }
+        }
+      }
+
+      // 按时间倒序排序
+      details.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+
+      return {
+        summary: {
+          imageCost,
+          videoCost,
+          audioCost,
+          digitalHumanCost,
+          totalCost: imageCost + videoCost + audioCost + digitalHumanCost,
+        },
+        details,
+      }
     }),
 })

@@ -3,7 +3,7 @@
  * 核心功能: 创建镜头、添加角色、生成AI首帧和动画
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Plus,
   Trash2,
@@ -19,10 +19,20 @@ import {
   Copy,
   X,
   ChevronRight,
+  Eye,
+  CloudUpload,
+  FileImage,
+  ChevronLeft,
+  FastForward,
+  Rewind,
+  UserCircle,
+  Loader2,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/components/providers/trpc-provider";
-import { ShotAIGenerationPanel } from "./ShotAIGenerationPanel";
+import { ShotAIGenerationPanel, type ShotAIGenerationPanelRef } from "./ShotAIGenerationPanel";
+import { ShotTaskHistory } from "./ShotTaskHistory";
 import { toast } from "~/components/ui/toast";
 
 type Props = {
@@ -54,11 +64,36 @@ export function ShotsTab({
     type: "success" | "error";
     message: string;
   } | null>(null);
-  const [isSceneDescriptionExpanded, setIsSceneDescriptionExpanded] =
-    useState(false);
-  const [isActorsExpanded, setIsActorsExpanded] = useState(false);
   const [showTTSLanguageMenu, setShowTTSLanguageMenu] = useState(false);
   const [showAudioExtendMenu, setShowAudioExtendMenu] = useState(false);
+
+  // Ref to access ShotAIGenerationPanel methods
+  const shotAIGenerationPanelRef = useRef<ShotAIGenerationPanelRef>(null);
+
+  // 数字人任务轮询 - 检查是否有正在处理的任务，每30秒刷新一次
+  useEffect(() => {
+    const hasProcessingDigitalHuman = shots.some((shot) => {
+      const latestTask = shot.digitalHumanTasks?.[0];
+      return latestTask && [
+        'UPLOADING_ASSETS',
+        'FACE_RECOGNITION_SUBMITTED',
+        'FACE_RECOGNITION_PROCESSING',
+        'FACE_RECOGNITION_COMPLETED',
+        'SUBJECT_DETECTION_COMPLETED',
+        'AWAITING_SUBJECT_SELECTION',
+        'VIDEO_GENERATION_SUBMITTED',
+        'VIDEO_GENERATION_PROCESSING',
+      ].includes(latestTask.stage);
+    });
+
+    if (!hasProcessingDigitalHuman) return;
+
+    const timer = setInterval(() => {
+      onRefresh?.();
+    }, 30000); // 30秒
+
+    return () => clearInterval(timer);
+  }, [shots, onRefresh]);
 
   // Mutations
   const createShotMutation = api.studio.createShot.useMutation({
@@ -344,8 +379,8 @@ export function ShotsTab({
             objectiveData.styleSettings,
             "角色",
             char.appearance,
-            "摄像机拍摄微微侧面",
             char.environment,
+            "摄像机拍摄微微侧面",
           ];
           return {
             characterName: char.name,
@@ -370,267 +405,142 @@ export function ShotsTab({
   const sceneDescriptions = getFullSceneDescription();
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 h-full">
+    <div className="flex flex-col lg:flex-row gap-2 h-full">
       {/* 左侧：镜头列表 */}
-      <div className="w-full lg:w-1/2 flex flex-col space-y-4 overflow-y-auto pr-4">
-        {/* 标题区域 */}
-        <div>
-          <h2 className="text-lg font-semibold">镜头制作</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            创建镜头,添加角色和台词,生成 AI 首帧和动画
-          </p>
-        </div>
-
+      <div className="w-full lg:w-1/2 xl:flex-1 flex flex-col space-y-2 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden">
         {/* 按钮操作区域 */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           <Button
             onClick={handleSyncFromObjective}
             variant="outline"
-            className="gap-2"
+            size="sm"
+            className="gap-1"
             disabled={syncShotsMutation.isPending}
           >
-            <RefreshCw className="h-4 w-4" />
-            {syncShotsMutation.isPending ? "同步中..." : "从目标同步"}
+            <RefreshCw className="h-3 w-3" />
+            {syncShotsMutation.isPending ? "同步中..." : "同步"}
           </Button>
-
-          {/* TYPE01 和 TYPE03: 一键TTS按钮组 */}
-          {(episodeType === 'TYPE01' || episodeType === 'TYPE03') && (
-            <>
-              <div className="relative">
-                <div className="flex">
-                  <Button
-                    onClick={() => handleBatchGenerateTTS('en')}
-                    variant="default"
-                    className="gap-2 rounded-r-none"
-                    disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
-                  >
-                    <MusicIcon className="h-4 w-4" />
-                    {batchGenerateTTSMutation.isPending ? "生成中..." : "一键TTS"}
-                  </Button>
-                  <Button
-                    onClick={() => setShowTTSLanguageMenu(!showTTSLanguageMenu)}
-                    variant="default"
-                    className="px-2 rounded-l-none border-l border-white/20"
-                    disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* 语言选择下拉菜单 */}
-                {showTTSLanguageMenu && (
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
-                    {[
-                      { code: 'en', name: '英语' },
-                      { code: 'zh', name: '中文' },
-                      { code: 'ja', name: '日语' },
-                      { code: 'ko', name: '韩语' },
-                      { code: 'es', name: '西班牙语' },
-                      { code: 'fr', name: '法语' },
-                      { code: 'de', name: '德语' },
-                    ].map((lang) => (
-                      <button
-                        key={lang.code}
-                        onClick={() => handleBatchGenerateTTS(lang.code as any)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
-                      >
-                        {lang.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* 音频扩展按钮组 */}
-              <div className="relative">
-                <div className="flex">
-                  <Button
-                    onClick={() => handleBatchExtendAudio(2)}
-                    variant="outline"
-                    className="gap-2 rounded-r-none"
-                    disabled={batchExtendAudioMutation.isPending || shots.length === 0}
-                  >
-                    <MusicIcon className="h-4 w-4" />
-                    {batchExtendAudioMutation.isPending ? "扩展中..." : "音频扩长度"}
-                  </Button>
-                  <Button
-                    onClick={() => setShowAudioExtendMenu(!showAudioExtendMenu)}
-                    variant="outline"
-                    className="px-2 rounded-l-none border-l border-gray-300"
-                    disabled={batchExtendAudioMutation.isPending || shots.length === 0}
-                  >
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* 扩展时长选择下拉菜单 */}
-                {showAudioExtendMenu && (
-                  <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
-                    {[
-                      { duration: 0.5, label: '0.5秒' },
-                      { duration: 1, label: '1秒' },
-                      { duration: 1.5, label: '1.5秒' },
-                      { duration: 2, label: '2秒' },
-                      { duration: 2.5, label: '2.5秒' },
-                      { duration: 3, label: '3秒' },
-                    ].map((option) => (
-                      <button
-                        key={option.duration}
-                        onClick={() => handleBatchExtendAudio(option.duration)}
-                        className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <Button
-                onClick={handleCleanExtendedAudio}
-                variant="outline"
-                className="gap-2"
-                disabled={cleanExtendedAudioMutation.isPending}
-              >
-                <Trash2 className="h-4 w-4" />
-                清理扩音频文件
-              </Button>
-            </>
-          )}
 
           <Button
             onClick={handleCreateShot}
-            className="gap-2"
+            size="sm"
+            className="gap-1"
             disabled={createShotMutation.isPending}
           >
-            <Plus className="h-4 w-4" />
-            添加镜头
+            <Plus className="h-3 w-3" />
+            添加
           </Button>
+
+          {shots.length > 0 && (
+            <>
+              <Button
+                onClick={() => {
+                  const currentIndex = shots.findIndex(s => s.id === expandedShot);
+                  if (currentIndex === -1) return;
+
+                  const currentShot = shots[currentIndex];
+                  const currentCharacterIds = new Set(
+                    currentShot?.characters?.map((sc: any) => sc.character.id) || []
+                  );
+
+                  // 找到最近的前一个有相同演员的镜头
+                  for (let i = currentIndex - 1; i >= 0; i--) {
+                    const shot = shots[i];
+                    const shotCharacterIds = shot?.characters?.map((sc: any) => sc.character.id) || [];
+                    const hasCommonCharacter = shotCharacterIds.some((id: string) => currentCharacterIds.has(id));
+
+                    if (hasCommonCharacter) {
+                      setExpandedShot(shot.id);
+                      return;
+                    }
+                  }
+                  toast.info('前面没有相同演员的镜头');
+                }}
+                disabled={!expandedShot}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                title="跳转到前一个有相同演员的镜头"
+              >
+                <Rewind className="h-3 w-3" />
+                连前
+              </Button>
+              <Button
+                onClick={() => {
+                  const currentIndex = shots.findIndex(s => s.id === expandedShot);
+                  if (currentIndex > 0) {
+                    setExpandedShot(shots[currentIndex - 1].id);
+                  } else if (currentIndex === -1 && shots.length > 0) {
+                    setExpandedShot(shots[0].id);
+                  }
+                }}
+                disabled={!expandedShot || shots.findIndex(s => s.id === expandedShot) === 0}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                title="前镜头"
+              >
+                <ChevronLeft className="h-3 w-3" />
+                前
+              </Button>
+              <Button
+                onClick={() => {
+                  const currentIndex = shots.findIndex(s => s.id === expandedShot);
+                  if (currentIndex >= 0 && currentIndex < shots.length - 1) {
+                    setExpandedShot(shots[currentIndex + 1].id);
+                  } else if (currentIndex === -1 && shots.length > 0) {
+                    setExpandedShot(shots[0].id);
+                  }
+                }}
+                disabled={!expandedShot || shots.findIndex(s => s.id === expandedShot) === shots.length - 1}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                title="后镜头"
+              >
+                后
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+              <Button
+                onClick={() => {
+                  const currentIndex = shots.findIndex(s => s.id === expandedShot);
+                  if (currentIndex === -1) return;
+
+                  const currentShot = shots[currentIndex];
+                  const currentCharacterIds = new Set(
+                    currentShot?.characters?.map((sc: any) => sc.character.id) || []
+                  );
+
+                  // 找到最近的后一个有相同演员的镜头
+                  for (let i = currentIndex + 1; i < shots.length; i++) {
+                    const shot = shots[i];
+                    const shotCharacterIds = shot?.characters?.map((sc: any) => sc.character.id) || [];
+                    const hasCommonCharacter = shotCharacterIds.some((id: string) => currentCharacterIds.has(id));
+
+                    if (hasCommonCharacter) {
+                      setExpandedShot(shot.id);
+                      return;
+                    }
+                  }
+                  toast.info('后面没有相同演员的镜头');
+                }}
+                disabled={!expandedShot}
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                title="跳转到后一个有相同演员的镜头"
+              >
+                <FastForward className="h-3 w-3" />
+                连后
+              </Button>
+            </>
+          )}
         </div>
-
-        {/* 完整场景描述 - 可展开收起 */}
-        {sceneDescriptions && sceneDescriptions.length > 0 ? (
-          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border-2 border-orange-300 rounded-lg shadow-md min-h-[60px] relative z-10">
-            <button
-              onClick={() =>
-                setIsSceneDescriptionExpanded(!isSceneDescriptionExpanded)
-              }
-              className="w-full flex items-center justify-between p-4 hover:bg-orange-100/50 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                {isSceneDescriptionExpanded ? (
-                  <ChevronDown className="h-5 w-5 text-orange-700" />
-                ) : (
-                  <ChevronRight className="h-5 w-5 text-orange-700" />
-                )}
-                <span className="text-base font-bold text-orange-900">
-                  完整场景描述
-                </span>
-                <span className="text-sm text-orange-600 bg-orange-200 px-3 py-1 rounded-full font-medium">
-                  {sceneDescriptions.length} 个角色
-                </span>
-              </div>
-              <span className="text-sm text-orange-700 font-medium">
-                {isSceneDescriptionExpanded ? "点击收起 ▲" : "点击展开 ▼"}
-              </span>
-            </button>
-            {isSceneDescriptionExpanded && (
-              <div className="px-4 pb-4 pt-2 space-y-3">
-                {sceneDescriptions.map((scene: any, index: number) => (
-                  <div
-                    key={index}
-                    className="bg-white rounded-md border border-orange-200 p-4 shadow-sm"
-                  >
-                    <div className="font-medium text-orange-900 mb-2 text-sm">
-                      {scene.characterName}
-                    </div>
-                    <div className="text-xs text-orange-800 leading-relaxed">
-                      {scene.description}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-lg p-4">
-            <div className="text-sm text-orange-800 font-medium">
-              ⚠️ 暂无场景描述
-            </div>
-            <div className="text-xs text-orange-700 mt-2">
-              请先在"目标（脚本）"tab中生成目标确认，系统会自动提取角色的完整场景描述。
-            </div>
-          </div>
-        )}
-
-        {/* 演员列表 */}
-        {characters.length > 0 && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg relative z-0">
-            <button
-              onClick={() => setIsActorsExpanded(!isActorsExpanded)}
-              className="w-full flex items-center justify-between p-3 hover:bg-blue-100/50 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                {isActorsExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-blue-700" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-blue-700" />
-                )}
-                <span className="text-xs font-semibold text-blue-900">演员表</span>
-                <span className="text-xs text-blue-600 bg-blue-200 px-2 py-0.5 rounded-full">
-                  {characters.length}
-                </span>
-              </div>
-              <span className="text-xs text-blue-700">
-                {isActorsExpanded ? "收起 ▲" : "展开 ▼"}
-              </span>
-            </button>
-            {isActorsExpanded && (
-              <div className="px-3 pb-3 pt-1">
-                <div className="flex flex-wrap gap-2">
-                  {characters.map((char: any) => (
-                    <div
-                      key={char.id}
-                      className="flex items-center gap-1.5 bg-white rounded-full pl-0.5 pr-2 py-0.5 border border-blue-200"
-                    >
-                      <div className="h-6 w-6 rounded-full bg-purple-400 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                        {char.referenceImage ? (
-                          <img
-                            src={char.referenceImage}
-                            alt={char.name}
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <User className="h-3 w-3 text-white" />
-                        )}
-                      </div>
-                      <span className="text-xs font-medium text-gray-700">
-                        {char.name}
-                      </span>
-                      {char.referenceImage && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(char.referenceImage);
-                            toast.success("链接已复制");
-                          }}
-                          className="ml-0.5 text-blue-600 hover:text-blue-700"
-                          title="复制形象参考图链接"
-                        >
-                          <Copy className="h-3 w-3" />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* 同步提示消息 */}
         {syncMessage && (
           <div
-            className={`rounded-md border p-3 text-sm ${
+            className={`rounded-md border p-2 text-xs ${
               syncMessage.type === "success"
                 ? "bg-green-50 border-green-200 text-green-700"
                 : "bg-red-50 border-red-200 text-red-700"
@@ -642,13 +552,13 @@ export function ShotsTab({
 
         {/* 角色提示 */}
         {characters.length === 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-800">
             ⚠️ 还没有角色。请先在"背景设定"tab中创建或导入角色。
           </div>
         )}
 
         {/* 镜头列表 */}
-        <div className="space-y-4">
+        <div className="space-y-2">
           {shots.map((shot) => (
             <ShotCard
               key={shot.id}
@@ -680,6 +590,8 @@ export function ShotsTab({
               }
               fullPrompt={buildPrompt(shot)}
               setting={setting}
+              shotAIGenerationPanelRef={shotAIGenerationPanelRef}
+              onRefresh={onRefresh}
             />
           ))}
 
@@ -697,24 +609,204 @@ export function ShotsTab({
         </div>
       </div>
 
-      {/* 右侧：AI生成区域 */}
-      <div className="w-full lg:w-1/2 border-l pl-4 overflow-y-auto">
-        {expandedShot ? (
-          <div className="space-y-6">
-            <ShotAIGenerationPanel
-              shotId={expandedShot}
-              onTaskCreated={onRefresh}
-              sceneDescriptions={sceneDescriptions}
-            />
+      {/* 中间：AI生成区域 */}
+      <div className="w-full lg:w-1/2 xl:flex-1 pl-2 overflow-y-auto [&::-webkit-scrollbar]:hidden xl:pr-2">
+        <div className="space-y-4 xl:[&>*:last-child]:hidden">
+          {/* TTS按钮组和演员列表 */}
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* TYPE01 和 TYPE03: 一键TTS按钮组 */}
+            {(episodeType === 'TYPE01' || episodeType === 'TYPE03') && (
+              <>
+                <div className="relative">
+                  <div className="flex">
+                    <Button
+                      onClick={() => handleBatchGenerateTTS('en')}
+                      variant="default"
+                      size="sm"
+                      className="gap-2 rounded-r-none"
+                      disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
+                    >
+                      <MusicIcon className="h-4 w-4" />
+                      {batchGenerateTTSMutation.isPending ? "生成中..." : "TTS"}
+                    </Button>
+                    <Button
+                      onClick={() => setShowTTSLanguageMenu(!showTTSLanguageMenu)}
+                      variant="default"
+                      size="sm"
+                      className="px-2 rounded-l-none border-l border-white/20"
+                      disabled={batchGenerateTTSMutation.isPending || shots.length === 0}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* 语言选择下拉菜单 */}
+                  {showTTSLanguageMenu && (
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
+                      {[
+                        { code: 'en', name: '英语' },
+                        { code: 'zh', name: '中文' },
+                        { code: 'ja', name: '日语' },
+                        { code: 'ko', name: '韩语' },
+                        { code: 'es', name: '西班牙语' },
+                        { code: 'fr', name: '法语' },
+                        { code: 'de', name: '德语' },
+                      ].map((lang) => (
+                        <button
+                          key={lang.code}
+                          onClick={() => handleBatchGenerateTTS(lang.code as any)}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        >
+                          {lang.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 音频扩展按钮组 */}
+                <div className="relative">
+                  <div className="flex">
+                    <Button
+                      onClick={() => handleBatchExtendAudio(2)}
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 rounded-r-none"
+                      disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+                    >
+                      <MusicIcon className="h-4 w-4" />
+                      {batchExtendAudioMutation.isPending ? "扩展中..." : "扩音频"}
+                    </Button>
+                    <Button
+                      onClick={() => setShowAudioExtendMenu(!showAudioExtendMenu)}
+                      variant="outline"
+                      size="sm"
+                      className="px-2 rounded-l-none border-l border-gray-300"
+                      disabled={batchExtendAudioMutation.isPending || shots.length === 0}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {/* 扩展时长选择下拉菜单 */}
+                  {showAudioExtendMenu && (
+                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1 min-w-[120px]">
+                      {[
+                        { duration: 0.5, label: '0.5秒' },
+                        { duration: 1, label: '1秒' },
+                        { duration: 1.5, label: '1.5秒' },
+                        { duration: 2, label: '2秒' },
+                        { duration: 2.5, label: '2.5秒' },
+                        { duration: 3, label: '3秒' },
+                      ].map((option) => (
+                        <button
+                          key={option.duration}
+                          onClick={() => handleBatchExtendAudio(option.duration)}
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <Button
+                  onClick={handleCleanExtendedAudio}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  disabled={cleanExtendedAudioMutation.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  删音频
+                </Button>
+              </>
+            )}
+
+            {/* 演员列表 - 直接展示，与按钮同行 */}
+            {characters.length > 0 && (
+              <>
+                {characters.map((char: any) => (
+                  <div
+                    key={char.id}
+                    className="flex items-center gap-1.5 bg-white rounded-full pl-0.5 pr-2 py-0.5 border border-gray-300"
+                  >
+                    <button
+                      onClick={() => {
+                        if (char.referenceImage && shotAIGenerationPanelRef.current) {
+                          shotAIGenerationPanelRef.current.addReferenceImage(char.referenceImage);
+                        } else if (!char.referenceImage) {
+                          toast.error('该演员没有参考图');
+                        } else {
+                          toast.error('AI生成面板未就绪');
+                        }
+                      }}
+                      className="h-6 w-6 rounded-full bg-purple-400 flex items-center justify-center flex-shrink-0 overflow-hidden hover:ring-2 hover:ring-purple-500 transition-all cursor-pointer"
+                      title={char.referenceImage ? '点击添加到AI生成参考图' : '该演员没有参考图'}
+                    >
+                      {char.referenceImage ? (
+                        <img
+                          src={char.referenceImage}
+                          alt={char.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <User className="h-3 w-3 text-white" />
+                      )}
+                    </button>
+                    <span className="text-xs font-medium text-gray-700">
+                      {char.name}
+                    </span>
+                    {char.referenceImage && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(char.referenceImage);
+                          toast.success("链接已复制");
+                        }}
+                        className="ml-0.5 text-blue-600 hover:text-blue-700"
+                        title="复制形象参考图链接"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </>
+            )}
           </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <div className="text-center">
-              <FilmIcon className="h-16 w-16 mx-auto mb-4 opacity-30" />
-              <p className="text-sm">请先展开一个镜头以使用 AI 生成工具</p>
-            </div>
-          </div>
-        )}
+
+          <ShotAIGenerationPanel
+            ref={shotAIGenerationPanelRef}
+            shotId={expandedShot || ''}
+            onTaskCreated={onRefresh}
+            sceneDescriptions={sceneDescriptions}
+            currentShot={shots.find(s => s.id === expandedShot)}
+          />
+        </div>
+      </div>
+
+      {/* 右侧：任务（仅在xl屏幕显示为第三列，固定宽度） */}
+      <div className="hidden xl:block xl:w-[154px] xl:flex-shrink-0 pl-2 overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <ShotTaskHistory
+          shotId={expandedShot || ''}
+          onRefreshShot={onRefresh}
+          currentShot={shots.find(s => s.id === expandedShot)}
+          onApplyTask={(task) => {
+            if (shotAIGenerationPanelRef.current) {
+              shotAIGenerationPanelRef.current.applyTask(task);
+            } else {
+              toast.error('AI生成面板未就绪');
+            }
+          }}
+          onConvertToVideo={(imageUrl) => {
+            if (shotAIGenerationPanelRef.current) {
+              shotAIGenerationPanelRef.current.convertToVideo(imageUrl);
+            } else {
+              toast.error('AI生成面板未就绪');
+            }
+          }}
+        />
       </div>
     </div>
   );
@@ -734,6 +826,8 @@ function ShotCard({
   onUpdateShotCharacter,
   fullPrompt,
   setting,
+  shotAIGenerationPanelRef,
+  onRefresh,
 }: {
   shot: any;
   episodeType: string;
@@ -747,6 +841,8 @@ function ShotCard({
   onUpdateShotCharacter: (shotCharacterId: string, data: any) => void;
   fullPrompt: string;
   setting: any;
+  shotAIGenerationPanelRef: React.RefObject<ShotAIGenerationPanelRef>;
+  onRefresh?: () => void;
 }) {
   const [showAddCharacter, setShowAddCharacter] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState("");
@@ -760,6 +856,63 @@ function ShotCard({
     type: "image" | "video" | "audio";
     url: string;
   } | null>(null);
+  const [showImageMenu, setShowImageMenu] = useState(false);
+  const imageMenuRef = useRef<HTMLDivElement>(null);
+  const [digitalHumanPolling, setDigitalHumanPolling] = useState(false);
+
+  // 创建数字人任务 mutation
+  const createDigitalHumanTaskMutation = api.studio.createShotDigitalHumanTask.useMutation({
+    onSuccess: () => {
+      toast.success("数字人任务已创建");
+      setDigitalHumanPolling(true);
+      // 触发父组件刷新以获取最新的任务状态
+      onRefresh?.();
+    },
+    onError: (error) => {
+      const errorMessage = error?.message || "创建失败，请重试";
+      toast.error(`创建失败: ${errorMessage}`);
+      console.error("数字人任务创建失败:", error);
+    },
+  });
+
+  // 获取最新的数字人任务
+  const latestDigitalHumanTask = shot.digitalHumanTasks?.[0];
+  const isDigitalHumanProcessing = latestDigitalHumanTask && [
+    'UPLOADING_ASSETS',
+    'FACE_RECOGNITION_SUBMITTED',
+    'FACE_RECOGNITION_PROCESSING',
+    'FACE_RECOGNITION_COMPLETED',
+    'SUBJECT_DETECTION_COMPLETED',
+    'AWAITING_SUBJECT_SELECTION',
+    'VIDEO_GENERATION_SUBMITTED',
+    'VIDEO_GENERATION_PROCESSING',
+  ].includes(latestDigitalHumanTask.stage);
+  const isDigitalHumanCompleted = latestDigitalHumanTask?.stage === 'VIDEO_GENERATION_COMPLETED';
+  const isDigitalHumanFailed = latestDigitalHumanTask?.stage === 'FAILED';
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (imageMenuRef.current && !imageMenuRef.current.contains(event.target as Node)) {
+        setShowImageMenu(false);
+      }
+    };
+    if (showImageMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showImageMenu]);
+
+  // 数字人任务轮询 - 每30秒
+  // 注意：这里只是触发UI更新的标志，实际刷新由父组件的 refetchShots 处理
+  useEffect(() => {
+    if (!isDigitalHumanProcessing && !digitalHumanPolling) return;
+
+    // 如果任务完成或失败，停止轮询
+    if (isDigitalHumanCompleted || isDigitalHumanFailed) {
+      setDigitalHumanPolling(false);
+    }
+  }, [isDigitalHumanProcessing, digitalHumanPolling, isDigitalHumanCompleted, isDigitalHumanFailed]);
 
   // 同步 shot 的 URL 到本地状态
   useEffect(() => {
@@ -846,61 +999,187 @@ function ShotCard({
     setPreviewMedia(null);
   };
 
+  // 处理数字人生成
+  const handleDigitalHumanClick = () => {
+    const hasFirstFrame = !!imageUrl;
+    const hasAudio = !!audioUrl;
+
+    if (!hasFirstFrame || !hasAudio) {
+      return; // 按钮已禁用，不应该到这里
+    }
+
+    if (isDigitalHumanProcessing) {
+      return; // 正在处理中，不做任何操作
+    }
+
+    if (isDigitalHumanCompleted && latestDigitalHumanTask?.resultVideoUrl) {
+      // 已完成，打开新页面查看
+      window.open(latestDigitalHumanTask.resultVideoUrl, '_blank');
+      return;
+    }
+
+    // 弹出确认对话框
+    if (confirm('是否生成数字人视频？')) {
+      createDigitalHumanTaskMutation.mutate({
+        shotId: shot.id,
+        peFastMode: false,
+      });
+    }
+  };
+
   return (
     <div className="border rounded-lg overflow-hidden">
       {/* Header */}
       <div
-        className="bg-gray-50 p-4 flex items-center justify-between cursor-pointer"
+        className="bg-gray-50 p-2 flex items-center justify-between cursor-pointer"
         onClick={onToggleExpand}
       >
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 bg-blue-500 rounded flex items-center justify-center text-white font-bold">
+        <div className="flex items-center gap-2">
+          <div className="h-8 w-8 bg-blue-500 rounded flex items-center justify-center text-white font-bold text-xs">
             #{shot.shotNumber}
           </div>
           <div>
-            <h3 className="font-medium">
+            <h3 className="font-medium text-sm">
               {shot.name || `镜头 ${shot.shotNumber}`}
             </h3>
-            <p className="text-xs text-gray-500">
+            <p className="text-[10px] text-gray-500">
               {shot.characters?.length || 0} 个角色 · {(() => {
                 // 计算该镜头所有关联任务的总成本
-                const totalCost = (shot.generationTasks || []).reduce(
+                let totalCost = (shot.generationTasks || []).reduce(
                   (sum: number, task: any) => sum + (task.costUSD || 0),
                   0
                 );
+
+                // 加入数字人任务成本：$0.2/秒，失败任务（除超频失败外）也计费
+                const digitalHumanCost = (shot.digitalHumanTasks || []).reduce(
+                  (sum: number, task: any) => {
+                    // 只有以下情况不计费：
+                    // 1. 没有duration（无法计算）
+                    // 2. stage是初始阶段（UPLOADING_ASSETS, UPLOAD_FAILED）
+                    // 3. stage是FACE_RECOGNITION_SUBMITTED（还未真正开始处理）
+                    const excludedStages = ['UPLOADING_ASSETS', 'UPLOAD_FAILED', 'FACE_RECOGNITION_SUBMITTED'];
+                    if (!task.duration || excludedStages.includes(task.stage)) {
+                      return sum;
+                    }
+                    // 其他所有情况（包括失败）都按 $0.2/秒 计费
+                    return sum + (task.duration * 0.2);
+                  },
+                  0
+                );
+
+                totalCost += digitalHumanCost;
                 return totalCost > 0 ? `$${totalCost.toFixed(4)}` : '无消耗';
               })()}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {/* 首帧按钮 */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (imageUrl) {
-                setPreviewMedia({ type: "image", url: imageUrl });
-              } else {
-                setShowImageUrlInput(true);
-              }
-            }}
-            className={`h-12 w-12 border-2 rounded flex items-center justify-center transition-colors ${
-              imageUrl
-                ? "border-green-500 bg-green-50 hover:bg-green-100"
-                : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
-            }`}
-            title={imageUrl ? "查看首帧" : "添加首帧"}
-          >
-            {imageUrl ? (
-              <img
-                src={imageUrl}
-                alt="首帧"
-                className="h-full w-full object-cover rounded"
-              />
-            ) : (
-              <ImageIcon className="h-5 w-5 text-gray-400" />
+          <div className="relative" ref={imageMenuRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                console.log('首帧按钮点击', { imageUrl, showImageMenu });
+                if (imageUrl) {
+                  setShowImageMenu(!showImageMenu);
+                } else {
+                  setShowImageUrlInput(true);
+                }
+              }}
+              className={`h-8 w-8 border rounded flex items-center justify-center transition-colors ${
+                imageUrl
+                  ? "border-green-500 bg-green-50 hover:bg-green-100"
+                  : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
+              }`}
+              title={imageUrl ? "点击查看操作" : "添加首帧"}
+            >
+              {imageUrl ? (
+                <img
+                  src={imageUrl}
+                  alt="首帧"
+                  className="h-full w-full object-cover rounded"
+                />
+              ) : (
+                <ImageIcon className="h-3 w-3 text-gray-400" />
+              )}
+            </button>
+
+            {/* 首帧操作菜单 */}
+            {showImageMenu && imageUrl && (
+              <div className="fixed bg-white border border-gray-200 rounded-lg shadow-lg z-[100] min-w-[140px] py-1"
+                style={{
+                  top: imageMenuRef.current ? imageMenuRef.current.getBoundingClientRect().bottom + 4 : 0,
+                  left: imageMenuRef.current ? imageMenuRef.current.getBoundingClientRect().left : 0,
+                }}
+              >
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPreviewMedia({ type: "image", url: imageUrl });
+                    setShowImageMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  查看
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (shotAIGenerationPanelRef.current) {
+                      shotAIGenerationPanelRef.current.addReferenceImage(imageUrl);
+                      toast.success('已添加到AI生成参考图');
+                    } else {
+                      toast.error('AI生成面板未就绪');
+                    }
+                    setShowImageMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-green-50 flex items-center gap-2"
+                >
+                  <FileImage className="h-3.5 w-3.5 text-green-600" />
+                  <span className="font-bold text-green-600">作为参考</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(imageUrl);
+                    toast.success('URL已复制');
+                    setShowImageMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  复制URL
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // TODO: 实现转存S3功能
+                    toast.info('转存S3功能开发中');
+                    setShowImageMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  <CloudUpload className="h-3.5 w-3.5" />
+                  转存S3
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm('确定要删除首帧吗？')) {
+                      onUpdate({ scenePrompt: '' });
+                      toast.success('首帧已删除');
+                    }
+                    setShowImageMenu(false);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-sm hover:bg-red-50 flex items-center gap-2 text-red-600"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  删除
+                </button>
+              </div>
             )}
-          </button>
+          </div>
 
           {/* 视频按钮 */}
           <button
@@ -912,7 +1191,7 @@ function ShotCard({
                 setShowVideoUrlInput(true);
               }
             }}
-            className={`h-12 w-12 border-2 rounded flex items-center justify-center transition-colors ${
+            className={`h-8 w-8 border rounded flex items-center justify-center transition-colors ${
               videoUrl
                 ? "border-purple-500 bg-purple-50 hover:bg-purple-100"
                 : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
@@ -920,9 +1199,9 @@ function ShotCard({
             title={videoUrl ? "查看视频" : "添加视频"}
           >
             {videoUrl ? (
-              <FilmIcon className="h-5 w-5 text-purple-600" />
+              <FilmIcon className="h-3 w-3 text-purple-600" />
             ) : (
-              <FilmIcon className="h-5 w-5 text-gray-400" />
+              <FilmIcon className="h-3 w-3 text-gray-400" />
             )}
           </button>
 
@@ -936,7 +1215,7 @@ function ShotCard({
                 setShowAudioUrlInput(true);
               }
             }}
-            className={`h-12 w-12 border-2 rounded flex items-center justify-center transition-colors ${
+            className={`h-8 w-8 border rounded flex items-center justify-center transition-colors ${
               audioUrl
                 ? "border-orange-500 bg-orange-50 hover:bg-orange-100"
                 : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
@@ -944,9 +1223,44 @@ function ShotCard({
             title={audioUrl ? "查看音频" : "添加音频"}
           >
             {audioUrl ? (
-              <MusicIcon className="h-5 w-5 text-orange-600" />
+              <MusicIcon className="h-3 w-3 text-orange-600" />
             ) : (
-              <MusicIcon className="h-5 w-5 text-gray-400" />
+              <MusicIcon className="h-3 w-3 text-gray-400" />
+            )}
+          </button>
+
+          {/* 数字人按钮 */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDigitalHumanClick();
+            }}
+            disabled={!imageUrl || !audioUrl}
+            className={`h-8 w-8 border rounded flex items-center justify-center transition-colors relative ${
+              !imageUrl || !audioUrl
+                ? "border-gray-200 bg-gray-100 cursor-not-allowed"
+                : isDigitalHumanCompleted
+                ? "border-green-500 bg-green-50 hover:bg-green-100 cursor-pointer"
+                : isDigitalHumanProcessing
+                ? "border-blue-500 bg-blue-50"
+                : "border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer"
+            }`}
+            title={
+              !imageUrl || !audioUrl
+                ? "需要首帧和音频"
+                : isDigitalHumanCompleted
+                ? "查看数字人视频"
+                : isDigitalHumanProcessing
+                ? "生成中..."
+                : "生成数字人"
+            }
+          >
+            {isDigitalHumanProcessing ? (
+              <Loader2 className="h-3 w-3 text-blue-600 animate-spin" />
+            ) : isDigitalHumanCompleted ? (
+              <CheckCircle className="h-3 w-3 text-green-600" />
+            ) : (
+              <UserCircle className={`h-3 w-3 ${!imageUrl || !audioUrl ? "text-gray-400" : "text-gray-600"}`} />
             )}
           </button>
 
@@ -955,26 +1269,24 @@ function ShotCard({
               e.stopPropagation();
               onDelete();
             }}
-            className="p-2 hover:bg-red-50 rounded text-red-500"
+            className="p-1 hover:bg-red-50 rounded text-red-500"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash2 className="h-3 w-3" />
           </button>
           {isExpanded ? (
-            <ChevronUp className="h-5 w-5" />
+            <ChevronUp className="h-4 w-4" />
           ) : (
-            <ChevronDown className="h-5 w-5" />
+            <ChevronDown className="h-4 w-4" />
           )}
         </div>
       </div>
 
       {/* Expanded Content */}
       {isExpanded && (
-        <div className="p-4 space-y-4">
+        <div className="p-2 space-y-2">
           {/* TYPE02: 镜头字段编辑 */}
           {episodeType === 'TYPE02' && (
-            <div className="space-y-3">
-              <h4 className="font-medium text-sm text-blue-700">镜头信息</h4>
-
+            <div className="space-y-2">
               {/* 景别与视角 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">
@@ -1070,63 +1382,81 @@ function ShotCard({
           {/* TYPE03: 对话为主v2.0 字段 */}
           {episodeType === 'TYPE03' && (
             <div className="space-y-3">
-              <h4 className="font-medium text-sm text-blue-700">镜头信息</h4>
+              {/* 第一行：景别 + 身体朝向 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    景别 (Framing)
+                  </label>
+                  <input
+                    type="text"
+                    defaultValue={shot.framing || ""}
+                    onBlur={(e) =>
+                      onUpdate({
+                        framing: e.target.value,
+                      })
+                    }
+                    placeholder="例如: 特写、近景、中景、全景"
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
 
-              {/* 景别 */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">
-                  景别 (Framing)
-                </label>
-                <input
-                  type="text"
-                  defaultValue={shot.framing || ""}
-                  onBlur={(e) =>
-                    onUpdate({
-                      framing: e.target.value,
-                    })
-                  }
-                  placeholder="例如: 特写、近景、中景、全景"
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
-                />
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    身体朝向 (Body Orientation)
+                  </label>
+                  <input
+                    type="text"
+                    defaultValue={shot.bodyOrientation || ""}
+                    onBlur={(e) =>
+                      onUpdate({
+                        bodyOrientation: e.target.value,
+                      })
+                    }
+                    placeholder="例如: 身体正对前方、身体稍朝右"
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              {/* 身体朝向 */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">
-                  身体朝向 (Body Orientation)
-                </label>
-                <input
-                  type="text"
-                  defaultValue={shot.bodyOrientation || ""}
-                  onBlur={(e) =>
-                    onUpdate({
-                      bodyOrientation: e.target.value,
-                    })
-                  }
-                  placeholder="例如: 身体正对前方、身体稍朝右、身体侧向左"
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
-                />
+              {/* 第二行：面部和眼神朝向 + 镜头运动 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    面部和眼神朝向 (Face Direction)
+                  </label>
+                  <input
+                    type="text"
+                    defaultValue={shot.faceDirection || ""}
+                    onBlur={(e) =>
+                      onUpdate({
+                        faceDirection: e.target.value,
+                      })
+                    }
+                    placeholder="例如: 面朝左前方，眼睛看着左前方"
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    镜头运动 (Camera Movement)
+                  </label>
+                  <input
+                    type="text"
+                    defaultValue={shot.cameraMovement || ""}
+                    onBlur={(e) =>
+                      onUpdate({
+                        cameraMovement: e.target.value,
+                      })
+                    }
+                    placeholder="例如: 镜头静止、镜头缓慢推进"
+                    className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              {/* 面部和眼神朝向 */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">
-                  面部和眼神朝向 (Face Direction)
-                </label>
-                <input
-                  type="text"
-                  defaultValue={shot.faceDirection || ""}
-                  onBlur={(e) =>
-                    onUpdate({
-                      faceDirection: e.target.value,
-                    })
-                  }
-                  placeholder="例如: 面朝左前方，眼睛看着左前方"
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              {/* 表情描述 */}
+              {/* 表情描述 - 多行 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">
                   表情描述 (Expression)
@@ -1144,7 +1474,7 @@ function ShotCard({
                 />
               </div>
 
-              {/* 动作描述 */}
+              {/* 动作描述 - 多行 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">
                   动作描述 (Action)
@@ -1162,25 +1492,7 @@ function ShotCard({
                 />
               </div>
 
-              {/* 镜头运动 */}
-              <div>
-                <label className="text-xs text-gray-500 mb-1 block">
-                  镜头运动 (Camera Movement)
-                </label>
-                <input
-                  type="text"
-                  defaultValue={shot.cameraMovement || ""}
-                  onBlur={(e) =>
-                    onUpdate({
-                      cameraMovement: e.target.value,
-                    })
-                  }
-                  placeholder="例如: 镜头静止、镜头缓慢推进、跟随移动"
-                  className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              {/* 台词 */}
+              {/* 台词 - 单行 */}
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">
                   台词 (Dialogue)
@@ -1607,56 +1919,52 @@ function PromptEditor({
   };
 
   return (
-    <div className="border-t pt-4">
-      <div className="flex items-center justify-between mb-2">
+    <div className="pt-1">
+      <div className="flex items-center gap-1 mb-1">
         <h4 className="font-medium text-sm">完整场景 Prompt</h4>
-        <div className="flex gap-2">
-          {isEditing ? (
-            <>
-              <Button
-                size="sm"
-                onClick={handleCancel}
-                variant="outline"
-                className="gap-1"
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSave}
-                className="gap-1"
-              >
-                保存
-              </Button>
-            </>
-          ) : (
+        {isEditing ? (
+          <div className="flex gap-1 ml-auto">
             <Button
               size="sm"
-              onClick={() => {
-                navigator.clipboard.writeText(displayPrompt);
-                toast.success("已复制 Prompt");
-              }}
+              onClick={handleCancel}
               variant="outline"
-              className="gap-1"
+              className="h-6 px-2 text-xs"
             >
-              <Copy className="h-3 w-3" />
-              复制
+              取消
             </Button>
-          )}
-        </div>
+            <Button
+              size="sm"
+              onClick={handleSave}
+              className="h-6 px-2 text-xs"
+            >
+              保存
+            </Button>
+          </div>
+        ) : (
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(displayPrompt);
+              toast.success("已复制 Prompt");
+            }}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            title="复制"
+          >
+            <Copy className="h-3 w-3 text-gray-500" />
+          </button>
+        )}
       </div>
       {isEditing ? (
         <textarea
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
-          className="w-full rounded-lg border border-blue-500 p-3 text-sm text-gray-700 leading-relaxed min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full rounded border border-blue-500 p-2 text-xs text-gray-700 leading-relaxed min-h-[80px] focus:outline-none focus:ring-1 focus:ring-blue-500"
           autoFocus
           onBlur={handleSave}
         />
       ) : (
         <div
           onClick={handleStartEdit}
-          className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700 leading-relaxed max-h-32 overflow-y-auto cursor-text hover:bg-gray-100 transition-colors"
+          className="bg-gray-50 rounded p-2 text-xs text-gray-700 leading-relaxed max-h-24 overflow-y-auto cursor-text hover:bg-gray-100 transition-colors"
           title="点击编辑"
         >
           {displayPrompt || <span className="text-gray-400">暂无内容（点击编辑）</span>}

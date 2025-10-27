@@ -9,11 +9,12 @@ export const dynamic = 'force-dynamic'
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { Plus, Archive, RotateCcw, Trash2, Film, Calendar, ArrowLeft } from 'lucide-react'
+import { Plus, Archive, RotateCcw, Trash2, Film, Calendar, ArrowLeft, DollarSign } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
 import { Card } from '~/components/ui/card'
 import { Button } from '~/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '~/components/ui/dialog'
+import { EpisodeCostDetailDialog } from '~/components/studio/EpisodeCostDetailDialog'
 
 type EpisodeStatus = 'draft' | 'in-progress' | 'completed' | 'archived'
 
@@ -42,6 +43,7 @@ export default function ProjectDetailPage() {
   const [selectedStatus, setSelectedStatus] = useState<EpisodeStatus | undefined>()
   const [editingEpisodeId, setEditingEpisodeId] = useState<string | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [costDetailEpisodeId, setCostDetailEpisodeId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // 查询项目信息
@@ -255,17 +257,33 @@ export default function ProjectDetailPage() {
               </div>
 
               {/* Stats */}
-              <div 
-                className="flex items-center gap-4 text-sm text-gray-500 cursor-pointer"
-                onClick={() => handleOpenEpisode(episode.id)}
+              <div
+                className="flex items-center gap-4 text-sm text-gray-500"
               >
-                <div className="flex items-center gap-1">
+                <div
+                  className="flex items-center gap-1 cursor-pointer hover:text-gray-900"
+                  onClick={() => handleOpenEpisode(episode.id)}
+                >
                   <Film className="h-4 w-4" />
                   <span>{episode._count.shots} 镜头</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div
+                  className="flex items-center gap-1 cursor-pointer hover:text-gray-900"
+                  onClick={() => handleOpenEpisode(episode.id)}
+                >
                   <Calendar className="h-4 w-4" />
                   <span>{new Date(episode.createdAt).toLocaleDateString('zh-CN')}</span>
+                </div>
+                <div
+                  className="flex items-center gap-1 cursor-pointer hover:text-blue-600 font-semibold"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCostDetailEpisodeId(episode.id)
+                  }}
+                  title="查看成本明细"
+                >
+                  <DollarSign className="h-4 w-4" />
+                  <span>${((episode as any).totalCost || 0).toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -381,6 +399,15 @@ export default function ProjectDetailPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Cost Detail Dialog */}
+      {costDetailEpisodeId && (
+        <EpisodeCostDetailDialog
+          episodeId={costDetailEpisodeId}
+          open={!!costDetailEpisodeId}
+          onOpenChange={(open) => !open && setCostDetailEpisodeId(null)}
+        />
+      )}
     </div>
   )
 }

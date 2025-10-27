@@ -10,6 +10,7 @@ import {
   Copy,
   Sparkles,
   Eye,
+  RefreshCw,
 } from "lucide-react";
 import { api } from "~/components/providers/trpc-provider";
 import { Button } from "~/components/ui/button";
@@ -27,6 +28,7 @@ interface ShotTaskHistoryProps {
   onRefreshShot?: () => void;
   onApplyTask?: (task: TaskHistoryTask) => void;
   onConvertToVideo?: (imageUrl: string) => void;
+  currentShot?: any;
 }
 
 export function ShotTaskHistory({
@@ -34,6 +36,7 @@ export function ShotTaskHistory({
   onRefreshShot,
   onApplyTask,
   onConvertToVideo,
+  currentShot,
 }: ShotTaskHistoryProps) {
   const router = useRouter();
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -49,6 +52,7 @@ export function ShotTaskHistory({
       limit: 100,
     },
     {
+      enabled: !!shotId, // 只在有shotId时查询
       staleTime: 2000,
       refetchOnWindowFocus: false,
     },
@@ -94,6 +98,15 @@ export function ShotTaskHistory({
     },
   });
 
+  const saveToMediaBrowserMutation = api.mediaBrowser.downloadAndSaveUrl.useMutation({
+    onSuccess: (data) => {
+      toast.success(`已下载并保存: ${data.fileName}`);
+    },
+    onError: (error) => {
+      toast.error(`保存失败: ${error.message}`);
+    },
+  });
+
   useEffect(() => {
     const hasProcessing = tasksData?.tasks.some(
       (t) => t.status === "PROCESSING" || t.status === "PENDING",
@@ -122,6 +135,20 @@ export function ShotTaskHistory({
 
   const handleSetAsAudio = (audioUrl: string) => {
     setShotAudioMutation.mutate({ shotId, audioUrl });
+  };
+
+  const handleSaveToMedia = (url: string) => {
+    // 如果当前镜头有且只有一个演员，获取其sourceActorId
+    let actorId: string | undefined;
+    if (currentShot?.characters && currentShot.characters.length === 1) {
+      const firstCharacter = currentShot.characters[0];
+      actorId = firstCharacter?.character?.sourceActorId || undefined;
+    }
+
+    saveToMediaBrowserMutation.mutate({
+      url,
+      actorId,
+    });
   };
 
   const handleCopyUrl = (url: string) => {
@@ -172,35 +199,36 @@ export function ShotTaskHistory({
   }, [tasksData]);
 
   return (
-    <div className="space-y-4 border-t pt-6">
+    <div className="space-y-4 pt-6">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">任务历史</h3>
-        <div className="flex gap-2">
+        <h3 className="text-lg font-semibold">任务</h3>
+        <div className="flex gap-1">
           <Button
             variant="outline"
             size="sm"
             onClick={() => router.push('/admin/ai-generation/tasks')}
+            className="px-2"
           >
-            <Eye className="h-4 w-4 mr-1" />
-            查看
+            <Eye className="h-4 w-4" />
           </Button>
           <Button
             variant="outline"
             size="sm"
             disabled={isFetching}
             onClick={() => void refetch()}
+            className="px-2"
           >
-            刷新
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       {tasksWithMedia.length === 0 ? (
         <div className="text-center py-12 text-gray-400 text-sm">
-          还没有生成任务结果
+          {!shotId ? '展开镜头后，生成结果会显示在这里' : '还没有生成任务结果'}
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-3 xl:grid-cols-1 xl:gap-2">
           {tasksWithMedia.flatMap(({ task, mediaResults }) => {
             // 如果任务正在处理且没有结果，显示占位卡片
             if (
@@ -256,10 +284,12 @@ export function ShotTaskHistory({
                         : undefined
                 }
                 onApplyTask={onApplyTask ? () => onApplyTask(task) : undefined}
+                onSaveToMedia={() => handleSaveToMedia(result.url)}
                 isDeleting={deleteMutation.isPending}
                 isSettingImage={setShotImageMutation.isPending}
                 isSettingVideo={setShotVideoMutation.isPending}
                 isSettingAudio={setShotAudioMutation.isPending}
+                isSavingToMedia={saveToMediaBrowserMutation.isPending}
               />
             ));
           })}
@@ -386,10 +416,12 @@ interface TaskMediaCardProps {
   onConvertToVideo?: () => void;
   onPreview?: () => void;
   onApplyTask?: () => void;
+  onSaveToMedia?: () => void;
   isDeleting: boolean;
   isSettingImage: boolean;
   isSettingVideo: boolean;
   isSettingAudio: boolean;
+  isSavingToMedia: boolean;
 }
 
 function TaskMediaCard({
@@ -404,145 +436,147 @@ function TaskMediaCard({
   onConvertToVideo,
   onPreview,
   onApplyTask,
+  onSaveToMedia,
   isDeleting,
   isSettingImage,
   isSettingVideo,
   isSettingAudio,
+  isSavingToMedia,
 }: TaskMediaCardProps) {
   return (
-    <div className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow">
-      <div className="relative h-24 w-full bg-gray-100">
-        {result.type === "image" ? (
-          <button
-            onClick={onPreview}
-            className="h-full w-full cursor-pointer hover:opacity-90 transition-opacity"
-            title="点击查看大图"
-          >
-            <img
-              src={result.url}
-              alt="生成结果"
-              className="h-full w-full object-cover"
-            />
-          </button>
-        ) : result.type === "video" ? (
-          <button
-            onClick={onPreview}
-            className="relative h-full w-full cursor-pointer hover:opacity-90 transition-opacity"
-            title="点击播放视频"
-          >
-            <video
-              src={result.url}
-              className="h-full w-full object-cover"
-              muted
-              loop
-              playsInline
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-              <FilmIcon className="h-8 w-8 text-white" />
-            </div>
-          </button>
-        ) : (
-          <button
-            onClick={onPreview}
-            className="flex h-full w-full cursor-pointer items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 transition-colors"
-            title="点击播放音频"
-          >
-            <MusicIcon className="h-10 w-10 text-purple-600" />
-          </button>
-        )}
+    <div className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition-shadow xl:w-full">
+      {/* 1:1 图片展示区域 */}
+      <div className="relative w-full pb-[100%] bg-gray-100">
+        <div className="absolute inset-0">
+          {result.type === "image" ? (
+            <button
+              onClick={onPreview}
+              className="h-full w-full cursor-pointer hover:opacity-90 transition-opacity"
+              title="点击查看大图"
+            >
+              <img
+                src={result.url}
+                alt="生成结果"
+                className="h-full w-full object-cover"
+              />
+            </button>
+          ) : result.type === "video" ? (
+            <button
+              onClick={onPreview}
+              className="relative h-full w-full cursor-pointer hover:opacity-90 transition-opacity"
+              title="点击播放视频"
+            >
+              <video
+                src={result.url}
+                className="h-full w-full object-cover"
+                muted
+                loop
+                playsInline
+              />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                <FilmIcon className="h-8 w-8 text-white" />
+              </div>
+            </button>
+          ) : (
+            <button
+              onClick={onPreview}
+              className="flex h-full w-full cursor-pointer items-center justify-center bg-gradient-to-br from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 transition-colors"
+              title="点击播放音频"
+            >
+              <MusicIcon className="h-10 w-10 text-purple-600" />
+            </button>
+          )}
 
-        {(taskStatus === "PROCESSING" || taskStatus === "PENDING") && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className="text-white text-xs">
-              {taskProgress !== null
-                ? `${Math.round(taskProgress * 100)}%`
-                : "处理中..."}
+          {(taskStatus === "PROCESSING" || taskStatus === "PENDING") && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <div className="text-white text-xs">
+                {taskProgress !== null
+                  ? `${Math.round(taskProgress * 100)}%`
+                  : "处理中..."}
+              </div>
+            </div>
+          )}
+
+          {taskStatus === "FAILED" && (
+            <div className="absolute inset-0 bg-red-500/50 flex items-center justify-center">
+              <div className="text-white text-xs font-medium">失败</div>
+            </div>
+          )}
+
+          {/* 悬浮按钮 - 图片底部，2行布局 */}
+          <div className="absolute bottom-0 left-0 right-0 p-1 space-y-0.5">
+            {/* 第一行：用/首帧 */}
+            <div className="flex gap-0.5">
+              <button
+                onClick={onApplyTask}
+                disabled={!onApplyTask}
+                className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-green-500/20 hover:bg-green-500 text-white transition-all backdrop-blur-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed"
+                title={onApplyTask ? "应用" : "应用（需展开镜头）"}
+              >
+                用
+              </button>
+              {result.type === "image" && (
+                <button
+                  onClick={onSetAsKeyframe}
+                  disabled={!onSetAsKeyframe || isSettingImage}
+                  className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-blue-500/20 hover:bg-blue-500 text-white transition-all backdrop-blur-sm disabled:opacity-30 disabled:cursor-not-allowed font-medium"
+                  title={onSetAsKeyframe ? "选首帧" : "选首帧（需展开镜头）"}
+                >
+                  首帧
+                </button>
+              )}
+              {result.type === "video" && (
+                <button
+                  onClick={onSetAsVideo}
+                  disabled={!onSetAsVideo || isSettingVideo}
+                  className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-purple-500/20 hover:bg-purple-500 text-white transition-all backdrop-blur-sm disabled:opacity-30 disabled:cursor-not-allowed font-medium"
+                  title={onSetAsVideo ? "选为视频" : "选为视频（需展开镜头）"}
+                >
+                  视频
+                </button>
+              )}
+              {result.type === "audio" && (
+                <button
+                  onClick={onSetAsAudio}
+                  disabled={!onSetAsAudio || isSettingAudio}
+                  className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-orange-500/20 hover:bg-orange-500 text-white transition-all backdrop-blur-sm disabled:opacity-30 disabled:cursor-not-allowed font-medium"
+                  title={onSetAsAudio ? "选为音频" : "选为音频（需展开镜头）"}
+                >
+                  音频
+                </button>
+              )}
+            </div>
+            {/* 第二行：存媒体/动画/删 */}
+            <div className="flex gap-0.5">
+              <button
+                onClick={onSaveToMedia}
+                disabled={isSavingToMedia}
+                className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-cyan-500/20 hover:bg-cyan-500 text-white transition-all backdrop-blur-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed"
+                title="保存到媒体浏览器"
+              >
+                存媒体
+              </button>
+              {result.type === "image" && (
+                <button
+                  onClick={onConvertToVideo}
+                  disabled={!onConvertToVideo}
+                  className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-orange-500/20 hover:bg-orange-500 text-white transition-all backdrop-blur-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed"
+                  title={onConvertToVideo ? "转视频" : "转视频（需展开镜头）"}
+                >
+                  动画
+                </button>
+              )}
+              <button
+                onClick={onDelete}
+                disabled={isDeleting}
+                className="flex-1 flex items-center justify-center px-1 py-1 text-[10px] rounded bg-red-500/20 hover:bg-red-500 text-white transition-all backdrop-blur-sm disabled:opacity-50 font-medium"
+                title="删除"
+              >
+                删
+              </button>
             </div>
           </div>
-        )}
-
-        {taskStatus === "FAILED" && (
-          <div className="absolute inset-0 bg-red-500/50 flex items-center justify-center">
-            <div className="text-white text-xs font-medium">失败</div>
-          </div>
-        )}
-      </div>
-
-      <div className="p-2 space-y-1">
-        {onApplyTask && (
-          <button
-            onClick={onApplyTask}
-            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-green-50 hover:bg-green-100 text-green-700 transition-colors font-medium"
-          >
-            <Sparkles className="h-3 w-3" />
-            应用
-          </button>
-        )}
-
-        {onSetAsKeyframe && (
-          <button
-            onClick={onSetAsKeyframe}
-            disabled={isSettingImage}
-            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-blue-50 hover:bg-blue-100 text-blue-700 transition-colors disabled:opacity-50"
-          >
-            <ImageIcon className="h-3 w-3" />
-            {isSettingImage ? "设置中..." : "选为首帧"}
-          </button>
-        )}
-
-        {onSetAsVideo && (
-          <button
-            onClick={onSetAsVideo}
-            disabled={isSettingVideo}
-            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-purple-50 hover:bg-purple-100 text-purple-700 transition-colors disabled:opacity-50"
-          >
-            <FilmIcon className="h-3 w-3" />
-            {isSettingVideo ? "设置中..." : "选为视频"}
-          </button>
-        )}
-
-        {onSetAsAudio && (
-          <button
-            onClick={onSetAsAudio}
-            disabled={isSettingAudio}
-            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-orange-50 hover:bg-orange-100 text-orange-700 transition-colors disabled:opacity-50"
-          >
-            <MusicIcon className="h-3 w-3" />
-            {isSettingAudio ? "设置中..." : "选为音频"}
-          </button>
-        )}
-
-        {onConvertToVideo && (
-          <button
-            onClick={onConvertToVideo}
-            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-orange-50 hover:bg-orange-100 text-orange-700 transition-colors font-medium"
-          >
-            <FilmIcon className="h-3 w-3" />
-            转视频
-          </button>
-        )}
-
-        {result.type === "video" && (
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(result.url);
-              toast.success("已复制到剪贴板");
-            }}
-            className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors"
-          >
-            <Copy className="h-3 w-3" />
-            复制URL
-          </button>
-        )}
-
-        <button
-          onClick={onDelete}
-          disabled={isDeleting}
-          className="w-full flex items-center justify-center gap-2 px-2 py-1.5 text-xs rounded bg-red-50 hover:bg-red-100 text-red-700 transition-colors disabled:opacity-50"
-        >
-          <Trash2 className="h-3 w-3" />
-          {isDeleting ? "删除中..." : "删除"}
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -593,7 +627,7 @@ function TaskPlaceholderCard({
       : "bg-blue-500";
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-white">
+    <div className="border rounded-lg overflow-hidden bg-white xl:w-full">
       <div
         className={`relative h-24 w-full bg-gradient-to-br ${colorClass} flex items-center justify-center`}
       >

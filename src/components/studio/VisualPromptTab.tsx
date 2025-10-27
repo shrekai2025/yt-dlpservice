@@ -586,39 +586,35 @@ export function VisualPromptTab({ episodeId, episodeType, onSave }: Props) {
                       />
                     </div>
 
-                    {(episodeType === 'TYPE01' || episodeType === 'TYPE02') && (
-                      <>
-                        <div>
-                          <label className="text-xs font-medium text-gray-600">appearance</label>
-                          <input
-                            type="text"
-                            value={char.appearancePrompt || ''}
-                            readOnly
-                            className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded bg-gray-50"
-                          />
-                          {llmChar?.appearance && (
-                            <div className="mt-1 px-2 py-1.5 text-sm bg-blue-50 border border-blue-200 rounded">
-                              {llmChar.appearance}
-                            </div>
-                          )}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">appearance</label>
+                      <input
+                        type="text"
+                        value={char.appearancePrompt || ''}
+                        readOnly
+                        className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded bg-gray-50"
+                      />
+                      {llmChar?.appearance && (
+                        <div className="mt-1 px-2 py-1.5 text-sm bg-blue-50 border border-blue-200 rounded">
+                          {llmChar.appearance}
                         </div>
+                      )}
+                    </div>
 
-                        <div>
-                          <label className="text-xs font-medium text-gray-600">environment</label>
-                          <input
-                            type="text"
-                            value={char.description || ''}
-                            readOnly
-                            className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded bg-gray-50"
-                          />
-                          {llmChar?.environment && (
-                            <div className="mt-1 px-2 py-1.5 text-sm bg-blue-50 border border-blue-200 rounded">
-                              {llmChar.environment}
-                            </div>
-                          )}
+                    <div>
+                      <label className="text-xs font-medium text-gray-600">environment</label>
+                      <input
+                        type="text"
+                        value={char.description || ''}
+                        readOnly
+                        className="w-full mt-1 px-2 py-1.5 text-sm border border-gray-300 rounded bg-gray-50"
+                      />
+                      {llmChar?.environment && (
+                        <div className="mt-1 px-2 py-1.5 text-sm bg-blue-50 border border-blue-200 rounded">
+                          {llmChar.environment}
                         </div>
-                      </>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )
               })}

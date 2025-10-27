@@ -9,6 +9,12 @@ import { JimengDigitalHumanClient, type CredentialsSource } from './jimeng-clien
 import { s3Uploader } from '~/lib/services/s3-uploader'
 import * as fs from 'fs/promises'
 import * as path from 'path'
+import axios from 'axios'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+import os from 'os'
+
+const execAsync = promisify(exec)
 
 /**
  * 创建数字人任务的参数
@@ -59,9 +65,51 @@ export class DigitalHumanService {
   }
 
   /**
+   * 获取音频URL的时长
+   */
+  private async getAudioDuration(audioUrl: string): Promise<number | null> {
+    let tempFilePath: string | null = null
+    try {
+      // 下载音频文件到临时目录
+      const tempDir = os.tmpdir()
+      const tempFileName = `audio_${Date.now()}.mp3`
+      tempFilePath = path.join(tempDir, tempFileName)
+
+      const response = await axios.get(audioUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000,
+      })
+
+      await fs.writeFile(tempFilePath, response.data)
+
+      // 使用 ffprobe 获取时长
+      const command = `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${tempFilePath}"`
+      const { stdout } = await execAsync(command)
+
+      const duration = parseFloat(stdout.trim())
+      return isNaN(duration) ? null : duration
+    } catch (error) {
+      console.warn(`获取音频时长失败: ${audioUrl}`, error)
+      return null
+    } finally {
+      // 清理临时文件
+      if (tempFilePath) {
+        try {
+          await fs.unlink(tempFilePath)
+        } catch (e) {
+          // 忽略删除失败
+        }
+      }
+    }
+  }
+
+  /**
    * 创建并启动数字人任务
    */
   async createTask(params: CreateDigitalHumanTaskParams) {
+    // 获取音频时长
+    const duration = await this.getAudioDuration(params.audioUrl)
+
     // 创建任务记录
     const task = await db.digitalHumanTask.create({
       data: {
@@ -70,6 +118,7 @@ export class DigitalHumanService {
         name: params.name,
         imageUrl: params.imageUrl,
         audioUrl: params.audioUrl,
+        duration,
         prompt: params.prompt,
         seed: params.seed,
         peFastMode: params.peFastMode ?? false,

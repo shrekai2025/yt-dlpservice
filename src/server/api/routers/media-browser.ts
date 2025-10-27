@@ -217,6 +217,106 @@ export const mediaBrowserRouter = createTRPCRouter({
   }),
 
   /**
+   * 下载URL并保存为本地文件
+   */
+  downloadAndSaveUrl: userProcedure
+    .input(
+      z.object({
+        url: z.string().url(),
+        folderId: z.string().optional(),
+        actorId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      try {
+        // 下载文件
+        const response = await axios.get(input.url, {
+          responseType: 'arraybuffer',
+          timeout: 60000, // 60秒超时
+        })
+
+        const contentType = response.headers['content-type'] as string
+        const type = detectMediaType(contentType)
+
+        // 提取文件名
+        const urlPath = new URL(input.url).pathname
+        const fileName = path.basename(urlPath) || `media_${Date.now()}`
+
+        // 保存文件到本地
+        const uploadDir = path.join(process.cwd(), 'data', 'media-uploads', userId)
+        await fs.mkdir(uploadDir, { recursive: true })
+
+        const uniqueId = crypto.randomBytes(8).toString('hex')
+        const localPath = path.join(uploadDir, `${uniqueId}_${fileName}`)
+        await fs.writeFile(localPath, Buffer.from(response.data))
+
+        const stats = await fs.stat(localPath)
+        const fileSize = stats.size
+        const relativePath = path.relative(process.cwd(), localPath)
+
+        // 获取媒体时长（视频和音频）
+        let duration: number | null = null
+        if (type === 'VIDEO' || type === 'AUDIO') {
+          const { getMediaDuration } = await import('~/lib/services/audio-utils')
+          duration = await getMediaDuration(relativePath)
+        }
+
+        // 创建媒体文件记录
+        const file = await ctx.db.mediaFile.create({
+          data: {
+            userId,
+            name: fileName,
+            type,
+            source: 'LOCAL',
+            localPath: relativePath,
+            originalPath: input.url, // 保存原始URL
+            mimeType: contentType,
+            fileSize,
+            duration,
+            folderId: input.folderId,
+            actorId: input.actorId,
+          },
+        })
+
+        // 异步生成缩略图
+        if (type === 'IMAGE' || type === 'VIDEO') {
+          thumbnailQueue.add({
+            id: file.id,
+            options: {
+              userId,
+              fileId: file.id,
+              localPath: relativePath,
+              type: type.toLowerCase() as 'image' | 'video',
+            },
+            onComplete: async (result) => {
+              if (result.thumbnailPath) {
+                await ctx.db.mediaFile.update({
+                  where: { id: file.id },
+                  data: {
+                    thumbnailPath: result.thumbnailPath,
+                    width: result.width,
+                    height: result.height,
+                  },
+                })
+              }
+            },
+          })
+        }
+
+        return { success: true, fileId: file.id, fileName }
+      } catch (error) {
+        console.error('[downloadAndSaveUrl] Failed:', error)
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `下载文件失败: ${errorMessage}`,
+        })
+      }
+    }),
+
+  /**
    * 批量添加 URL
    */
   addUrls: userProcedure
@@ -224,6 +324,7 @@ export const mediaBrowserRouter = createTRPCRouter({
       z.object({
         urls: z.array(z.string().url()),
         folderId: z.string().optional(),
+        actorId: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -270,6 +371,7 @@ export const mediaBrowserRouter = createTRPCRouter({
               mimeType,
               fileSize,
               folderId: input.folderId,
+              actorId: input.actorId,
             },
           })
 

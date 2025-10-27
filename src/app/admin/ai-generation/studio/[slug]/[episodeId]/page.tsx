@@ -27,8 +27,8 @@ const TABS: Array<{ id: WorkflowTab; label: string; icon: any }> = [
   { id: 'input', label: '概念', icon: FileText },
   { id: 'objective', label: '设定+脚本', icon: Target },
   { id: 'setting', label: '角色', icon: Settings },
-  { id: 'visual', label: '视觉优化', icon: Sparkles },
   { id: 'shots', label: '镜头制作', icon: Film },
+  { id: 'visual', label: '视觉优化(可选)', icon: Sparkles },
   { id: 'digitalhuman', label: '数字人合成', icon: User },
   { id: 'preview', label: '预览导出', icon: Eye },
 ]
@@ -189,6 +189,9 @@ export default function EpisodeWorkflowPage() {
                   initialSystemPrompt={episode.systemPrompt}
                   rawInput={episode.rawInput}
                   corePoint={episode.corePoint}
+                  initialShotCount={episode.shotCount}
+                  initialDialogueCount={episode.dialogueCount}
+                  initialCharacterCount={episode.characterCount}
                   onSave={() => {
                     setHasUnsavedChanges(false)
                     void refetch()

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
-import { X, Upload, Link as LinkIcon } from 'lucide-react'
+import { useEffect, useMemo, useState, forwardRef, useImperativeHandle } from 'react'
+import { X, Upload, Link as LinkIcon, Edit2 } from 'lucide-react'
 import { api } from '~/components/providers/trpc-provider'
 import { Card } from '~/components/ui/card'
 import { Button } from '~/components/ui/button'
@@ -21,9 +21,24 @@ interface ShotAIGenerationPanelProps {
   shotId: string
   onTaskCreated?: () => void
   sceneDescriptions?: Array<{ characterName: string; description: string }> | null
+  hideTaskHistory?: boolean
+  currentShot?: any // 当前镜头数据
 }
 
-export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions }: ShotAIGenerationPanelProps) {
+export interface ShotAIGenerationPanelRef {
+  applyTask: (task: TaskHistoryTask) => void
+  convertToVideo: (imageUrl: string) => void
+  addReferenceImage: (imageUrl: string) => void
+}
+
+interface CustomTemplate {
+  id: string
+  name: string
+  template: string
+}
+
+export const ShotAIGenerationPanel = forwardRef<ShotAIGenerationPanelRef, ShotAIGenerationPanelProps>(
+  function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions, hideTaskHistory = false, currentShot }, ref) {
   const [selectedOutputType, setSelectedOutputType] = useState<OutputType>('IMAGE')
   const [selectedProviderId, setSelectedProviderId] = useState<string>('')
   const [selectedModelId, setSelectedModelId] = useState<string>('')
@@ -37,6 +52,159 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Custom templates state
+  const [customTemplates, setCustomTemplates] = useState<CustomTemplate[]>([])
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [editingTemplate, setEditingTemplate] = useState<CustomTemplate | null>(null)
+  const [templateName, setTemplateName] = useState('')
+  const [templateContent, setTemplateContent] = useState('')
+
+  // Load custom templates from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('shot-ai-custom-templates')
+    if (saved) {
+      try {
+        const templates = JSON.parse(saved) as CustomTemplate[]
+        setCustomTemplates(templates)
+      } catch (e) {
+        console.error('Failed to load custom templates:', e)
+      }
+    }
+  }, [])
+
+  // Save custom templates to localStorage whenever they change
+  useEffect(() => {
+    if (customTemplates.length > 0) {
+      localStorage.setItem('shot-ai-custom-templates', JSON.stringify(customTemplates))
+    }
+  }, [customTemplates])
+
+  const handleOpenTemplateModal = (template?: CustomTemplate) => {
+    if (template) {
+      setEditingTemplate(template)
+      setTemplateName(template.name)
+      setTemplateContent(template.template)
+    } else {
+      setEditingTemplate(null)
+      setTemplateName('')
+      setTemplateContent('')
+    }
+    setShowTemplateModal(true)
+  }
+
+  const handleSaveTemplate = () => {
+    if (!templateName.trim() || !templateContent.trim()) {
+      toast.error('请填写名称和模板内容')
+      return
+    }
+
+    if (editingTemplate) {
+      // Update existing template
+      setCustomTemplates(prev =>
+        prev.map(t => t.id === editingTemplate.id
+          ? { ...t, name: templateName.trim(), template: templateContent.trim() }
+          : t
+        )
+      )
+      toast.success('模板已更新')
+    } else {
+      // Create new template
+      const newTemplate: CustomTemplate = {
+        id: Date.now().toString(),
+        name: templateName.trim(),
+        template: templateContent.trim(),
+      }
+      setCustomTemplates(prev => [...prev, newTemplate])
+      toast.success('模板已添加')
+    }
+
+    setShowTemplateModal(false)
+    setTemplateName('')
+    setTemplateContent('')
+    setEditingTemplate(null)
+  }
+
+  const handleDeleteTemplate = (id: string) => {
+    if (confirm('确定删除此模板？')) {
+      setCustomTemplates(prev => prev.filter(t => t.id !== id))
+      toast.success('模板已删除')
+    }
+  }
+
+  const handleInsertVariable = (variable: string) => {
+    setTemplateContent(prev => prev + `{{${variable}}}`)
+  }
+
+  // 预览模板内容的函数
+  const previewTemplateContent = (template: string): string => {
+    if (!currentShot || !template) {
+      return template
+    }
+
+    // Replace variables with actual values from current shot
+    let result = template
+
+    // 通用字段
+    result = result.replace(/\{\{shotNumber\}\}/g, currentShot.shotNumber?.toString() || '')
+
+    // 全局样式设置（从 setting 中获取）
+    result = result.replace(/\{\{styleSettings\}\}/g, currentShot.setting?.styleSettings || '')
+
+    // 角色信息 - 取第一个角色
+    const firstCharacter = currentShot.characters?.[0]
+    if (firstCharacter?.character) {
+      result = result.replace(/\{\{name\}\}/g, firstCharacter.character.name || '')
+      result = result.replace(/\{\{appearance\}\}/g, firstCharacter.character.appearance || '')
+      result = result.replace(/\{\{environment\}\}/g, firstCharacter.character.environment || '')
+    } else {
+      result = result.replace(/\{\{name\}\}/g, '')
+      result = result.replace(/\{\{appearance\}\}/g, '')
+      result = result.replace(/\{\{environment\}\}/g, '')
+    }
+
+    // TYPE02 字段
+    result = result.replace(/\{\{shotSizeView\}\}/g, currentShot.shotSizeView || '')
+    result = result.replace(/\{\{settingBackground\}\}/g, currentShot.settingBackground || '')
+    result = result.replace(/\{\{compositionPosition\}\}/g, currentShot.compositionPosition || '')
+    result = result.replace(/\{\{poseExpressionCostume\}\}/g, currentShot.poseExpressionCostume || '')
+
+    // TYPE03 字段（在 shot 对象上）
+    result = result.replace(/\{\{framing\}\}/g, currentShot.framing || '')
+    result = result.replace(/\{\{bodyOrientation\}\}/g, currentShot.bodyOrientation || '')
+    result = result.replace(/\{\{faceDirection\}\}/g, currentShot.faceDirection || '')
+    result = result.replace(/\{\{cameraMovement\}\}/g, currentShot.cameraMovement || '')
+    result = result.replace(/\{\{expression\}\}/g, currentShot.expression || '')
+    result = result.replace(/\{\{action\}\}/g, currentShot.action || '')
+    result = result.replace(/\{\{dialogue\}\}/g, currentShot.dialogue || '')
+
+    // TYPE01 字段（在角色数组中）- 取第一个角色的动作和台词
+    if (firstCharacter?.action) {
+      result = result.replace(/\{\{characterAction\}\}/g, firstCharacter.action)
+    } else {
+      result = result.replace(/\{\{characterAction\}\}/g, '')
+    }
+    if (firstCharacter?.dialogue) {
+      result = result.replace(/\{\{characterDialogue\}\}/g, firstCharacter.dialogue)
+    } else {
+      result = result.replace(/\{\{characterDialogue\}\}/g, '')
+    }
+
+    // 如果还有未替换的变量，移除它们
+    result = result.replace(/\{\{[^}]+\}\}/g, '')
+
+    return result
+  }
+
+  const handleApplyTemplate = (template: string) => {
+    const result = previewTemplateContent(template)
+    setPrompt(result)
+  }
+
+  // 计算模板预览
+  const templatePreview = useMemo(() => {
+    return previewTemplateContent(templateContent)
+  }, [templateContent, currentShot])
 
   const { data: providersData } = api.aiGeneration.listProviders.useQuery(
     { isActive: true },
@@ -96,45 +264,50 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
   }, [selectedModel])
 
 
+  // 为每种输出类型保存供应商选择
   useEffect(() => {
-    if (!availableProviders || availableProviders.length === 0) return
-    if (selectedProviderId) return
-    const savedProviderId = localStorage.getItem('shot-ai-provider-id')
-    if (savedProviderId && availableProviders.some(p => p.id === savedProviderId)) {
-      setSelectedProviderId(savedProviderId)
-    } else {
-      setSelectedProviderId(availableProviders[0]!.id)
+    if (selectedProviderId) {
+      localStorage.setItem(`shot-ai-${selectedOutputType}-provider-id`, selectedProviderId)
     }
-  }, [availableProviders, selectedProviderId])
+  }, [selectedProviderId, selectedOutputType])
 
+  // 为每种输出类型保存模型选择
   useEffect(() => {
-    if (selectedProviderId && availableModels.length > 0) {
-      const savedModelId = localStorage.getItem('shot-ai-model-id')
-      if (savedModelId && availableModels.some(m => m.id === savedModelId)) {
-        setSelectedModelId(savedModelId)
-      } else {
-        setSelectedModelId(availableModels[0]!.id)
-      }
-    } else {
-      setSelectedModelId('')
+    if (selectedModelId) {
+      localStorage.setItem(`shot-ai-${selectedOutputType}-model-id`, selectedModelId)
     }
-  }, [selectedProviderId, availableModels])
+  }, [selectedModelId, selectedOutputType])
 
+  // 切换输出类型时，恢复该类型之前保存的选择，或使用智能默认值
   useEffect(() => {
-    if (selectedProviderId) localStorage.setItem('shot-ai-provider-id', selectedProviderId)
-  }, [selectedProviderId])
+    if (!modelsData || !providersData) return
 
-  useEffect(() => {
-    if (selectedModelId) localStorage.setItem('shot-ai-model-id', selectedModelId)
-  }, [selectedModelId])
-
-  useEffect(() => {
-    setSelectedProviderId('')
-    setSelectedModelId('')
     setParameters({})
 
-    // 切换到IMAGE类型时，智能选择默认模型
-    if (selectedOutputType === 'IMAGE' && modelsData && providersData) {
+    // 尝试从localStorage恢复该输出类型的选择
+    const savedProviderId = localStorage.getItem(`shot-ai-${selectedOutputType}-provider-id`)
+    const savedModelId = localStorage.getItem(`shot-ai-${selectedOutputType}-model-id`)
+
+    // 获取当前输出类型可用的供应商
+    const providerIdsWithModels = new Set(modelsData.map((m) => m.provider.id))
+    const availableProvidersForType = providersData.filter((p) => providerIdsWithModels.has(p.id))
+
+    // 如果有保存的选择且仍然有效，使用保存的选择
+    if (savedProviderId && availableProvidersForType.some(p => p.id === savedProviderId)) {
+      setSelectedProviderId(savedProviderId)
+
+      const modelsForProvider = modelsData.filter((m) => m.provider.id === savedProviderId)
+      if (savedModelId && modelsForProvider.some(m => m.id === savedModelId)) {
+        setSelectedModelId(savedModelId)
+        return
+      } else if (modelsForProvider.length > 0) {
+        setSelectedModelId(modelsForProvider[0]!.id)
+        return
+      }
+    }
+
+    // 如果没有保存的有效选择，使用智能默认值
+    if (selectedOutputType === 'IMAGE') {
       // 优先选择 KIE + nano banana edit
       const kieProvider = providersData.find(p => p.name.toLowerCase().includes('kie'))
       if (kieProvider) {
@@ -159,8 +332,22 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
         if (jimeng4Model) {
           setSelectedProviderId(jimengProvider.id)
           setSelectedModelId(jimeng4Model.id)
+          return
         }
       }
+    }
+
+    // 如果都没有，选择第一个可用的供应商和模型
+    if (availableProvidersForType.length > 0) {
+      const firstProvider = availableProvidersForType[0]!
+      setSelectedProviderId(firstProvider.id)
+      const firstModel = modelsData.find(m => m.provider.id === firstProvider.id)
+      if (firstModel) {
+        setSelectedModelId(firstModel.id)
+      }
+    } else {
+      setSelectedProviderId('')
+      setSelectedModelId('')
     }
   }, [selectedOutputType, modelsData, providersData])
 
@@ -288,6 +475,26 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
     setImageUrlInput('')
     setUploadError(null)
     toast.success('图片链接已添加')
+  }
+
+  // 从外部添加参考图URL的函数
+  const addReferenceImageUrl = (url: string) => {
+    const slots = 5 - uploadedImages.length
+    if (slots <= 0) {
+      toast.error('最多上传 5 张图片')
+      return
+    }
+    if (!url) {
+      toast.error('图片 URL 无效')
+      return
+    }
+    if (uploadedImages.some((image) => image.url === url)) {
+      toast.error('该图片已添加')
+      return
+    }
+    setUploadedImages((prev) => [...prev, { url, name: url }])
+    setUploadError(null)
+    toast.success('已添加演员参考图')
   }
 
   const handleRemoveImage = (index: number) => {
@@ -438,118 +645,162 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
     toast.success('已应用任务配置')
   }
 
+  // 暴露方法给父组件通过ref调用
+  useImperativeHandle(ref, () => ({
+    applyTask: handleApplyTask,
+    convertToVideo: handleConvertToVideo,
+    addReferenceImage: addReferenceImageUrl,
+  }))
+
   return (
     <>
-    <Card className="space-y-6 p-6">
-      <h3 className="text-lg font-semibold">AI 内容生成</h3>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {(['IMAGE', 'VIDEO', 'AUDIO'] as OutputType[]).map((type) => (
-            <Button
-              key={type}
-              variant={selectedOutputType === type ? 'default' : 'outline'}
-              onClick={() => setSelectedOutputType(type)}
-              size="sm"
-            >
-              {type === 'IMAGE' ? '图像' : type === 'VIDEO' ? '视频' : '音频'}
-            </Button>
+    <Card className="space-y-3 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={selectedOutputType}
+          onChange={(e) => setSelectedOutputType(e.target.value as OutputType)}
+          className="h-7 min-w-[100px] rounded border border-gray-300 px-2 text-xs focus:border-blue-500 focus:outline-none"
+        >
+          <option value="IMAGE">图像</option>
+          <option value="VIDEO">视频</option>
+          <option value="AUDIO">音频</option>
+        </select>
+        <select
+          value={selectedProviderId}
+          onChange={(e) => setSelectedProviderId(e.target.value)}
+          className="h-7 min-w-[140px] rounded border border-gray-300 px-2 text-xs focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">选择供应商</option>
+          {availableProviders.map((provider) => (
+            <option key={provider.id} value={provider.id}>
+              {provider.name}
+            </option>
           ))}
-          <select
-            value={selectedProviderId}
-            onChange={(e) => setSelectedProviderId(e.target.value)}
-            className="h-9 min-w-[180px] rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            <option value="">选择供应商</option>
-            {availableProviders.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.name}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedModelId}
-            onChange={(e) => setSelectedModelId(e.target.value)}
-            disabled={!selectedProviderId || availableModels.length === 0}
-            className="h-9 min-w-[200px] rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
-          >
-            <option value="">{availableModels.length === 0 ? '暂无模型' : '选择模型'}</option>
-            {availableModels.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {/* 输出数量字段已隐藏，固定为1 */}
+        </select>
+        <select
+          value={selectedModelId}
+          onChange={(e) => setSelectedModelId(e.target.value)}
+          disabled={!selectedProviderId || availableModels.length === 0}
+          className="h-7 min-w-[160px] rounded border border-gray-300 px-2 text-xs focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
+        >
+          <option value="">{availableModels.length === 0 ? '暂无模型' : '选择模型'}</option>
+          {availableModels.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.name}
+            </option>
+          ))}
+        </select>
+        <Button
+          onClick={handleGenerate}
+          disabled={isGenerating || !selectedModelId || !shotId}
+          size="sm"
+          className="h-7 px-3 text-xs"
+        >
+          {isGenerating ? '生成中...' : !shotId ? '请先展开镜头' : '生成'}
+        </Button>
       </div>
 
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">提示词 *</label>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={4}
-            placeholder="描述你想要生成的内容..."
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          />
+      <div className="space-y-2">
+        <textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          rows={10}
+          placeholder="描述你想要生成的内容..."
+          className="w-full rounded border border-gray-300 px-2 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
 
-          {/* 快捷填充按钮 */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setPrompt("将参考图中的角色更换为如下装扮和场景，保持角色一致即可：")}
-              className="px-3 py-1 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-md border border-blue-200 transition-colors"
-            >
-              保持人
-            </button>
-            <button
-              type="button"
-              onClick={() => setPrompt("调整参考图的角色和环境，保持角色外观、场景、镜头角度一致：")}
-              className="px-3 py-1 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded-md border border-green-200 transition-colors"
-            >
-              延续人+场景
-            </button>
+        {/* 快捷填充按钮 */}
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            onClick={() => setPrompt("将参考图中的角色更换为如下装扮和场景，保持角色一致即可：")}
+            className="px-2 py-0.5 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 transition-colors"
+          >
+            保持人
+          </button>
+          <button
+            type="button"
+            onClick={() => setPrompt("调整参考图的角色和环境，保持角色外观、场景、镜头角度一致：")}
+            className="px-2 py-0.5 text-xs bg-green-50 hover:bg-green-100 text-green-700 rounded border border-green-200 transition-colors"
+          >
+            延续人+场景
+          </button>
 
-            {/* 角色模板词按钮 */}
-            {sceneDescriptions && sceneDescriptions.length > 0 && (
-              <>
-                {sceneDescriptions.map((scene, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => setPrompt(prev => prev + (prev ? ' ' : '') + scene.description)}
-                    className="px-3 py-1 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-purple-200 transition-colors"
-                    title={scene.description}
-                  >
-                    {scene.characterName}模板词
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
+          {/* 角色模板词按钮 */}
+          {sceneDescriptions && sceneDescriptions.length > 0 && (
+            <>
+              {sceneDescriptions.map((scene, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setPrompt(prev => prev + (prev ? ' ' : '') + scene.description)}
+                  className="px-2 py-0.5 text-xs bg-purple-50 hover:bg-purple-100 text-purple-700 rounded border border-purple-200 transition-colors"
+                  title={scene.description}
+                >
+                  {scene.characterName}模板词
+                </button>
+              ))}
+            </>
+          )}
+
+          {/* 自定义模板按钮 */}
+          {customTemplates.map((template) => (
+            <div key={template.id} className="relative group">
+              <button
+                type="button"
+                onClick={() => handleApplyTemplate(template.template)}
+                className="px-2 py-0.5 text-xs bg-orange-50 hover:bg-orange-100 text-orange-700 rounded border border-orange-200 transition-colors"
+                title={template.template}
+              >
+                {template.name}
+              </button>
+              {/* 编辑按钮 */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleOpenTemplateModal(template)
+                }}
+                className="absolute -top-1 -right-6 h-4 w-4 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                title="编辑"
+              >
+                <Edit2 className="h-2.5 w-2.5" />
+              </button>
+              {/* 删除按钮 */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleDeleteTemplate(template.id)
+                }}
+                className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                title="删除"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+
+          {/* 添加模板按钮 */}
+          <button
+            type="button"
+            onClick={() => handleOpenTemplateModal()}
+            className="h-6 w-6 rounded-full border-2 border-dashed border-gray-400 hover:border-gray-600 hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors flex items-center justify-center"
+            title="添加自定义模板"
+          >
+            +
+          </button>
         </div>
+      </div>
 
         {/* 输入图片 - 仅当模型支持图片输入时显示 */}
         {supportsImageInput && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">
-                {(selectedModel?.slug === 'kie-kling-v2-1-master-image-to-video' ||
-                  selectedModel?.slug === 'kie-kling-v2-1-pro')
-                  ? '输入图片（首帧必填，尾帧可选）'
-                  : '输入图片（可选）'}
-              </label>
-              <span className="text-xs text-gray-500">
-                {uploadedImages.length}/5
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap gap-2">
               {uploadedImages.map((image, index) => (
                 <div
                   key={image.url}
-                  className="group relative h-16 w-16 overflow-hidden rounded-md border border-gray-200 bg-gray-50"
+                  className="group relative h-8 w-8 overflow-hidden rounded border border-gray-200 bg-gray-50"
                 >
                   <button
                     type="button"
@@ -565,14 +816,14 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
                   <button
                     type="button"
                     onClick={() => handleRemoveImage(index)}
-                    className="absolute -right-1 -top-1 rounded-full bg-red-500 p-1 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                    className="absolute -right-0.5 -top-0.5 rounded-full bg-red-500 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-2 w-2" />
                   </button>
                 </div>
               ))}
               {remainingUploadSlots > 0 && (
-                <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-md border-2 border-dashed border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50">
+                <label className="flex h-8 w-8 cursor-pointer items-center justify-center rounded border-2 border-dashed border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50">
                   <input
                     type="file"
                     accept="image/*"
@@ -581,11 +832,9 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
                     disabled={isUploadingImage}
                     className="hidden"
                   />
-                  <Upload className="h-5 w-5 text-gray-400" />
+                  <Upload className="h-3 w-3 text-gray-400" />
                 </label>
               )}
-            </div>
-            <div className="flex gap-2">
               <input
                 type="url"
                 value={imageUrlInput}
@@ -601,62 +850,47 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
                 }}
                 placeholder="或粘贴图片 URL"
                 disabled={remainingUploadSlots <= 0}
-                className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
+                className="flex-1 min-w-[200px] h-8 rounded border border-gray-300 px-2 text-sm focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
               />
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleAddImageUrl}
                 disabled={remainingUploadSlots <= 0 || imageUrlInput.trim().length === 0}
+                className="h-8 px-2"
               >
-                <LinkIcon className="h-4 w-4 mr-1" />
-                添加链接
+                <LinkIcon className="h-3 w-3" />
               </Button>
             </div>
             {uploadError && (
               <p className="text-xs text-red-600">{uploadError}</p>
             )}
-            <p className="text-xs text-gray-500">
-              {(selectedModel?.slug === 'kie-kling-v2-1-master-image-to-video' ||
-                selectedModel?.slug === 'kie-kling-v2-1-pro')
-                ? '第1张图片作为首帧（必填），第2张图片作为尾帧（可选），支持 PNG/JPG/WebP'
-                : '最多上传 5 张图片，支持 PNG/JPG/WebP'}
-            </p>
           </div>
         )}
 
-        {/* 模型参数 */}
-        {parameterFields.length > 0 && (
-          <div className="space-y-3 border-t pt-4">
-            <h4 className="text-sm font-medium">模型参数</h4>
-            <div className="grid gap-3 md:grid-cols-2">
-              {parameterFields.map((field) => (
-                <div key={field.key} className="space-y-1">
-                  <label className="text-sm font-medium">{field.label}</label>
-                  {renderParameterInput(field)}
-                  {field.helperText && (
-                    <p className="text-xs text-gray-500">{field.helperText}</p>
-                  )}
-                </div>
-              ))}
-            </div>
+      {/* 模型参数 */}
+      {parameterFields.length > 0 && (
+        <div className="space-y-2 border-t pt-2">
+          <h4 className="text-xs font-medium">模型参数</h4>
+          <div className="grid gap-2 md:grid-cols-2">
+            {parameterFields.map((field) => (
+              <div key={field.key} className="space-y-0.5">
+                <label className="text-xs font-medium">{field.label}</label>
+                {renderParameterInput(field)}
+                {field.helperText && (
+                  <p className="text-xs text-gray-500">{field.helperText}</p>
+                )}
+              </div>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        <Button
-          onClick={handleGenerate}
-          disabled={isGenerating || !selectedModelId}
-          className="w-full"
-        >
-          {isGenerating ? '生成中...' : '开始生成'}
-        </Button>
-      </div>
+      {error && (
+        <div className="rounded border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+          {error}
+        </div>
+      )}
     </Card>
 
     {/* 任务历史 */}
@@ -666,6 +900,96 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
       onApplyTask={handleApplyTask}
       onConvertToVideo={handleConvertToVideo}
     />
+
+    {/* 模板编辑模态框 */}
+    <Dialog open={showTemplateModal} onOpenChange={setShowTemplateModal}>
+      <DialogContent className="max-w-2xl">
+        <DialogTitle>{editingTemplate ? '编辑模板' : '添加自定义模板'}</DialogTitle>
+        <div className="space-y-4">
+          {/* 名称输入 */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">模板名称</label>
+            <input
+              type="text"
+              value={templateName}
+              onChange={(e) => setTemplateName(e.target.value)}
+              placeholder="例如：人物特写"
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          {/* 模板内容输入 */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">模板内容</label>
+            <textarea
+              value={templateContent}
+              onChange={(e) => setTemplateContent(e.target.value)}
+              placeholder="输入模板内容，使用 {{变量名}} 来插入变量"
+              rows={6}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          {/* 变量快捷插入 */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">快速插入变量</label>
+            <div className="flex flex-wrap gap-1 p-2 bg-gray-50 rounded border border-gray-200 max-h-40 overflow-y-auto">
+              {/* 全局字段 */}
+              <button type="button" onClick={() => handleInsertVariable('shotNumber')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">shotNumber</button>
+              <button type="button" onClick={() => handleInsertVariable('styleSettings')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">styleSettings</button>
+
+              {/* 角色字段 */}
+              <button type="button" onClick={() => handleInsertVariable('name')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">name</button>
+              <button type="button" onClick={() => handleInsertVariable('appearance')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">appearance</button>
+              <button type="button" onClick={() => handleInsertVariable('environment')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">environment</button>
+
+              {/* TYPE02 字段 */}
+              <button type="button" onClick={() => handleInsertVariable('shotSizeView')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">shotSizeView</button>
+              <button type="button" onClick={() => handleInsertVariable('settingBackground')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">settingBackground</button>
+              <button type="button" onClick={() => handleInsertVariable('compositionPosition')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">compositionPosition</button>
+              <button type="button" onClick={() => handleInsertVariable('poseExpressionCostume')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">poseExpressionCostume</button>
+
+              {/* TYPE03 字段 */}
+              <button type="button" onClick={() => handleInsertVariable('framing')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">framing</button>
+              <button type="button" onClick={() => handleInsertVariable('bodyOrientation')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">bodyOrientation</button>
+              <button type="button" onClick={() => handleInsertVariable('faceDirection')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">faceDirection</button>
+              <button type="button" onClick={() => handleInsertVariable('cameraMovement')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">cameraMovement</button>
+              <button type="button" onClick={() => handleInsertVariable('expression')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">expression</button>
+              <button type="button" onClick={() => handleInsertVariable('action')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">action</button>
+              <button type="button" onClick={() => handleInsertVariable('dialogue')} className="px-2 py-1 text-xs bg-white hover:bg-blue-50 border border-gray-300 rounded">dialogue</button>
+            </div>
+          </div>
+
+          {/* 内容预览 */}
+          {templateContent && (
+            <div className="space-y-1">
+              <label className="text-sm font-medium">内容预览</label>
+              <div className="p-2 bg-green-50 rounded border border-green-200 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+                {templatePreview || '（无内容）'}
+              </div>
+            </div>
+          )}
+
+          {/* 按钮 */}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowTemplateModal(false)
+                setTemplateName('')
+                setTemplateContent('')
+                setEditingTemplate(null)
+              }}
+            >
+              取消
+            </Button>
+            <Button onClick={handleSaveTemplate}>
+              {editingTemplate ? '更新' : '保存'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
 
     {/* 图片预览对话框 */}
     <Dialog
@@ -687,4 +1011,4 @@ export function ShotAIGenerationPanel({ shotId, onTaskCreated, sceneDescriptions
     </Dialog>
   </>
   )
-}
+})

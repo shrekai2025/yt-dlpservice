@@ -608,7 +608,7 @@ export default function AIGenerationPage() {
               <select
                 value={selectedProviderId}
                 onChange={(e) => setSelectedProviderId(e.target.value)}
-                className="h-9 min-w-[180px] rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none"
+                className="h-9 min-w-[100px] rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none"
               >
                 <option value="">选择供应商</option>
                 {availableProviders.map((provider) => (
@@ -621,7 +621,7 @@ export default function AIGenerationPage() {
                 value={selectedModelId}
                 onChange={(e) => setSelectedModelId(e.target.value)}
                 disabled={!selectedProviderId || availableModels.length === 0}
-                className="h-9 min-w-[200px] rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
+                className="h-9 min-w-[170px] rounded-md border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:bg-gray-100"
               >
                 <option value="">{availableModels.length === 0 ? '暂无模型' : '选择模型'}</option>
                 {availableModels.map((model) => (

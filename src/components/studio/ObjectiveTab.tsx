@@ -143,6 +143,8 @@ const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
 
 2. **全局角色设定** (\`characters\`): 角色数组,每个角色包含:
    - \`name\`: 角色名称,根据对话自定义名称,例如医生、患者。
+   - \`appearance\`: 角色外观设定（服装+配饰）。
+   - \`environment\`: 角色所在场景位置描述,例如站在机舱过道。
 
 3. **镜头列表** (\`shots\`): 9-11个镜头的数组,每个镜头包含:
    - \`shotNumber\`: 镜头编号
@@ -179,10 +181,14 @@ const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
   "learningPoint": "本集的英语学习要点",
   "characters": [
     {
-      "name": "角色A"
+      "name": "角色A",
+      "appearance": "角色外观设定（服装+配饰）",
+      "environment": "角色所在场景位置描述"
     },
     {
-      "name": "角色B"
+      "name": "角色B",
+      "appearance": "角色外观设定（服装+配饰）",
+      "environment": "角色所在场景位置描述"
     }
   ],
   "shots": [
@@ -211,6 +217,9 @@ type Props = {
   initialSystemPrompt?: string | null;
   rawInput?: string | null;
   corePoint?: string | null;
+  initialShotCount?: string | null;
+  initialDialogueCount?: string | null;
+  initialCharacterCount?: string | null;
   onSave?: () => void;
 };
 
@@ -222,6 +231,9 @@ export function ObjectiveTab({
   initialSystemPrompt,
   rawInput,
   corePoint,
+  initialShotCount,
+  initialDialogueCount,
+  initialCharacterCount,
   onSave,
 }: Props) {
   const [objective, setObjective] = useState("");
@@ -230,11 +242,15 @@ export function ObjectiveTab({
   const [systemPrompt, setSystemPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [shotCount, setShotCount] = useState("8-10");
+  const [dialogueCount, setDialogueCount] = useState("10-12");
+  const [characterCount, setCharacterCount] = useState("2");
 
   // UI 状态
-  const [isRawInputExpanded, setIsRawInputExpanded] = useState(false);
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [tempSystemPrompt, setTempSystemPrompt] = useState(systemPrompt);
+  const [isEditingObjective, setIsEditingObjective] = useState(false);
+  const [tempObjective, setTempObjective] = useState(objective);
 
   // 查询可用的 LLM 提供商
   const { data: providers } = api.chat.listProviders.useQuery();
@@ -268,6 +284,9 @@ export function ObjectiveTab({
           provider: selectedProvider,
           model: selectedModel,
         }),
+        shotCount,
+        dialogueCount,
+        characterCount,
       });
     },
     onError: (error) => {
@@ -280,8 +299,10 @@ export function ObjectiveTab({
   useEffect(() => {
     if (initialObjective !== undefined && initialObjective !== null) {
       setObjective(initialObjective);
+      setTempObjective(initialObjective);
     } else {
       setObjective("");
+      setTempObjective("");
     }
   }, [initialObjective]);
 
@@ -306,6 +327,18 @@ export function ObjectiveTab({
       setTempSystemPrompt("");
     }
   }, [initialSystemPrompt]);
+
+  useEffect(() => {
+    if (initialShotCount) setShotCount(initialShotCount);
+  }, [initialShotCount]);
+
+  useEffect(() => {
+    if (initialDialogueCount) setDialogueCount(initialDialogueCount);
+  }, [initialDialogueCount]);
+
+  useEffect(() => {
+    if (initialCharacterCount) setCharacterCount(initialCharacterCount);
+  }, [initialCharacterCount]);
 
   // 自动选择第一个可用的提供商和模型
   useEffect(() => {
@@ -341,10 +374,13 @@ export function ObjectiveTab({
 
     setIsGenerating(true);
 
-    // 替换 {{rawInput}} 和 {{point}} 变量
+    // 替换所有变量
     const finalPrompt = systemPrompt
       .replace(/\{\{rawInput\}\}/g, rawInput || "")
-      .replace(/\{\{point\}\}/g, corePoint || "");
+      .replace(/\{\{point\}\}/g, corePoint || "")
+      .replace(/\{\{shotCount\}\}/g, shotCount)
+      .replace(/\{\{dialogueCount\}\}/g, dialogueCount)
+      .replace(/\{\{characterCount\}\}/g, characterCount);
 
     console.log(
       "[ObjectiveTab] Sending generate request with finalPrompt:",
@@ -384,12 +420,30 @@ export function ObjectiveTab({
     updateMutation.mutate({
       episodeId,
       systemPrompt: tempSystemPrompt,
+      shotCount,
+      dialogueCount,
+      characterCount,
     });
   };
 
   const handleCancelEditPrompt = () => {
     setTempSystemPrompt(systemPrompt);
     setIsEditingPrompt(false);
+  };
+
+  const handleEditObjective = () => {
+    setTempObjective(objective);
+    setIsEditingObjective(true);
+  };
+
+  const handleSaveObjective = () => {
+    setObjective(tempObjective);
+    setIsEditingObjective(false);
+  };
+
+  const handleCancelEditObjective = () => {
+    setTempObjective(objective);
+    setIsEditingObjective(false);
   };
 
   const insertVariable = (variable: string) => {
@@ -437,129 +491,75 @@ export function ObjectiveTab({
   );
   const hasRawInput = rawInput && rawInput.trim().length > 0;
 
-  // 获取原始输入的第一行
-  const firstLineOfRawInput = rawInput?.split("\n")[0] || "";
-
   return (
     <div className="space-y-4">
-      {/* 原始输入预览 - 默认收起 */}
-      <div className="rounded-md bg-gray-50 border border-gray-200">
-        <div
-          className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-100 transition-colors"
-          onClick={() => setIsRawInputExpanded(!isRawInputExpanded)}
-        >
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            {isRawInputExpanded ? (
-              <ChevronDown className="h-4 w-4 text-gray-500 shrink-0" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-gray-500 shrink-0" />
-            )}
-            <span className="text-sm font-medium text-gray-700">
-              原始输入预览
-            </span>
-            {!isRawInputExpanded && hasRawInput && (
-              <span className="text-sm text-gray-500 truncate ml-2">
-                {firstLineOfRawInput}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {!hasRawInput && (
-              <span className="text-xs text-orange-600">⚠️ 无素材</span>
-            )}
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSave();
-              }}
-              disabled={isSaving}
-              size="sm"
-              className="gap-2"
-            >
-              <Save className="h-3 w-3" />
-              {isSaving ? "保存中..." : "保存"}
-            </Button>
-          </div>
-        </div>
-        {isRawInputExpanded && (
-          <div className="px-3 pb-3 pt-0">
-            {hasRawInput ? (
-              <div className="text-sm text-gray-600 max-h-48 overflow-auto whitespace-pre-wrap font-mono bg-white rounded p-2 border border-gray-200">
-                {rawInput}
-              </div>
-            ) : (
-              <div className="text-sm text-gray-400 italic">暂无原始输入</div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* LLM 配置 */}
+      {/* LLM 配置和 System Prompt - 单行布局 */}
       <div className="grid grid-cols-2 gap-4">
+        {/* 左侧：LLM 配置 */}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">LLM 提供商</label>
+            <select
+              value={selectedProvider}
+              onChange={(e) => {
+                setSelectedProvider(e.target.value);
+                const provider = providers?.find(
+                  (p) => p.provider === e.target.value,
+                );
+                if (provider?.defaultModel) {
+                  setSelectedModel(provider.defaultModel);
+                }
+              }}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            >
+              <option value="">选择提供商</option>
+              {providers?.map((p) => (
+                <option
+                  key={p.provider}
+                  value={p.provider}
+                  disabled={!p.isConfigured}
+                >
+                  {p.label} {!p.isConfigured && "(未配置)"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">模型</label>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              disabled={!selectedProvider}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
+            >
+              <option value="">选择模型</option>
+              {currentProvider?.models.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* 右侧：System Prompt */}
         <div className="space-y-2">
-          <label className="text-sm font-medium">LLM 提供商</label>
-          <select
-            value={selectedProvider}
-            onChange={(e) => {
-              setSelectedProvider(e.target.value);
-              const provider = providers?.find(
-                (p) => p.provider === e.target.value,
-              );
-              if (provider?.defaultModel) {
-                setSelectedModel(provider.defaultModel);
-              }
-            }}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-          >
-            <option value="">选择提供商</option>
-            {providers?.map((p) => (
-              <option
-                key={p.provider}
-                value={p.provider}
-                disabled={!p.isConfigured}
-              >
-                {p.label} {!p.isConfigured && "(未配置)"}
-              </option>
-            ))}
-          </select>
-        </div>
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">System Prompt</label>
+            <button
+              onClick={handleCopyTemplate}
+              className="p-1 hover:bg-gray-100 rounded transition-colors"
+              title="复制提示词模板"
+            >
+              <Copy className="h-3.5 w-3.5 text-gray-500" />
+            </button>
+          </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">模型</label>
-          <select
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={!selectedProvider}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none disabled:bg-gray-100"
-          >
-            <option value="">选择模型</option>
-            {currentProvider?.models.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* System Prompt - 两种状态 */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">System Prompt</label>
-          <button
-            onClick={handleCopyTemplate}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
-            title="复制提示词模板"
-          >
-            <Copy className="h-3.5 w-3.5 text-gray-500" />
-          </button>
-        </div>
-
-        {!isEditingPrompt ? (
-          // 展示状态
+          {/* 单行展示 */}
           <div className="relative">
-            <div className="rounded-md border border-gray-300 px-3 py-2 text-sm bg-gray-50 line-clamp-2 pr-20">
-              {systemPrompt}
+            <div className="rounded-md border border-gray-300 px-3 py-2 text-sm bg-gray-50 truncate pr-20">
+              {systemPrompt || "未设置 System Prompt"}
             </div>
             <Button
               onClick={handleEditPrompt}
@@ -571,58 +571,122 @@ export function ObjectiveTab({
               编辑
             </Button>
           </div>
-        ) : (
-          // 编辑状态
-          <div className="space-y-2">
-            <textarea
-              id="system-prompt-input"
-              value={tempSystemPrompt}
-              onChange={(e) => setTempSystemPrompt(e.target.value)}
-              rows={4}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            />
-            <div className="flex items-center justify-between">
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => insertVariable("rawInput")}
-                  size="sm"
-                  variant="outline"
-                  className="gap-1 text-xs"
-                >
-                  插入 {"{{rawInput}}"}
-                </Button>
-                <Button
-                  onClick={() => insertVariable("point")}
-                  size="sm"
-                  variant="outline"
-                  className="gap-1 text-xs"
-                >
-                  插入 {"{{point}}"}
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleCancelEditPrompt}
-                  size="sm"
-                  variant="outline"
-                  className="gap-1"
-                >
-                  <X className="h-3 w-3" />
-                  取消
-                </Button>
-                <Button onClick={handleSavePrompt} size="sm" className="gap-1">
-                  <Check className="h-3 w-3" />
-                  确定
-                </Button>
-              </div>
-            </div>
-            <p className="text-xs text-gray-500">
-              提示: 使用 {"{{rawInput}}"} 插入原始素材, {"{{point}}"}{" "}
-              插入核心看点
-            </p>
-          </div>
-        )}
+        </div>
       </div>
+
+      {/* 新增：脚本参数配置 */}
+      <div className="grid grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">镜头数</label>
+          <input
+            type="text"
+            value={shotCount}
+            onChange={(e) => setShotCount(e.target.value)}
+            placeholder="8-10"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">台词数</label>
+          <input
+            type="text"
+            value={dialogueCount}
+            onChange={(e) => setDialogueCount(e.target.value)}
+            placeholder="10-12"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-700">演员数</label>
+          <input
+            type="text"
+            value={characterCount}
+            onChange={(e) => setCharacterCount(e.target.value)}
+            placeholder="2"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* System Prompt 编辑模态框 */}
+      {isEditingPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">编辑 System Prompt</h3>
+            <div className="space-y-4">
+              <textarea
+                id="system-prompt-input"
+                value={tempSystemPrompt}
+                onChange={(e) => setTempSystemPrompt(e.target.value)}
+                rows={16}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
+              />
+              <div className="flex items-center justify-between">
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    onClick={() => insertVariable("rawInput")}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                  >
+                    插入 {"{{rawInput}}"}
+                  </Button>
+                  <Button
+                    onClick={() => insertVariable("point")}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                  >
+                    插入 {"{{point}}"}
+                  </Button>
+                  <Button
+                    onClick={() => insertVariable("shotCount")}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                  >
+                    插入 {"{{shotCount}}"}
+                  </Button>
+                  <Button
+                    onClick={() => insertVariable("dialogueCount")}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                  >
+                    插入 {"{{dialogueCount}}"}
+                  </Button>
+                  <Button
+                    onClick={() => insertVariable("characterCount")}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1 text-xs"
+                  >
+                    插入 {"{{characterCount}}"}
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleCancelEditPrompt}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1"
+                  >
+                    <X className="h-3 w-3" />
+                    取消
+                  </Button>
+                  <Button onClick={handleSavePrompt} size="sm" className="gap-1">
+                    <Check className="h-3 w-3" />
+                    确定
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                提示: 使用变量插入动态内容 - {"{{rawInput}}"}: 原始素材, {"{{point}}"}: 核心看点, {"{{shotCount}}"}: 镜头数, {"{{dialogueCount}}"}: 台词数, {"{{characterCount}}"}: 演员数
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 生成按钮 */}
       <div className="flex gap-2">
@@ -661,7 +725,7 @@ export function ObjectiveTab({
       {/* 目标输出 */}
       <div className="space-y-2">
         <label className="text-sm font-medium">
-          核心目标
+          剧本框架
           {objective && (
             <span className="ml-2 text-xs text-green-600">✓ 已生成</span>
           )}
@@ -675,20 +739,25 @@ export function ObjectiveTab({
               <ScriptDataViewer data={objective} />
             </div>
 
-            {/* 编辑区域 - 小号显示 */}
+            {/* 编辑区域 - 单行显示，点击编辑按钮弹出模态框 */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-gray-600">
                 手动编辑
               </label>
-              <textarea
-                value={objective}
-                onChange={(e) => setObjective(e.target.value)}
-                rows={4}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-xs font-mono focus:border-blue-500 focus:outline-none"
-              />
-              <p className="text-xs text-gray-500">
-                可以手动编辑 AI 生成的内容
-              </p>
+              <div className="relative">
+                <div className="rounded-md border border-gray-300 px-3 py-2 text-xs font-mono bg-gray-50 truncate pr-20">
+                  {objective.substring(0, 100)}...
+                </div>
+                <Button
+                  onClick={handleEditObjective}
+                  size="sm"
+                  variant="outline"
+                  className="absolute right-2 top-2 gap-1"
+                >
+                  <Edit2 className="h-3 w-3" />
+                  编辑
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
@@ -725,6 +794,41 @@ export function ObjectiveTab({
       {updateMutation.isSuccess && !isSaving && (
         <div className="rounded-md bg-green-50 border border-green-200 p-3 text-sm text-green-700">
           ✓ 保存成功
+        </div>
+      )}
+
+      {/* 剧本框架编辑模态框 */}
+      {isEditingObjective && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">编辑剧本框架</h3>
+            <div className="space-y-4">
+              <textarea
+                value={tempObjective}
+                onChange={(e) => setTempObjective(e.target.value)}
+                rows={16}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  onClick={handleCancelEditObjective}
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                >
+                  <X className="h-3 w-3" />
+                  取消
+                </Button>
+                <Button onClick={handleSaveObjective} size="sm" className="gap-1">
+                  <Check className="h-3 w-3" />
+                  确定
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500">
+                可以手动编辑 AI 生成的内容
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>
