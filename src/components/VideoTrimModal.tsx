@@ -53,6 +53,11 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
   const [isDraggingMove, setIsDraggingMove] = useState(false) // 移动遮罩
   const [dragType, setDragType] = useState<'create' | 'move' | 'resize' | null>(null)
 
+  // 时间轴缩放相关
+  const [timelineZoom, setTimelineZoom] = useState(1) // 缩放倍数，1 = 100%
+  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0) // 滚动位置
+  const timelineScrollRef = useRef<HTMLDivElement>(null)
+
   // 获取视频URL - 使用 useMemo 避免重复计算
   // 优先使用 originalPath（新逻辑），然后 localPath（旧逻辑），最后 sourceUrl
   const videoUrl = useMemo(() => {
@@ -276,6 +281,40 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
         case 'M':
           e.preventDefault()
           toggleMute()
+          break
+        case 'ArrowLeft':
+          // 左键：快退10秒
+          e.preventDefault()
+          if (videoRef.current && videoDuration > 0) {
+            const newTime = Math.max(0, videoRef.current.currentTime - 10)
+            videoRef.current.currentTime = newTime
+            setCurrentTime(newTime)
+          }
+          break
+        case 'ArrowRight':
+          // 右键：快进10秒
+          e.preventDefault()
+          if (videoRef.current && videoDuration > 0) {
+            const newTime = Math.min(videoDuration, videoRef.current.currentTime + 10)
+            videoRef.current.currentTime = newTime
+            setCurrentTime(newTime)
+          }
+          break
+        case '>':
+        case '.':
+          // Ctrl/Cmd + > 或 . : 放大时间轴
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            setTimelineZoom(prev => Math.min(10, prev + 0.5))
+          }
+          break
+        case '<':
+        case ',':
+          // Ctrl/Cmd + < 或 , : 缩小时间轴
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            setTimelineZoom(prev => Math.max(1, prev - 0.5))
+          }
           break
       }
     }
@@ -667,76 +706,68 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
   const currentPercent = videoDuration > 0 ? (currentTime / videoDuration) * 100 : 0
   const selectionWidth = endPercent - startPercent
 
+  // 生成时间刻度标记
+  const generateTimeMarkers = () => {
+    if (videoDuration === 0) return []
+
+    const markers: { time: number; label: string; isMajor: boolean }[] = []
+
+    // 根据缩放级别决定刻度间隔
+    let interval: number
+    if (timelineZoom >= 5) {
+      interval = 1 // 1秒
+    } else if (timelineZoom >= 3) {
+      interval = 5 // 5秒
+    } else if (timelineZoom >= 2) {
+      interval = 10 // 10秒
+    } else {
+      interval = 30 // 30秒
+    }
+
+    // 生成刻度
+    for (let time = 0; time <= videoDuration; time += interval) {
+      const isMajor = time % (interval * 2) === 0 || time === 0 || time >= videoDuration - interval
+      markers.push({
+        time,
+        label: formatTime(time),
+        isMajor,
+      })
+    }
+
+    // 确保最后一个刻度是视频结束时间
+    if (markers[markers.length - 1]?.time !== videoDuration) {
+      markers.push({
+        time: videoDuration,
+        label: formatTime(videoDuration),
+        isMajor: true,
+      })
+    }
+
+    return markers
+  }
+
+  const timeMarkers = useMemo(() => generateTimeMarkers(), [videoDuration, timelineZoom])
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0">
-        <div className="sticky top-0 z-10 bg-white border-b px-4 pt-4 pb-3">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">视频编辑</DialogTitle>
-            <DialogDescription className="text-xs text-neutral-500 truncate">
-              {videoFile.name}
-            </DialogDescription>
-
-            {/* 模式切换 - 更紧凑 */}
-            <div className="mt-3 flex items-center gap-1.5">
-              <button
-                onClick={() => setCropMode('time')}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  cropMode === 'time'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                }`}
+      <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 overflow-hidden">
+        {/* 左右两列布局 */}
+        <div className="flex h-full">
+          {/* 左列：视频播放器和时间轴 (占大部分空间) */}
+          <div className="flex-1 flex flex-col bg-neutral-900 select-none overflow-hidden">
+            {/* 上部分：视频播放区 */}
+            <div className="flex-1 min-h-0 flex items-center justify-center p-8 pb-4">
+              <div
+                ref={videoContainerRef}
+                className="w-full h-full flex items-center justify-center bg-black rounded overflow-hidden relative"
+                onMouseDown={handleCropMouseDown}
+                style={{ cursor: cropMode !== 'time' ? 'crosshair' : 'default' }}
               >
-                <Scissors className="h-3 w-3 inline mr-1" />
-                时间裁剪
-              </button>
-              <button
-                onClick={() => setCropMode('region')}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  cropMode === 'region'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                }`}
-              >
-                <Crop className="h-3 w-3 inline mr-1" />
-                区域裁剪
-              </button>
-              <button
-                onClick={() => setCropMode('both')}
-                className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-                  cropMode === 'both'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
-                }`}
-              >
-                <Scissors className="h-3 w-3 inline mr-1" />
-                <Crop className="h-3 w-3 inline mr-1" />
-                组合裁剪
-              </button>
-            </div>
-
-            <div className="mt-1.5 text-[10px] text-neutral-400">
-              <kbd className="px-1 py-0.5 bg-neutral-100 border border-neutral-300 rounded text-neutral-700">空格</kbd> 播放/暂停
-              {' '}<kbd className="px-1 py-0.5 bg-neutral-100 border border-neutral-300 rounded text-neutral-700">[</kbd> 设为开始
-              {' '}<kbd className="px-1 py-0.5 bg-neutral-100 border border-neutral-300 rounded text-neutral-700">]</kbd> 设为结尾
-              {' '}<kbd className="px-1 py-0.5 bg-neutral-100 border border-neutral-300 rounded text-neutral-700">M</kbd> 静音
-            </div>
-          </DialogHeader>
-        </div>
-
-        <div className="flex flex-col px-4 pb-4">
-          {/* Video Preview - More Compact */}
-          <div
-            ref={videoContainerRef}
-            className="flex items-center justify-center bg-black rounded overflow-hidden my-3 relative min-h-[250px]"
-            onMouseDown={handleCropMouseDown}
-            style={{ cursor: cropMode !== 'time' ? 'crosshair' : 'default' }}
-          >
             <video
               ref={videoRef}
               src={videoUrl}
               key={videoUrl}
-              className="max-w-full max-h-[35vh] object-contain"
+              className="w-full h-full object-contain"
               onClick={togglePlay}
               preload="auto"
               playsInline
@@ -880,46 +911,15 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
                 <Volume2 className="h-5 w-5" />
               )}
             </button>
-          </div>
-
-          {/* Loading Info - Only show if really initializing */}
-          {isInitializing && videoDuration === 0 && (
-            <div className="text-[10px] text-blue-600 bg-blue-50 px-2 py-1.5 rounded mb-2 flex items-center gap-1.5">
-              <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              正在加载视频...
-            </div>
-          )}
-
-          {/* 裁剪区域信息 - More Compact */}
-          {cropMode !== 'time' && cropArea && (
-            <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 mb-3">
-              <div className="flex items-center justify-between">
-                <div className="text-xs font-medium text-blue-900">裁剪区域</div>
-                <button
-                  onClick={resetCropArea}
-                  className="text-[10px] text-blue-600 hover:text-blue-800 underline"
-                >
-                  重新选择
-                </button>
-              </div>
-              <div className="mt-1.5 grid grid-cols-2 gap-1.5 text-[10px] text-blue-800">
-                <div>
-                  <span className="font-medium">起始: </span>
-                  <span className="font-mono">X:{cropArea.x} Y:{cropArea.y}</span>
-                </div>
-                <div>
-                  <span className="font-medium">尺寸: </span>
-                  <span className="font-mono">{cropArea.width}×{cropArea.height}</span>
-                </div>
               </div>
             </div>
-          )}
 
-          {/* Timeline - More Compact */}
-          {(cropMode === 'time' || cropMode === 'both') && (
-            <div className="space-y-2.5">
-            {/* Time Display - Smaller */}
-            <div className="flex items-center justify-between text-xs">
+            {/* 下部分：时间轴控制区 */}
+            {(cropMode === 'time' || cropMode === 'both') && (
+              <div className="flex-shrink-0 px-8 pt-4 pb-8">
+                <div className="space-y-3 bg-neutral-800 px-6 py-4 rounded-lg">
+            {/* Time Display */}
+            <div className="flex items-center justify-between text-sm text-neutral-200">
               <div className="flex items-center gap-3">
                 <div>
                   <span className="text-neutral-500">开始: </span>
@@ -940,13 +940,66 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
               </div>
             </div>
 
-            {/* Timeline Track - Smaller Height */}
+            {/* 缩放提示 */}
+            <div className="flex items-center justify-between text-xs text-neutral-400">
+              <span>使用 Ctrl/Cmd + &gt;/&lt; 缩放时间轴</span>
+              {timelineZoom > 1 && (
+                <span className="text-blue-400">缩放: {Math.round(timelineZoom * 100)}%</span>
+              )}
+            </div>
+
+            {/* Timeline Track - 带滚动和缩放 */}
             <div className="relative">
+              {/* 可滚动容器 */}
               <div
-                ref={timelineRef}
-                className="relative h-14 bg-neutral-200 rounded cursor-pointer overflow-hidden select-none"
-                onClick={handleTimelineClick}
+                ref={timelineScrollRef}
+                className="relative overflow-x-auto overflow-y-hidden VideoTrimModal-timeline-scroll"
+                style={{
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: '#4B5563 #1F2937',
+                }}
               >
+                {/* 时间轴主体 - 宽度根据缩放倍数调整 */}
+                <div
+                  ref={timelineRef}
+                  className="relative h-20 bg-neutral-700 rounded cursor-pointer select-none"
+                  style={{
+                    width: `${timelineZoom * 100}%`,
+                    minWidth: '100%',
+                  }}
+                  onClick={handleTimelineClick}
+                >
+                  {/* 时间刻度 */}
+                  <div className="absolute top-0 left-0 right-0 h-6 border-b border-neutral-600">
+                    {timeMarkers.map((marker, index) => {
+                      const leftPercent = (marker.time / videoDuration) * 100
+                      return (
+                        <div
+                          key={index}
+                          className="absolute top-0 bottom-0 flex flex-col items-center"
+                          style={{ left: `${leftPercent}%` }}
+                        >
+                          {/* 刻度线 */}
+                          <div
+                            className={`${
+                              marker.isMajor
+                                ? 'h-6 w-0.5 bg-neutral-400'
+                                : 'h-3 w-0.5 bg-neutral-500 mt-3'
+                            }`}
+                          />
+                          {/* 时间标签 - 只显示主要刻度 */}
+                          {marker.isMajor && (
+                            <span className="absolute top-0 text-[9px] text-neutral-300 -translate-x-1/2 whitespace-nowrap font-mono">
+                              {marker.label}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* 时间轴轨道区域 */}
+                  <div className="absolute top-6 left-0 right-0 bottom-0 bg-neutral-200 rounded-b">
                 {/* Selected Region */}
                 <div
                   className="absolute top-0 bottom-0 bg-blue-500 bg-opacity-30 border-l-2 border-r-2 border-blue-600"
@@ -1002,57 +1055,177 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
                     isDraggingPlayhead ? 'bg-yellow-600 scale-125' : 'bg-yellow-500 hover:bg-yellow-600'
                   }`} />
                 </div>
-              </div>
-
-              {/* Time Labels - Smaller */}
-              <div className="flex items-center justify-between text-[10px] text-neutral-500 mt-0.5 px-1">
-                <span>0:00</span>
-                <span>{formatTime(videoDuration)}</span>
+                </div>
               </div>
             </div>
-            </div>
-          )}
+          </div>
+                </div>
+              </div>
+            )}
+          </div>
 
-          {/* Action Buttons - More Compact */}
-          <div className="flex items-center justify-end gap-2 pt-3 border-t mt-3">
-            <button
-              onClick={onClose}
-              disabled={isProcessing}
-              className="px-3 py-1.5 text-xs font-medium border border-neutral-300 rounded hover:bg-neutral-50 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              取消
-            </button>
-            <button
-              onClick={handleTrim}
-              disabled={
-                isProcessing ||
-                (cropMode === 'time' && endTime - startTime < 0.1) ||
-                (cropMode === 'region' && !cropArea) ||
-                (cropMode === 'both' && (!cropArea || endTime - startTime < 0.1))
-              }
-              className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  处理中...
-                </>
-              ) : (
-                <>
-                  {cropMode === 'time' && <Scissors className="h-3 w-3" />}
-                  {cropMode === 'region' && <Crop className="h-3 w-3" />}
-                  {cropMode === 'both' && (
+          {/* 右列：标题、模式切换、裁剪信息、操作按钮 */}
+          <div className="w-96 bg-white flex flex-col border-l border-neutral-200">
+            {/* 标题部分 */}
+            <div className="px-6 py-5 border-b border-neutral-200">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-semibold">视频编辑</DialogTitle>
+                <DialogDescription className="text-sm text-neutral-500 mt-1 truncate">
+                  {videoFile.name}
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+
+            {/* 模式切换 */}
+            <div className="px-6 py-4 border-b border-neutral-200">
+              <div className="text-xs font-medium text-neutral-700 mb-3">裁剪模式</div>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => setCropMode('time')}
+                  className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 ${
+                    cropMode === 'time'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                  }`}
+                >
+                  <Scissors className="h-4 w-4" />
+                  时间裁剪
+                </button>
+                <button
+                  onClick={() => setCropMode('region')}
+                  className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 ${
+                    cropMode === 'region'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                  }`}
+                >
+                  <Crop className="h-4 w-4" />
+                  区域裁剪
+                </button>
+                <button
+                  onClick={() => setCropMode('both')}
+                  className={`px-4 py-2.5 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 ${
+                    cropMode === 'both'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200'
+                  }`}
+                >
+                  <Scissors className="h-4 w-4" />
+                  <Crop className="h-4 w-4" />
+                  组合裁剪
+                </button>
+              </div>
+            </div>
+
+            {/* 快捷键提示 */}
+            <div className="px-6 py-4 border-b border-neutral-200 bg-neutral-50">
+              <div className="text-xs font-medium text-neutral-700 mb-2">快捷键</div>
+              <div className="grid grid-cols-2 gap-2 text-xs text-neutral-600">
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded text-neutral-700 font-mono">空格</kbd>
+                  <span>播放/暂停</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded text-neutral-700 font-mono">[</kbd>
+                  <span>设为开始</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded text-neutral-700 font-mono">]</kbd>
+                  <span>设为结尾</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded text-neutral-700 font-mono">M</kbd>
+                  <span>静音</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded text-neutral-700 font-mono">←</kbd>
+                  <span>后退10秒</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <kbd className="px-1.5 py-0.5 bg-white border border-neutral-300 rounded text-neutral-700 font-mono">→</kbd>
+                  <span>前进10秒</span>
+                </div>
+              </div>
+            </div>
+
+            {/* 裁剪区域信息 */}
+            {cropMode !== 'time' && cropArea && (
+              <div className="px-6 py-4 border-b border-neutral-200">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-medium text-neutral-700">裁剪区域</div>
+                  <button
+                    onClick={resetCropArea}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    重新选择
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs text-neutral-600">
+                  <div>
+                    <span className="font-medium">起始: </span>
+                    <span className="font-mono">X:{cropArea.x} Y:{cropArea.y}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium">尺寸: </span>
+                    <span className="font-mono">{cropArea.width}×{cropArea.height}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 加载提示 */}
+            {isInitializing && videoDuration === 0 && (
+              <div className="px-6 py-4 border-b border-neutral-200">
+                <div className="text-sm text-blue-600 bg-blue-50 px-3 py-2 rounded flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  正在加载视频...
+                </div>
+              </div>
+            )}
+
+            {/* 操作按钮 - 固定在底部 */}
+            <div className="mt-auto px-6 py-5 border-t border-neutral-200 bg-neutral-50">
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleTrim}
+                  disabled={
+                    isProcessing ||
+                    (cropMode === 'time' && endTime - startTime < 0.1) ||
+                    (cropMode === 'region' && !cropArea) ||
+                    (cropMode === 'both' && (!cropArea || endTime - startTime < 0.1))
+                  }
+                  className="w-full px-4 py-3 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                >
+                  {isProcessing ? (
                     <>
-                      <Scissors className="h-3 w-3" />
-                      <Crop className="h-3 w-3" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      处理中...
+                    </>
+                  ) : (
+                    <>
+                      {cropMode === 'time' && <Scissors className="h-4 w-4" />}
+                      {cropMode === 'region' && <Crop className="h-4 w-4" />}
+                      {cropMode === 'both' && (
+                        <>
+                          <Scissors className="h-4 w-4" />
+                          <Crop className="h-4 w-4" />
+                        </>
+                      )}
+                      {cropMode === 'time' && '裁剪时间'}
+                      {cropMode === 'region' && '裁剪区域'}
+                      {cropMode === 'both' && '组合裁剪'}
                     </>
                   )}
-                  {cropMode === 'time' && '裁剪时间'}
-                  {cropMode === 'region' && '裁剪区域'}
-                  {cropMode === 'both' && '组合裁剪'}
-                </>
-              )}
-            </button>
+                </button>
+                <button
+                  onClick={onClose}
+                  disabled={isProcessing}
+                  className="w-full px-4 py-2.5 text-sm font-medium border border-neutral-300 rounded-lg hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </DialogContent>

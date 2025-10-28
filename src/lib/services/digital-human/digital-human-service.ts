@@ -65,35 +65,65 @@ export class DigitalHumanService {
   }
 
   /**
-   * 获取音频URL的时长
+   * 获取音频URL或本地路径的时长
+   * @param audioUrlOrPath 音频URL或本地路径
+   * @returns 音频时长（秒）或null
    */
-  private async getAudioDuration(audioUrl: string): Promise<number | null> {
+  private async getAudioDuration(audioUrlOrPath: string): Promise<number | null> {
     let tempFilePath: string | null = null
+    let isLocalFile = false
+
     try {
-      // 下载音频文件到临时目录
-      const tempDir = os.tmpdir()
-      const tempFileName = `audio_${Date.now()}.mp3`
-      tempFilePath = path.join(tempDir, tempFileName)
+      // 判断是否为本地路径（不是http/https开头）
+      if (!this.isPublicUrl(audioUrlOrPath)) {
+        // 本地文件路径，转换为绝对路径
+        const localPath = path.join(process.cwd(), 'public', audioUrlOrPath)
 
-      const response = await axios.get(audioUrl, {
-        responseType: 'arraybuffer',
-        timeout: 30000,
-      })
+        // 检查文件是否存在
+        try {
+          await fs.access(localPath)
+          // 直接使用本地文件，不需要下载
+          tempFilePath = localPath
+          isLocalFile = true
+          console.log(`[DigitalHuman] Using local audio file: ${localPath}`)
+        } catch {
+          console.warn(`本地音频文件不存在: ${localPath}`)
+          return null
+        }
+      } else {
+        // 公网URL，需要下载
+        const tempDir = os.tmpdir()
+        const tempFileName = `audio_${Date.now()}.mp3`
+        tempFilePath = path.join(tempDir, tempFileName)
 
-      await fs.writeFile(tempFilePath, response.data)
+        console.log(`[DigitalHuman] Downloading audio from: ${audioUrlOrPath}`)
+        const response = await axios.get(audioUrlOrPath, {
+          responseType: 'arraybuffer',
+          timeout: 30000,
+        })
+
+        await fs.writeFile(tempFilePath, response.data)
+      }
 
       // 使用 ffprobe 获取时长
       const command = `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${tempFilePath}"`
       const { stdout } = await execAsync(command)
 
       const duration = parseFloat(stdout.trim())
-      return isNaN(duration) ? null : duration
+
+      if (isNaN(duration)) {
+        console.warn(`无法解析音频时长: ${audioUrlOrPath}`)
+        return null
+      }
+
+      console.log(`[DigitalHuman] Audio duration: ${duration}s for ${audioUrlOrPath}`)
+      return duration
     } catch (error) {
-      console.warn(`获取音频时长失败: ${audioUrl}`, error)
+      console.warn(`获取音频时长失败: ${audioUrlOrPath}`, error)
       return null
     } finally {
-      // 清理临时文件
-      if (tempFilePath) {
+      // 清理下载的临时文件（本地文件不删除）
+      if (tempFilePath && !isLocalFile) {
         try {
           await fs.unlink(tempFilePath)
         } catch (e) {
@@ -105,12 +135,26 @@ export class DigitalHumanService {
 
   /**
    * 创建并启动数字人任务
+   *
+   * 流程说明：
+   * 1. 先获取音频时长（支持本地文件和公网URL）
+   * 2. 创建任务记录，保存音频时长用于成本计算
+   * 3. 异步执行后续处理（上传S3、主体识别、视频生成）
    */
   async createTask(params: CreateDigitalHumanTaskParams) {
-    // 获取音频时长
+    console.log(`[DigitalHuman] Creating task for audio: ${params.audioUrl}`)
+
+    // 步骤1: 获取音频时长（无论是本地文件还是公网URL）
     const duration = await this.getAudioDuration(params.audioUrl)
 
-    // 创建任务记录
+    // 如果获取音频时长失败，抛出错误，不继续执行
+    if (duration === null) {
+      throw new Error('无法获取音频时长，请检查音频文件是否有效')
+    }
+
+    console.log(`[DigitalHuman] Audio duration obtained: ${duration}s`)
+
+    // 步骤2: 创建任务记录，保存时长用于后续成本计算
     const task = await db.digitalHumanTask.create({
       data: {
         userId: params.userId,
@@ -118,16 +162,18 @@ export class DigitalHumanService {
         name: params.name,
         imageUrl: params.imageUrl,
         audioUrl: params.audioUrl,
-        duration,
+        duration, // 保存音频时长
         prompt: params.prompt,
         seed: params.seed,
         peFastMode: params.peFastMode ?? false,
         enableMultiSubject: params.enableMultiSubject ?? false,
-        stage: DigitalHumanStage.UPLOADING_ASSETS, // 初始状态改为上传素材
+        stage: DigitalHumanStage.UPLOADING_ASSETS, // 初始状态为上传素材
       },
     })
 
-    // 启动处理流程
+    console.log(`[DigitalHuman ${task.id}] Task created successfully`)
+
+    // 步骤3: 启动异步处理流程（上传S3 → 主体识别 → 视频生成）
     this.processTask(task.id).catch((error) => {
       console.error(`Failed to process digital human task ${task.id}:`, error)
     })
@@ -150,7 +196,12 @@ export class DigitalHumanService {
     try {
       // 步骤0: 检查并上传素材到S3
       console.log(`[DigitalHuman ${taskId}] Checking and uploading assets...`)
-      const { imageUrl, audioUrl } = await this.uploadAssetsIfNeeded(taskId, task.imageUrl, task.audioUrl)
+      const { imageUrl, audioUrl } = await this.uploadAssetsIfNeeded(
+        taskId,
+        task.imageUrl,
+        task.audioUrl,
+        task.duration ?? undefined
+      )
 
       // 步骤1: 提交主体识别
       console.log(`[DigitalHuman ${taskId}] Submitting face recognition...`)
@@ -464,11 +515,16 @@ export class DigitalHumanService {
 
   /**
    * 检查并上传素材到S3
+   * @param taskId 任务ID
+   * @param imageUrl 图片URL或本地路径
+   * @param audioUrl 音频URL或本地路径
+   * @param audioDuration 音频时长（秒），用于更新shot
    */
   private async uploadAssetsIfNeeded(
     taskId: string,
     imageUrl: string,
-    audioUrl: string
+    audioUrl: string,
+    audioDuration?: number
   ): Promise<{ imageUrl: string; audioUrl: string }> {
     try {
       // 获取任务信息以获得shotId
@@ -508,16 +564,37 @@ export class DigitalHumanService {
         },
       })
 
-      // 如果音频被上传了，并且任务关联了镜头，则更新镜头的音频URL
-      if (audioWasUploaded && task?.shotId) {
-        console.log(`[DigitalHuman ${taskId}] Updating shot audio URL to S3 URL...`)
-        await db.studioShot.update({
-          where: { id: task.shotId },
-          data: {
-            cameraPrompt: finalAudioUrl, // 更新镜头的音频URL为S3 URL
-          },
-        })
-        console.log(`[DigitalHuman ${taskId}] Shot audio URL updated successfully`)
+      // 如果任务关联了镜头，则更新镜头信息
+      if (task?.shotId) {
+        const updateData: { cameraPrompt?: string; duration?: number } = {}
+
+        // 如果音频被上传了，更新镜头的音频URL为S3 URL
+        if (audioWasUploaded) {
+          console.log(`[DigitalHuman ${taskId}] Updating shot audio URL to S3 URL...`)
+          updateData.cameraPrompt = finalAudioUrl
+        }
+
+        // 如果有音频时长且镜头没有记录时长，则更新镜头的时长
+        if (audioDuration !== undefined) {
+          const shot = await db.studioShot.findUnique({
+            where: { id: task.shotId },
+            select: { duration: true },
+          })
+
+          if (shot && !shot.duration) {
+            console.log(`[DigitalHuman ${taskId}] Updating shot duration: ${audioDuration}s`)
+            updateData.duration = audioDuration
+          }
+        }
+
+        // 如果有需要更新的字段，执行更新
+        if (Object.keys(updateData).length > 0) {
+          await db.studioShot.update({
+            where: { id: task.shotId },
+            data: updateData,
+          })
+          console.log(`[DigitalHuman ${taskId}] Shot updated successfully`)
+        }
       }
 
       return { imageUrl: finalImageUrl, audioUrl: finalAudioUrl }
