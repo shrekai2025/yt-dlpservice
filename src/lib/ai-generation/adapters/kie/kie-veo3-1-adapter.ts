@@ -6,10 +6,15 @@
  *
  * API文档: https://api.kie.ai/api/v1/veo/generate
  *
+ * 支持的生成模式:
+ * - TEXT_2_VIDEO: 文生视频
+ * - FIRST_AND_LAST_FRAMES_2_VIDEO: 首尾帧生成(1-2张图片)
+ * - REFERENCE_2_VIDEO: 参考图生成(1-3张图片,仅veo3_fast+16:9)
+ *
  * 价格:
- * - 5秒 720P: 12 Credits
- * - 5秒 1080P: 30 Credits
- * - 10秒 720P: 30 Credits
+ * - veo3_fast: 60 Credits (5秒)
+ * - veo3: 250 Credits (5秒, 高质量)
+ * - 1080P: 仅16:9支持
  */
 
 import { BaseAdapter } from '../base-adapter'
@@ -72,8 +77,13 @@ export class KieVeo31Adapter extends BaseAdapter {
         prompt: request.prompt,
       }
 
-      // 模型选择: veo3 (Veo 3.1 使用 veo3 作为 model 参数)
-      payload.model = 'veo3'
+      // 模型选择: veo3 或 veo3_fast（默认 veo3_fast）
+      payload.model = request.parameters?.model || 'veo3_fast'
+
+      // 可选参数: generationType (放在前面，因为影响其他参数)
+      if (request.parameters?.generationType) {
+        payload.generationType = request.parameters.generationType
+      }
 
       // 可选参数: aspectRatio
       if (request.parameters?.aspectRatio) {
@@ -83,11 +93,6 @@ export class KieVeo31Adapter extends BaseAdapter {
       // 可选参数: seeds
       if (request.parameters?.seeds) {
         payload.seeds = request.parameters.seeds
-      }
-
-      // 可选参数: generationType
-      if (request.parameters?.generationType) {
-        payload.generationType = request.parameters.generationType
       }
 
       // 可选参数: enableTranslation
@@ -106,6 +111,7 @@ export class KieVeo31Adapter extends BaseAdapter {
       }
 
       // 输入图片（图生视频模式，优先使用参数中的image_url）
+      // 支持 imageUrls 数组，适用于 FIRST_AND_LAST_FRAMES_2_VIDEO (1-2张) 和 REFERENCE_2_VIDEO (1-3张)
       if (request.parameters?.image_url) {
         // 从参数字段获取（新方式）
         const imageUrl = request.parameters.image_url as string

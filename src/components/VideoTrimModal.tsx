@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
-import { X, Scissors, Loader2, Volume2, VolumeX, Crop, Image } from 'lucide-react'
+import { useState, useRef, useEffect, useMemo } from 'react'
+import { Scissors, Loader2, Volume2, VolumeX, Crop, Image } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '~/components/ui/dialog'
 
 type CropMode = 'time' | 'region' | 'both'
@@ -55,7 +55,6 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
 
   // 时间轴缩放相关
   const [timelineZoom, setTimelineZoom] = useState(1) // 缩放倍数，1 = 100%
-  const [timelineScrollLeft, setTimelineScrollLeft] = useState(0) // 滚动位置
   const timelineScrollRef = useRef<HTMLDivElement>(null)
 
   // 获取视频URL - 使用 useMemo 避免重复计算
@@ -754,9 +753,9 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
         {/* 左右两列布局 */}
         <div className="flex h-full">
           {/* 左列：视频播放器和时间轴 (占大部分空间) */}
-          <div className="flex-1 flex flex-col bg-neutral-900 select-none overflow-hidden">
-            {/* 上部分：视频播放区 */}
-            <div className="flex-1 min-h-0 flex items-center justify-center p-8 pb-4">
+          <div className="flex-1 relative bg-neutral-900 select-none">
+            {/* 上部分：视频播放区 - 使用绝对定位，预留底部145px给控件 */}
+            <div className="absolute inset-0 bottom-[145px] flex items-center justify-center">
               <div
                 ref={videoContainerRef}
                 className="w-full h-full flex items-center justify-center bg-black rounded overflow-hidden relative"
@@ -877,28 +876,6 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
               </div>
             )}
 
-            {/* 选定预览图按钮 - 左下角 */}
-            {!isInitializing && videoDuration > 0 && (
-              <button
-                onClick={handleSetThumbnail}
-                disabled={isUpdatingThumbnail || isProcessing}
-                className="absolute bottom-4 left-4 px-3 py-2 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all z-10 shadow-lg"
-                title="将当前时间点的帧设置为视频预览图"
-              >
-                {isUpdatingThumbnail ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    更新中...
-                  </>
-                ) : (
-                  <>
-                    <Image className="h-3.5 w-3.5" />
-                    选定预览图
-                  </>
-                )}
-              </button>
-            )}
-
             {/* Mute Button */}
             <button
               onClick={toggleMute}
@@ -914,13 +891,13 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
               </div>
             </div>
 
-            {/* 下部分：时间轴控制区 */}
+            {/* 下部分：时间轴控制区 - 固定在底部145px高度 */}
             {(cropMode === 'time' || cropMode === 'both') && (
-              <div className="flex-shrink-0 px-8 pt-4 pb-8">
-                <div className="space-y-3 bg-neutral-800 px-6 py-4 rounded-lg">
+              <div className="absolute bottom-0 left-0 right-0 h-[145px] overflow-y-auto">
+                <div className="space-y-1 bg-neutral-800 px-3 py-2 rounded-lg">
             {/* Time Display */}
-            <div className="flex items-center justify-between text-sm text-neutral-200">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between text-xs text-neutral-200">
+              <div className="flex items-center gap-2">
                 <div>
                   <span className="text-neutral-500">开始: </span>
                   <span className="font-mono font-semibold">{formatTime(startTime)}</span>
@@ -962,7 +939,7 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
                 {/* 时间轴主体 - 宽度根据缩放倍数调整 */}
                 <div
                   ref={timelineRef}
-                  className="relative h-20 bg-neutral-700 rounded cursor-pointer select-none"
+                  className="relative h-14 bg-neutral-700 rounded cursor-pointer select-none"
                   style={{
                     width: `${timelineZoom * 100}%`,
                     minWidth: '100%',
@@ -1065,7 +1042,7 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
           </div>
 
           {/* 右列：标题、模式切换、裁剪信息、操作按钮 */}
-          <div className="w-96 bg-white flex flex-col border-l border-neutral-200">
+          <div className="w-[230px] bg-white flex flex-col border-l border-neutral-200">
             {/* 标题部分 */}
             <div className="px-6 py-5 border-b border-neutral-200">
               <DialogHeader>
@@ -1146,6 +1123,28 @@ export function VideoTrimModal({ isOpen, onClose, videoFile, onTrimComplete }: V
                   <span>前进10秒</span>
                 </div>
               </div>
+
+              {/* 选定预览图按钮 */}
+              {!isInitializing && videoDuration > 0 && (
+                <button
+                  onClick={handleSetThumbnail}
+                  disabled={isUpdatingThumbnail || isProcessing}
+                  className="w-full mt-3 px-3 py-2 text-xs font-medium bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                  title="将当前时间点的帧设置为视频预览图"
+                >
+                  {isUpdatingThumbnail ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      更新中...
+                    </>
+                  ) : (
+                    <>
+                      <Image className="h-3.5 w-3.5" />
+                      选定预览图
+                    </>
+                  )}
+                </button>
+              )}
             </div>
 
             {/* 裁剪区域信息 */}

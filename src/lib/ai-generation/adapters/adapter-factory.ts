@@ -16,7 +16,6 @@ import { KieSora2Adapter } from './kie/kie-sora2-adapter'
 import { KieSora2ImageToVideoAdapter } from './kie/kie-sora2-image-to-video-adapter'
 import { KieSora2ProAdapter } from './kie/kie-sora2-pro-adapter'
 import { KieSora2ProImageToVideoAdapter } from './kie/kie-sora2-pro-image-to-video-adapter'
-import { KieVeo3Adapter } from './kie/kie-veo3-adapter'
 import { KieVeo31Adapter } from './kie/kie-veo3-1-adapter'
 import { KieVeo31ExtendAdapter } from './kie/kie-veo3-1-extend-adapter'
 import { KieNanoBananaAdapter } from './kie/kie-nano-banana-adapter'
@@ -76,7 +75,6 @@ const ADAPTER_REGISTRY: Record<string, new (config: ModelConfig) => BaseAdapter>
   KieSora2ImageToVideoAdapter,
   KieSora2ProAdapter,
   KieSora2ProImageToVideoAdapter,
-  KieVeo3Adapter,
   KieVeo31Adapter,
   KieVeo31ExtendAdapter,
   KieNanoBananaAdapter,

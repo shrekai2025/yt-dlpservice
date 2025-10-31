@@ -408,17 +408,27 @@ export class DigitalHumanService {
 
       const videoResult = await this.pollVideoGeneration(videoTaskId)
 
+      // 下载视频到本地（防止URL失效）
+      let resultVideoLocalPath: string | null = null
+      try {
+        resultVideoLocalPath = await this.downloadVideoToLocal(videoResult.videoUrl, taskId)
+      } catch (downloadError) {
+        console.warn(`[DigitalHuman ${taskId}] Video download failed, will use URL only:`, downloadError)
+        // 下载失败不影响任务完成，仅记录警告
+      }
+
       // 更新任务完成状态
       await db.digitalHumanTask.update({
         where: { id: taskId },
         data: {
-          resultVideoUrl: videoResult.videoUrl,
+          resultVideoUrl: videoResult.videoUrl, // 保存URL（会失效）
+          resultVideoLocalPath, // 保存本地路径（永久有效）
           aigcMetaTagged: videoResult.aigcMetaTagged,
           stage: DigitalHumanStage.VIDEO_GENERATION_COMPLETED,
         },
       })
 
-      console.log(`[DigitalHuman ${taskId}] Video generation completed`)
+      console.log(`[DigitalHuman ${taskId}] Video generation completed${resultVideoLocalPath ? ' and downloaded to local' : ''}`)
     } catch (error) {
       console.error(`[DigitalHuman ${taskId}] Video generation error:`, error)
 
@@ -511,6 +521,51 @@ export class DigitalHumanService {
    */
   private isPublicUrl(url: string): boolean {
     return url.startsWith('http://') || url.startsWith('https://')
+  }
+
+  /**
+   * 下载视频到本地
+   * @param videoUrl 视频URL
+   * @param taskId 任务ID
+   * @returns 本地相对路径
+   */
+  private async downloadVideoToLocal(videoUrl: string, taskId: string): Promise<string> {
+    try {
+      console.log(`[DigitalHuman ${taskId}] Downloading result video from: ${videoUrl}`)
+
+      // 下载视频
+      const response = await axios.get(videoUrl, {
+        responseType: 'arraybuffer',
+        timeout: 120000, // 2分钟超时（视频文件可能较大）
+      })
+
+      // 创建保存目录
+      const uploadDir = path.join(process.cwd(), 'data', 'digital-human-results')
+      await fs.mkdir(uploadDir, { recursive: true })
+
+      // 提取文件扩展名
+      const urlPath = new URL(videoUrl).pathname
+      const ext = path.extname(urlPath) || '.mp4'
+
+      // 保存文件
+      const fileName = `${taskId}_${Date.now()}${ext}`
+      const localPath = path.join(uploadDir, fileName)
+      await fs.writeFile(localPath, Buffer.from(response.data))
+
+      // 返回相对路径
+      const relativePath = path.relative(process.cwd(), localPath)
+      const stats = await fs.stat(localPath)
+
+      console.log(
+        `[DigitalHuman ${taskId}] Video downloaded successfully: ${relativePath} (${(stats.size / 1024 / 1024).toFixed(2)}MB)`
+      )
+
+      return relativePath
+    } catch (error) {
+      console.error(`[DigitalHuman ${taskId}] Failed to download video:`, error)
+      // 下载失败不应阻塞整个流程，只记录错误
+      throw error
+    }
   }
 
   /**

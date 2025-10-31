@@ -4,7 +4,7 @@
  */
 
 import { useState } from 'react'
-import { Plus, User, RefreshCw, Trash2, Upload, Link, Sparkles } from 'lucide-react'
+import { Plus, User, RefreshCw, Trash2, Upload, Link, Sparkles, ArrowLeft } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import { api } from '~/components/providers/trpc-provider'
 import { toast } from '~/components/ui/toast'
@@ -14,9 +14,10 @@ type Props = {
   projectId: string
   setting?: any
   onSave?: () => void
+  onBackToShots?: () => void
 }
 
-export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
+export function SettingTab({ episodeId, projectId, setting, onSave, onBackToShots }: Props) {
   // 角色管理状态
   const [showCreateCharacter, setShowCreateCharacter] = useState(false)
   const [showImportDialog, setShowImportDialog] = useState(false)
@@ -88,12 +89,10 @@ export function SettingTab({ episodeId, projectId, setting, onSave }: Props) {
       {/* 角色管理 */}
       <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">角色库</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                管理本项目的角色,可从演员表导入或手动创建
-              </p>
-            </div>
+            <Button onClick={onBackToShots} variant="outline" size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              返回镜头表
+            </Button>
             <div className="flex gap-2">
               <Button
                 variant="outline"

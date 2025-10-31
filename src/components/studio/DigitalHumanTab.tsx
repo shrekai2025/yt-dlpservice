@@ -21,11 +21,13 @@ import {
   PlayCircle,
   RefreshCw,
   Save,
+  ArrowLeft,
 } from 'lucide-react'
 import { toast } from '~/components/ui/toast'
 
 interface DigitalHumanTabProps {
   episodeId: string
+  onBackToShots?: () => void
 }
 
 // 任务阶段进度映射
@@ -58,7 +60,7 @@ const STAGE_LABELS: Record<string, string> = {
   FAILED: '失败',
 }
 
-export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
+export function DigitalHumanTab({ episodeId, onBackToShots }: DigitalHumanTabProps) {
   const [peFastMode, setPeFastMode] = useState(false) // 默认不启用快速模式
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set())
   const [delayMinutes, setDelayMinutes] = useState(2) // 延迟时间（分钟），默认2分钟
@@ -105,6 +107,15 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
     },
   })
 
+  const saveLocalFileToMediaMutation = api.mediaBrowser.copyLocalFileToMedia.useMutation({
+    onSuccess: (data) => {
+      toast.success(`已保存到媒体库: ${data.fileName}`)
+    },
+    onError: (error) => {
+      toast.error(`保存失败: ${error.message}`)
+    },
+  })
+
   const retryTaskMutation = api.studio.retryDigitalHumanTask.useMutation({
     onSuccess: () => {
       toast.success('已开始重试任务')
@@ -124,7 +135,7 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
   }
 
   // 存媒体到媒体浏览器（只在有且仅有一个演员时可用）
-  const handleSaveToMedia = (url: string, shot: any) => {
+  const handleSaveToMedia = (videoPathOrUrl: string, shot: any) => {
     // 必须有且只有一个演员
     if (!shot.characters || shot.characters.length === 0) {
       toast.error('该镜头没有演员，无法保存到媒体浏览器')
@@ -144,10 +155,23 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
       return
     }
 
-    saveToMediaBrowserMutation.mutate({
-      url,
-      actorId,
-    })
+    // 判断是本地路径还是URL
+    const isLocalPath = videoPathOrUrl.startsWith('/')
+
+    if (isLocalPath) {
+      // 本地路径：使用 copyLocalFileToMedia API
+      const localPath = videoPathOrUrl.substring(1) // 移除开头的 /
+      saveLocalFileToMediaMutation.mutate({
+        localPath,
+        actorId,
+      })
+    } else {
+      // URL：使用 downloadAndSaveUrl API（兼容旧数据）
+      saveToMediaBrowserMutation.mutate({
+        url: videoPathOrUrl,
+        actorId,
+      })
+    }
   }
 
   // 切换镜头选中状态
@@ -295,12 +319,10 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
     <div className="space-y-4">
       {/* 标题栏 */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">数字人合成</h2>
-          <p className="text-sm text-gray-500">
-            {data?.projectName} / {data?.episodeName}
-          </p>
-        </div>
+        <Button onClick={onBackToShots} variant="outline" size="sm" className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          返回镜头表
+        </Button>
         <div className="flex items-center gap-3">
           {/* 快速模式勾选 */}
           <label className="flex items-center gap-2 text-sm cursor-pointer">
@@ -625,55 +647,70 @@ export function DigitalHumanTab({ episodeId }: DigitalHumanTabProps) {
                   )}
 
                   {/* 视频预览（已完成） */}
-                  {isCompleted && task.resultVideoUrl && (
+                  {isCompleted && (task.resultVideoLocalPath || task.resultVideoUrl) && (
                     <div className="flex items-center gap-3 pt-2 border-t">
-                      <a
-                        href={task.resultVideoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="relative w-32 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0 group cursor-pointer block"
-                      >
-                        <video
-                          src={task.resultVideoUrl}
-                          className="w-full h-full object-cover"
-                          muted
-                          preload="metadata"
-                        />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-colors">
-                          <PlayCircle className="h-8 w-8 text-white" />
-                        </div>
-                      </a>
-                      <div className="flex-1 min-w-0 space-y-2">
-                        <div>
-                          <p className="text-xs font-medium text-gray-700 mb-1 flex items-center">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1" />
-                            生成完成
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">
-                            点击预览窗口在新标签页查看视频
-                          </p>
-                        </div>
-                        {/* 存媒体按钮 */}
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSaveToMedia(task.resultVideoUrl!, shot)}
-                            disabled={saveToMediaBrowserMutation.isPending}
-                            className="h-7 text-xs"
-                            title={
-                              !shot.characters || shot.characters.length === 0
-                                ? "镜头无演员，点击查看详情"
-                                : shot.characters.length > 1
-                                ? "镜头有多个演员，点击查看详情"
-                                : "保存到媒体浏览器"
-                            }
-                          >
-                            <Save className="h-3 w-3 mr-1" />
-                            存媒体
-                          </Button>
-                        </div>
-                      </div>
+                      {(() => {
+                        // 优先使用本地路径，如果没有则使用URL
+                        const videoSrc = task.resultVideoLocalPath
+                          ? `/${task.resultVideoLocalPath}`
+                          : task.resultVideoUrl!
+                        const isLocal = !!task.resultVideoLocalPath
+
+                        return (
+                          <>
+                            <a
+                              href={videoSrc}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative w-32 h-20 bg-gray-100 rounded overflow-hidden flex-shrink-0 group cursor-pointer block"
+                            >
+                              <video
+                                src={videoSrc}
+                                className="w-full h-full object-cover"
+                                muted
+                                preload="metadata"
+                              />
+                              <div className="absolute inset-0 bg-black/40 flex items-center justify-center group-hover:bg-black/50 transition-colors">
+                                <PlayCircle className="h-8 w-8 text-white" />
+                              </div>
+                            </a>
+                            <div className="flex-1 min-w-0 space-y-2">
+                              <div>
+                                <p className="text-xs font-medium text-gray-700 mb-1 flex items-center">
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mr-1" />
+                                  生成完成 {isLocal && <span className="ml-1 text-green-600">(已保存本地)</span>}
+                                </p>
+                                <p className="text-xs text-gray-500 truncate">
+                                  {isLocal
+                                    ? "视频已自动下载到本地，永久可用"
+                                    : "点击预览窗口在新标签页查看视频"}
+                                </p>
+                              </div>
+                              {/* 操作按钮 */}
+                              <div className="flex gap-2">
+                                {/* 存媒体按钮 - 始终显示 */}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleSaveToMedia(videoSrc, shot)}
+                                  disabled={saveToMediaBrowserMutation.isPending || saveLocalFileToMediaMutation.isPending}
+                                  className="h-7 text-xs"
+                                  title={
+                                    !shot.characters || shot.characters.length === 0
+                                      ? "镜头无演员，点击查看详情"
+                                      : shot.characters.length > 1
+                                      ? "镜头有多个演员，点击查看详情"
+                                      : "保存到媒体浏览器"
+                                  }
+                                >
+                                  <Save className="h-3 w-3 mr-1" />
+                                  存媒体
+                                </Button>
+                              </div>
+                            </div>
+                          </>
+                        )
+                      })()}
                     </div>
                   )}
                 </div>

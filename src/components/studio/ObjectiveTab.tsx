@@ -13,10 +13,12 @@ import {
   Edit2,
   Check,
   X,
+  Copy,
 } from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { api } from "~/components/providers/trpc-provider";
 import { ScriptDataViewer } from "./ScriptDataViewer";
+import { toast } from "~/components/ui/toast";
 
 // System Prompt Templates for different episode types
 const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
@@ -104,7 +106,78 @@ const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
 
 **重要:你的回复必须是且仅是一个有效的JSON对象,不要包含任何其他内容。**`,
 
-  TYPE02: '',
+  TYPE02: `你是一个尽职尽责的脚本写作助手,专门为故事短片系列撰写脚本。
+任务是根据 POINT 中提到的预期视频看点,参考 RAWINPUT 中提供的相关内容,规划出本次AI短片的脚本。
+
+***
+
+## 说明:
+1. 故事短片系列是用于讲述简短故事的系列,每集通过视觉化的场景展示故事情节。
+2. POINT 里通常包含了这一集视频的核心目标和故事主题。
+3. RAWINPUT 里面信息非常杂乱,你只需要参考跟核心目标有关的内容(场景描述、角色动作、故事情节),其余的抛弃。
+
+***
+
+## 输入内容:
+
+**POINT:**
+{{point}}
+
+**RAWINPUT:**
+{{rawInput}}
+
+***
+
+## 任务要求:
+
+你必须严格按照以下JSON格式输出,不要添加任何其他文字、解释或markdown代码块标记。
+
+### JSON结构要求:
+
+1. **风格设定** (\`styleSettings\`): 描述整体视觉风格。例如"70年代复古电影风格"、"现代都市风格"等。
+2. **全局角色设定** (\`characters\`): 角色数组,每个角色包含:
+   - \`name\`: 角色名称
+   - \`appearance\`: 角色外观设定（服装+配饰）
+   - \`environment\`: 角色所在场景位置描述
+3. **镜头列表** (\`shots\`): {{shotCount}}个镜头的数组,每个镜头包含:
+   - \`shotNumber\`: 镜头编号
+   - \`shotSizeView\`: 景别与视角,如"全景 (FS) / 跟踪镜头 (Tracking Shot)"
+   - \`settingBackground\`: 场景与背景描述
+   - \`compositionPosition\`: 构图与人物位置
+   - \`poseExpressionCostume\`: 姿势表情与服装描述
+   - \`dialogue\`: 台词内容(可选)
+
+### 重要约束:
+- 脚本台词总长度:{{dialogueCount}}句话
+- 镜头数量:{{shotCount}}个
+- 演员数量:{{characterCount}}个
+
+***
+
+## 输出格式(严格遵循):
+
+{
+  "styleSettings": "整体视觉风格描述",
+  "characters": [
+    {
+      "name": "角色名称",
+      "appearance": "角色外观设定",
+      "environment": "角色所在场景位置描述"
+    }
+  ],
+  "shots": [
+    {
+      "shotNumber": 1,
+      "shotSizeView": "景别与视角",
+      "settingBackground": "场景与背景",
+      "compositionPosition": "构图与人物位置",
+      "poseExpressionCostume": "姿势表情与服装",
+      "dialogue": "台词内容"
+    }
+  ]
+}
+
+**重要:你的回复必须是且仅是一个有效的JSON对象,不要包含任何其他内容。**`,
 
   TYPE03: `你是一个尽职尽责的脚本写作助手,专门为英语实景对话学习短片系列撰写脚本。
 任务是根据 POINT 中提到的预期视频看点,参考 RAWINPUT 中提供的相关内容,规划出本次AI短片的脚本。
@@ -112,7 +185,7 @@ const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
 ***
 
 ## 说明:
-1. 英语实景对话学习短片系列是为了让非英语母语者轻松学习地道英语而制作的系列,每集由2个角色演绎,通过简单情景对话演示某个地道英语表达的用法。
+1. 英语实景对话学习短片系列是为了让非英语母语者轻松学习地道英语而制作的系列,每集由{{characterCount}}个角色演绎,通过简单情景对话演示某个地道英语表达的用法。
    例如:on the house是免单的意思;喉咙痛是have a sore throat 而不是 neck pain。
    短片很短,每一集通常不到一分钟。
 
@@ -145,7 +218,7 @@ const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
    - \`appearance\`: 角色外观设定（服装+配饰）。
    - \`environment\`: 角色所在场景位置描述,例如站在机舱过道。
 
-3. **镜头列表** (\`shots\`): 9-11个镜头的数组,每个镜头包含:
+3. **镜头列表** (\`shots\`): {{shotCount}}个镜头的数组,每个镜头包含:
    - \`shotNumber\`: 镜头编号
    - \`character\`: 角色名称(必须与characters中的name一致)
    - \`framing\`: 景别,如"特写"、"近景"、"中景"、"全景"
@@ -161,9 +234,9 @@ const SYSTEM_PROMPT_TEMPLATES: Record<string, string> = {
 
 
 ### 重要约束【铁律】:
-- 脚本台词总长度:11-13句话
-- 镜头数量:9-11个
-- 每个镜头只出现1个演员
+- 脚本台词总长度:{{dialogueCount}}句话
+- 镜头数量:{{shotCount}}个
+- 每个镜头只出现{{characterCount}}个演员
 - 不同角色轮流出现和对话
 - 每个角色外观/服装在所有镜头中必须保持完全一致,只需包含会出现在画面中的部分(如近景半身不描述裤子和鞋子)
 - 每个角色的身体朝向在每个镜头中必须保持完全一致;多个角色的身体朝向不能相同,必须形成面对面交流的关系
@@ -506,6 +579,23 @@ export function ObjectiveTab({
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium">System Prompt</label>
+            <Button
+              onClick={() => {
+                const template = SYSTEM_PROMPT_TEMPLATES[episodeType];
+                if (template) {
+                  navigator.clipboard.writeText(template);
+                  toast.success(`已复制 ${episodeType} 默认模板到剪贴板`);
+                } else {
+                  toast.error(`没有找到 ${episodeType} 的默认模板`);
+                }
+              }}
+              size="sm"
+              variant="ghost"
+              className="gap-1 h-6 px-2"
+              title={`复制 ${episodeType} 默认模板到剪贴板`}
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
           </div>
 
           {/* 单行展示 */}
@@ -573,6 +663,102 @@ export function ObjectiveTab({
                 rows={16}
                 className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none font-mono"
               />
+
+              {/* 可用的模板字段 */}
+              <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                <h4 className="text-sm font-medium mb-2 text-gray-700">可用的模板字段：</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono">
+                      {'{'}{'{'} rawInput {'}'}{'}'}
+                    </code>
+                    <span className="text-gray-600">原始输入</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText('{{rawInput}}');
+                        toast.success('已复制字段名');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono">
+                      {'{'}{'{'} point {'}'}{'}'}
+                    </code>
+                    <span className="text-gray-600">核心看点</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText('{{point}}');
+                        toast.success('已复制字段名');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono">
+                      {'{'}{'{'} shotCount {'}'}{'}'}
+                    </code>
+                    <span className="text-gray-600">镜头数</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText('{{shotCount}}');
+                        toast.success('已复制字段名');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono">
+                      {'{'}{'{'} dialogueCount {'}'}{'}'}
+                    </code>
+                    <span className="text-gray-600">台词数</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText('{{dialogueCount}}');
+                        toast.success('已复制字段名');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <code className="bg-white px-2 py-1 rounded border border-gray-300 font-mono">
+                      {'{'}{'{'} characterCount {'}'}{'}'}
+                    </code>
+                    <span className="text-gray-600">演员数</span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 w-6 p-0"
+                      onClick={() => {
+                        navigator.clipboard.writeText('{{characterCount}}');
+                        toast.success('已复制字段名');
+                      }}
+                    >
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  点击字段名右侧的复制按钮可快速复制到剪贴板
+                </p>
+              </div>
+
               <div className="flex items-center justify-end">
                 <div className="flex gap-2">
                   <Button

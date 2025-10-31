@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Save, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Save, RefreshCw, ArrowLeft } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import { api } from '~/components/providers/trpc-provider'
 
@@ -29,6 +29,7 @@ type Props = {
   episodeId: string
   episodeType: string
   onSave?: () => void
+  onBackToShots?: () => void
 }
 
 type LLMResponse = {
@@ -51,7 +52,7 @@ type LLMResponse = {
   }>
 }
 
-export function VisualPromptTab({ episodeId, episodeType, onSave }: Props) {
+export function VisualPromptTab({ episodeId, episodeType, onSave, onBackToShots }: Props) {
   const [enhancementPrompt, setEnhancementPrompt] = useState(DEFAULT_ENHANCEMENT_PROMPT)
   const [selectedProvider, setSelectedProvider] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
@@ -439,7 +440,10 @@ export function VisualPromptTab({ episodeId, episodeType, onSave }: Props) {
     <div className="space-y-4 p-4">
       {/* Header with buttons */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">视觉Prompt强化</h2>
+        <Button onClick={onBackToShots} variant="outline" size="sm" className="gap-2">
+          <ArrowLeft className="h-4 w-4" />
+          返回镜头表
+        </Button>
         <div className="flex gap-2">
           <Button onClick={handleTempSave} variant="outline" size="sm">
             <Save className="h-4 w-4 mr-1" />

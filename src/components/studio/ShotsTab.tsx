@@ -44,6 +44,9 @@ type Props = {
   setting: any;
   objective?: string | null;
   onRefresh?: () => void;
+  onNavigateToCharacters?: () => void;
+  onNavigateToVisualOptimization?: () => void;
+  onNavigateToDigitalHuman?: () => void;
 };
 
 export function ShotsTab({
@@ -55,6 +58,9 @@ export function ShotsTab({
   setting,
   objective,
   onRefresh,
+  onNavigateToCharacters,
+  onNavigateToVisualOptimization,
+  onNavigateToDigitalHuman,
 }: Props) {
   const [expandedShot, setExpandedShot] = useState<string | null>(null);
   const [showAddCharacterDialog, setShowAddCharacterDialog] = useState<
@@ -207,6 +213,46 @@ export function ShotsTab({
   const handleSyncFromObjective = () => {
     if (!confirm("从目标同步镜头会创建或更新镜头数据，确定继续吗？")) return;
     syncShotsMutation.mutate({ episodeId });
+  };
+
+  const handleExtractDialogues = () => {
+    // 收集所有镜头的台词
+    const dialogues: string[] = [];
+
+    shots.forEach((shot) => {
+      // TYPE02 和 TYPE03: 台词存储在 shot.dialogue
+      if (episodeType === 'TYPE02' || episodeType === 'TYPE03') {
+        if (shot.dialogue && shot.dialogue.trim()) {
+          dialogues.push(shot.dialogue.trim());
+        }
+      }
+      // TYPE01: 台词存储在 shot.characters[].dialogue
+      else if (episodeType === 'TYPE01') {
+        shot.characters?.forEach((sc: any) => {
+          if (sc.dialogue && sc.dialogue.trim()) {
+            dialogues.push(sc.dialogue.trim());
+          }
+        });
+      }
+    });
+
+    if (dialogues.length === 0) {
+      toast.error('没有找到台词');
+      return;
+    }
+
+    // 将台词组合成文本，每个台词单独一行
+    const dialogueText = dialogues.join('\n');
+
+    // 复制到剪贴板
+    navigator.clipboard.writeText(dialogueText)
+      .then(() => {
+        toast.success(`已复制 ${dialogues.length} 条台词到剪贴板`);
+      })
+      .catch((err) => {
+        console.error('复制失败:', err);
+        toast.error('复制失败，请重试');
+      });
   };
 
   const handleBatchGenerateTTS = (language: 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr' | 'de') => {
@@ -407,19 +453,20 @@ export function ShotsTab({
   return (
     <div className="flex flex-col lg:flex-row gap-2 h-full">
       {/* 左侧：镜头列表 */}
-      <div className="w-full lg:w-1/2 xl:flex-1 flex flex-col space-y-2 overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden">
-        {/* 按钮操作区域 */}
-        <div className="flex flex-wrap gap-1">
-          <Button
-            onClick={handleSyncFromObjective}
-            variant="outline"
-            size="sm"
-            className="gap-1"
-            disabled={syncShotsMutation.isPending}
-          >
-            <RefreshCw className="h-3 w-3" />
-            {syncShotsMutation.isPending ? "同步中..." : "同步"}
-          </Button>
+      <div className="w-full lg:w-1/2 xl:flex-1 flex flex-col overflow-y-auto pr-2 [&::-webkit-scrollbar]:hidden">
+        {/* 按钮操作区域 - 固定在顶部 */}
+        <div className="sticky top-0 z-10 bg-white pb-2 space-y-2">
+          <div className="flex flex-wrap gap-1">
+            <Button
+              onClick={handleSyncFromObjective}
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              disabled={syncShotsMutation.isPending}
+            >
+              <RefreshCw className="h-3 w-3" />
+              {syncShotsMutation.isPending ? "同步中..." : "同步"}
+            </Button>
 
           <Button
             onClick={handleCreateShot}
@@ -430,6 +477,18 @@ export function ShotsTab({
             <Plus className="h-3 w-3" />
             添加
           </Button>
+
+          {shots.length > 0 && (
+            <Button
+              onClick={handleExtractDialogues}
+              variant="outline"
+              size="sm"
+              className="gap-1"
+            >
+              <Copy className="h-3 w-3" />
+              取台词
+            </Button>
+          )}
 
           {shots.length > 0 && (
             <>
@@ -537,25 +596,65 @@ export function ShotsTab({
           )}
         </div>
 
-        {/* 同步提示消息 */}
-        {syncMessage && (
-          <div
-            className={`rounded-md border p-2 text-xs ${
-              syncMessage.type === "success"
-                ? "bg-green-50 border-green-200 text-green-700"
-                : "bg-red-50 border-red-200 text-red-700"
-            }`}
-          >
-            {syncMessage.type === "success" ? "✓" : "✗"} {syncMessage.message}
-          </div>
-        )}
+          {/* 同步提示消息 */}
+          {syncMessage && (
+            <div
+              className={`rounded-md border p-2 text-xs ${
+                syncMessage.type === "success"
+                  ? "bg-green-50 border-green-200 text-green-700"
+                  : "bg-red-50 border-red-200 text-red-700"
+              }`}
+            >
+              {syncMessage.type === "success" ? "✓" : "✗"} {syncMessage.message}
+            </div>
+          )}
 
-        {/* 角色提示 */}
-        {characters.length === 0 && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-800">
-            ⚠️ 还没有角色。请先在"背景设定"tab中创建或导入角色。
-          </div>
-        )}
+          {/* 角色提示 */}
+          {characters.length === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs text-yellow-800">
+              ⚠️ 还没有角色。请先在"背景设定"tab中创建或导入角色。
+            </div>
+          )}
+        </div>
+
+        {/* 快捷入口卡片 - 跟随滚动 */}
+        <div className="grid grid-cols-4 gap-2 mb-2">
+          {/* 角色 */}
+          <button
+            onClick={onNavigateToCharacters}
+            className="h-[66px] border-2 border-gray-200 rounded-lg hover:border-green-400 hover:bg-green-50 transition-all flex flex-col items-center justify-center gap-1 group"
+          >
+            <div className="text-2xl">👥</div>
+            <span className="text-xs font-medium text-gray-700 group-hover:text-green-600">角色</span>
+          </button>
+
+          {/* 视觉优化 */}
+          <button
+            onClick={onNavigateToVisualOptimization}
+            className="h-[66px] border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all flex flex-col items-center justify-center gap-1 group"
+          >
+            <div className="text-2xl">🎨</div>
+            <span className="text-xs font-medium text-gray-700 group-hover:text-blue-600">视觉优化</span>
+          </button>
+
+          {/* 拍摄优化 - 占位 */}
+          <button
+            disabled
+            className="h-[66px] border-2 border-gray-200 rounded-lg opacity-50 cursor-not-allowed flex flex-col items-center justify-center gap-1"
+          >
+            <div className="text-2xl">📹</div>
+            <span className="text-xs font-medium text-gray-500">拍摄优化</span>
+          </button>
+
+          {/* 数字人合成 */}
+          <button
+            onClick={onNavigateToDigitalHuman}
+            className="h-[66px] border-2 border-gray-200 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all flex flex-col items-center justify-center gap-1 group"
+          >
+            <div className="text-2xl">🤖</div>
+            <span className="text-xs font-medium text-gray-700 group-hover:text-purple-600">数字人合成</span>
+          </button>
+        </div>
 
         {/* 镜头列表 */}
         <div className="space-y-2">

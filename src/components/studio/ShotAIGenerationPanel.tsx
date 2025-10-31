@@ -138,7 +138,12 @@ export const ShotAIGenerationPanel = forwardRef<ShotAIGenerationPanelRef, ShotAI
 
   // 预览模板内容的函数
   const previewTemplateContent = (template: string): string => {
-    if (!currentShot || !template) {
+    if (!template) {
+      return ''
+    }
+
+    if (!currentShot) {
+      // 没有选中镜头时，显示模板变量而不是空值
       return template
     }
 
@@ -155,7 +160,7 @@ export const ShotAIGenerationPanel = forwardRef<ShotAIGenerationPanelRef, ShotAI
     const firstCharacter = currentShot.characters?.[0]
     if (firstCharacter?.character) {
       result = result.replace(/\{\{name\}\}/g, firstCharacter.character.name || '')
-      result = result.replace(/\{\{appearance\}\}/g, firstCharacter.character.appearance || '')
+      result = result.replace(/\{\{appearance\}\}/g, firstCharacter.character.appearancePrompt || firstCharacter.character.appearance || '')
       result = result.replace(/\{\{environment\}\}/g, firstCharacter.character.environment || '')
     } else {
       result = result.replace(/\{\{name\}\}/g, '')
@@ -198,7 +203,14 @@ export const ShotAIGenerationPanel = forwardRef<ShotAIGenerationPanelRef, ShotAI
 
   const handleApplyTemplate = (template: string) => {
     const result = previewTemplateContent(template)
-    setPrompt(result)
+    // 追加到现有提示词末尾，而不是替换
+    setPrompt(prev => {
+      if (prev && prev.trim()) {
+        // 如果已有内容，添加换行符分隔
+        return prev + '\n' + result
+      }
+      return result
+    })
   }
 
   // 计算模板预览
@@ -327,7 +339,7 @@ export const ShotAIGenerationPanel = forwardRef<ShotAIGenerationPanelRef, ShotAI
       if (jimengProvider) {
         const jimeng4Model = modelsData.find(m =>
           m.provider.id === jimengProvider.id &&
-          (m.name.includes('4.0') || m.apiIdentifier?.includes('v4'))
+          (m.name.includes('4.0') || m.slug?.includes('v4'))
         )
         if (jimeng4Model) {
           setSelectedProviderId(jimengProvider.id)
@@ -964,9 +976,15 @@ export const ShotAIGenerationPanel = forwardRef<ShotAIGenerationPanelRef, ShotAI
           {templateContent && (
             <div className="space-y-1">
               <label className="text-sm font-medium">内容预览</label>
-              <div className="p-2 bg-green-50 rounded border border-green-200 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
-                {templatePreview || '（无内容）'}
-              </div>
+              {!currentShot ? (
+                <div className="p-2 bg-yellow-50 rounded border border-yellow-200 text-xs text-gray-600">
+                  ⚠️ 请先在镜头列表中选择并展开一个镜头，以查看实际预览效果
+                </div>
+              ) : (
+                <div className="p-2 bg-green-50 rounded border border-green-200 text-xs text-gray-700 leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto">
+                  {templatePreview || '（无内容）'}
+                </div>
+              )}
             </div>
           )}
 

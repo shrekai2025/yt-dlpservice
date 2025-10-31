@@ -317,6 +317,122 @@ export const mediaBrowserRouter = createTRPCRouter({
     }),
 
   /**
+   * 复制本地文件到媒体库（适用于已下载的数字人视频等）
+   */
+  copyLocalFileToMedia: userProcedure
+    .input(
+      z.object({
+        localPath: z.string(),
+        folderId: z.string().optional(),
+        actorId: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const userId = ctx.userId!
+
+      try {
+        // 源文件路径（相对于项目根目录）
+        const sourcePath = path.join(process.cwd(), input.localPath)
+
+        // 检查源文件是否存在
+        try {
+          await fs.access(sourcePath)
+        } catch {
+          throw new TRPCError({
+            code: 'NOT_FOUND',
+            message: '源文件不存在',
+          })
+        }
+
+        const stats = await fs.stat(sourcePath)
+        const fileSize = stats.size
+
+        // 提取文件名和扩展名
+        const fileName = path.basename(sourcePath)
+        const ext = path.extname(fileName)
+
+        // 检测媒体类型
+        const mimeType = ext === '.mp4' ? 'video/mp4' : ext === '.webm' ? 'video/webm' : 'video/mp4'
+        const type = detectMediaType(mimeType)
+
+        // 创建目标目录
+        const uploadDir = path.join(process.cwd(), 'data', 'media-uploads', userId)
+        await fs.mkdir(uploadDir, { recursive: true })
+
+        // 生成唯一文件名
+        const uniqueId = crypto.randomBytes(8).toString('hex')
+        const targetFileName = `${uniqueId}_${fileName}`
+        const targetPath = path.join(uploadDir, targetFileName)
+
+        // 复制文件
+        await fs.copyFile(sourcePath, targetPath)
+
+        const relativePath = path.relative(process.cwd(), targetPath)
+
+        // 获取媒体时长
+        let duration: number | null = null
+        if (type === 'VIDEO' || type === 'AUDIO') {
+          const { getMediaDuration } = await import('~/lib/services/audio-utils')
+          duration = await getMediaDuration(relativePath)
+        }
+
+        // 创建媒体文件记录
+        const file = await ctx.db.mediaFile.create({
+          data: {
+            userId,
+            name: fileName,
+            type,
+            source: 'LOCAL',
+            localPath: relativePath,
+            originalPath: input.localPath, // 保存原始路径
+            mimeType,
+            fileSize,
+            duration,
+            folderId: input.folderId,
+            actorId: input.actorId,
+          },
+        })
+
+        // 异步生成缩略图
+        if (type === 'IMAGE' || type === 'VIDEO') {
+          thumbnailQueue.add({
+            id: file.id,
+            options: {
+              userId,
+              fileId: file.id,
+              localPath: relativePath,
+              type: type.toLowerCase() as 'image' | 'video',
+            },
+            onComplete: async (result) => {
+              if (result.thumbnailPath) {
+                await ctx.db.mediaFile.update({
+                  where: { id: file.id },
+                  data: {
+                    thumbnailPath: result.thumbnailPath,
+                    width: result.width,
+                    height: result.height,
+                  },
+                })
+              }
+            },
+          })
+        }
+
+        return { success: true, fileId: file.id, fileName }
+      } catch (error) {
+        console.error('[copyLocalFileToMedia] Failed:', error)
+        if (error instanceof TRPCError) {
+          throw error
+        }
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `复制文件失败: ${errorMessage}`,
+        })
+      }
+    }),
+
+  /**
    * 批量添加 URL
    */
   addUrls: userProcedure

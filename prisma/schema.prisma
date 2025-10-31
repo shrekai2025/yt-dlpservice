@@ -296,7 +296,8 @@ model DigitalHumanTask {
   faceRecognitionTaskId     String?              // 步骤1的task_id
   subjectDetectionTaskId    String?              // 步骤2的task_id（如果有的话）
   videoGenerationTaskId     String?              // 步骤3的task_id
-  resultVideoUrl            String?              // 最终生成的视频URL
+  resultVideoUrl            String?              // 最终生成的视频URL（会失效）
+  resultVideoLocalPath      String?              // 下载到本地的视频路径
   aigcMetaTagged            Boolean?
   errorMessage              String?
   metadata                  String?              // JSON: 其他元数据
